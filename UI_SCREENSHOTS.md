@@ -10,60 +10,72 @@ The main landing page with three primary options:
 - 🛠 Restore from Backup
 - ✨ Start New Nextcloud Instance
 
-## Restore Wizard - Full Form
-![Restore Wizard](02_restore_wizard.png)
+## Restore Wizard - Multi-Page Form
 
-The new restore wizard showing all input fields in the main window:
+The restore wizard is now a multi-step process with three pages:
 
-### Section 1: Backup Archive Selection
+### Page 1: Backup Selection and Decryption
+![Wizard Page 1](wizard_page1.png)
+
+**Step 1: Select Backup Archive**
 - File path input with browse button
 - Supports both encrypted (.tar.gz.gpg) and unencrypted (.tar.gz) backups
 
-### Section 2: Decryption Password
-- Password field (shown only for encrypted backups)
+**Step 2: Decryption Password**
+- Password field for encrypted backups
 - Masked input for security
+- Only required if backup file ends with .gpg
 
-### Section 3: Database Configuration
+### Page 2: Database and Admin Configuration
+![Wizard Page 2](wizard_page2.png)
+
+**Step 3: Database Configuration**
 - Database Host (default: localhost)
 - Database Name (default: nextcloud)
 - Database User (default: nextcloud)
 - Database Password (masked, default: example)
 
-### Section 4: Nextcloud Admin Credentials
+**Step 4: Nextcloud Admin Credentials**
 - Admin Username (default: admin)
 - Admin Password (masked, default: admin)
 
-### Section 5: Container Configuration
+### Page 3: Container Configuration
+![Wizard Page 3](wizard_page3.png)
+
+**Step 5: Container Configuration**
 - Container Name (default: nextcloud-app)
 - Container Port (default: 9000)
 - Checkbox: "Use existing Nextcloud container if found"
 
-### Additional Features
-- Progress bar showing restore progress (0-100%)
-- Process label showing current operation
-- Error label for validation feedback and errors
-- Return to Main Menu button
+### Navigation Features
+- **Next/Back buttons** to navigate between pages
+- Data is preserved when moving between pages
+- **Start Restore** button appears on the final page
+- Progress bar and status updates appear after starting restore
+- Error validation on all pages
+- Return to Main Menu button on all pages
 
 ## Key Improvements
 
-### Before (v8 and earlier)
-- ❌ Pop-up dialogs for container name
-- ❌ Pop-up dialogs for port number
-- ❌ Pop-up dialog asking about existing container
-- ❌ Hardcoded database credentials
-- ❌ No admin credential configuration
-- ❌ Context switching between main window and dialogs
+### Before (v9 - Single Page)
+- All 5 steps shown on one scrollable page
+- Could be overwhelming for users
+- Difficult to focus on individual steps
 
-### After (v9 - Current)
-- ✅ All inputs in main window
-- ✅ Scrollable form for easy navigation
-- ✅ Clear section organization
-- ✅ Configurable database credentials
-- ✅ Admin credential configuration
+### After (v10 - Multi-Page Wizard)
+- ✅ **Multi-page wizard** with clear step progression
+- ✅ **Page 1**: Backup selection and decryption (Steps 1-2)
+- ✅ **Page 2**: Database and admin configuration (Steps 3-4)
+- ✅ **Page 3**: Container configuration (Step 5)
+- ✅ **Next/Back navigation** between pages
+- ✅ **Data persistence** across page navigation
+- ✅ **Focused UI** - users see only relevant fields per page
+- ✅ All inputs remain in main window (no pop-ups)
+- ✅ Scrollable when needed for each page
+- ✅ Clear section organization with descriptions
 - ✅ Pre-filled default values
 - ✅ Comprehensive validation
-- ✅ No pop-ups for input (only for errors/success)
-- ✅ Better user experience with single-window workflow
+- ✅ Better user experience with guided workflow
 
 ## Validation Examples
 
