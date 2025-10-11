@@ -81,6 +81,38 @@ def decrypt_file_gpg(encrypted_path, decrypted_path, passphrase):
     if result.returncode != 0:
         raise Exception(result.stderr.decode() or "GPG decryption failed")
 
+def thread_safe_askstring(parent, title, prompt, **kwargs):
+    """
+    Thread-safe wrapper for simpledialog.askstring.
+    Can be called from any thread - ensures dialog is shown in main thread.
+    """
+    result = [None]  # Use list to store result (mutable)
+    event = threading.Event()
+    
+    def _ask():
+        result[0] = simpledialog.askstring(title, prompt, **kwargs)
+        event.set()
+    
+    parent.after(0, _ask)
+    event.wait()
+    return result[0]
+
+def thread_safe_askinteger(parent, title, prompt, **kwargs):
+    """
+    Thread-safe wrapper for simpledialog.askinteger.
+    Can be called from any thread - ensures dialog is shown in main thread.
+    """
+    result = [None]  # Use list to store result (mutable)
+    event = threading.Event()
+    
+    def _ask():
+        result[0] = simpledialog.askinteger(title, prompt, **kwargs)
+        event.set()
+    
+    parent.after(0, _ask)
+    event.wait()
+    return result[0]
+
 def get_nextcloud_container_name():
     try:
         result = subprocess.run(
@@ -498,7 +530,8 @@ class NextcloudRestoreWizard(tk.Tk):
                 return container
             else:
                 # Always prompt for a new name and port!
-                new_container_name = simpledialog.askstring(
+                new_container_name = thread_safe_askstring(
+                    self,
                     "New Container Name",
                     "Enter a name for the new Nextcloud container:",
                     initialvalue="nextcloud-app"
@@ -508,7 +541,8 @@ class NextcloudRestoreWizard(tk.Tk):
                     self.error_label.config(text="Restore cancelled by user (no container name given).")
                     return None
                 while True:
-                    port = simpledialog.askinteger(
+                    port = thread_safe_askinteger(
+                        self,
                         "Port Number",
                         "Enter a port number for the new Nextcloud container:",
                         initialvalue=9000,
@@ -542,7 +576,8 @@ class NextcloudRestoreWizard(tk.Tk):
             # No container found, start a new one (always ask port)
             new_container_name = "nextcloud-app"
             while True:
-                port = simpledialog.askinteger(
+                port = thread_safe_askinteger(
+                    self,
                     "Port Number",
                     "Enter a port number for the new Nextcloud container:",
                     initialvalue=9000,
