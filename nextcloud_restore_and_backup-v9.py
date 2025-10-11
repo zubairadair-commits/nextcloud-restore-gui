@@ -935,27 +935,10 @@ class NextcloudRestoreWizard(tk.Tk):
             self.backup_entry.delete(0, tk.END)
             self.backup_entry.insert(0, path)
             
-            # Perform early database type detection to conditionally show/hide credential fields
-            # This improves UX by not requiring credentials for SQLite databases
-            print(f"Attempting early database type detection for: {path}")
-            dbtype, db_config = self.early_detect_database_type_from_backup(path)
-            
-            if dbtype:
-                self.detected_dbtype = dbtype
-                self.detected_db_config = db_config
-                self.db_auto_detected = True
-                print(f"Early detection successful: {dbtype}")
-                
-                # Update UI on page 2 if we're currently on that page or if it's been created
-                # This will hide/show database credential fields appropriately
-                if hasattr(self, 'db_credential_frame') and self.db_credential_frame:
-                    self.update_database_credential_ui(dbtype)
-            else:
-                print("Early detection not possible (encrypted or missing config.php)")
-                # Reset detection state - credentials will be required
-                self.detected_dbtype = None
-                self.detected_db_config = None
-                self.db_auto_detected = False
+            # Note: Database type detection is deferred until after the user enters
+            # the decryption password (if needed) and clicks "Next" to navigate to Page 2.
+            # This ensures encrypted backups can be properly decrypted before detection.
+            # See perform_extraction_and_detection() method for the detection logic.
 
     def validate_and_start_restore(self):
         """Validate all input fields and start the restore process"""
@@ -1495,10 +1478,10 @@ class NextcloudRestoreWizard(tk.Tk):
             if backup_path.endswith('.gpg'):
                 if not password:
                     # Password not provided - cannot decrypt
-                    print("Encrypted backup detected but no password provided - skipping early detection")
+                    # This is expected when called before password entry - detection will happen later
                     return None, None
                 
-                print("Decrypting backup for early detection...")
+                print("Decrypting backup for database type detection...")
                 # Decrypt to a temporary file
                 temp_decrypted_path = tempfile.mktemp(suffix=".tar.gz", prefix="nextcloud_decrypt_")
                 
