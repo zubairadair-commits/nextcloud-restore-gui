@@ -880,10 +880,20 @@ class NextcloudRestoreWizard(tk.Tk):
         self.process_label.config(text=f"Starting container: {new_container_name}")
         self.update_idletasks()
         
+        # Try to link to database container for proper Docker networking
+        # First attempt with link, if it fails (e.g., db container not found), try without
         result = subprocess.run(
-            f'docker run -d --name {new_container_name} -p {port}:80 {NEXTCLOUD_IMAGE}',
+            f'docker run -d --name {new_container_name} --link {POSTGRES_CONTAINER_NAME}:db -p {port}:80 {NEXTCLOUD_IMAGE}',
             shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
+        
+        # If linking failed, try without link (for cases where DB might not be available yet)
+        if result.returncode != 0 and "Could not find" in result.stderr:
+            print(f"Warning: Could not link to database container, starting without link: {result.stderr}")
+            result = subprocess.run(
+                f'docker run -d --name {new_container_name} -p {port}:80 {NEXTCLOUD_IMAGE}',
+                shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            )
         
         if result.returncode != 0:
             tb = traceback.format_exc()
@@ -977,26 +987,36 @@ php /tmp/update_config.php"
                 return
 
             self.set_restore_progress(20, self.restore_steps[1])
-            nextcloud_container = self.ensure_nextcloud_container()
-            if not nextcloud_container:
-                self.set_restore_progress(0, "Restore failed!")
-                return
+            # Start database container first (needed for Nextcloud container linking)
             db_container = self.ensure_db_container()
             if not db_container:
+                self.set_restore_progress(0, "Restore failed!")
+                return
+            
+            # Start Nextcloud container (linked to database)
+            nextcloud_container = self.ensure_nextcloud_container()
+            if not nextcloud_container:
                 self.set_restore_progress(0, "Restore failed!")
                 return
 
             self.set_restore_progress(50, self.restore_steps[2])
             nextcloud_path = "/var/www/html"
             # Copy config/data/apps/custom_apps into container
+            # Note: We need to remove existing folders first, then copy the backup folders
             for folder in ["config", "data", "apps", "custom_apps"]:
                 local_path = os.path.join(extract_dir, folder)
                 if os.path.isdir(local_path):
                     self.process_label.config(text=f"Copying: {folder}")
                     self.update_idletasks()
                     try:
+                        # Remove existing folder in container (if it exists)
                         subprocess.run(
-                            f'docker cp "{local_path}" {nextcloud_container}:{nextcloud_path}/{folder}',
+                            f'docker exec {nextcloud_container} rm -rf {nextcloud_path}/{folder}',
+                            shell=True, check=False  # Don't fail if folder doesn't exist
+                        )
+                        # Copy folder from backup - use /. to copy contents, not the folder itself
+                        subprocess.run(
+                            f'docker cp "{local_path}/." {nextcloud_container}:{nextcloud_path}/{folder}/',
                             shell=True, check=True
                         )
                     except Exception as copy_err:
@@ -1009,24 +1029,42 @@ php /tmp/update_config.php"
             self.set_restore_progress(70, self.restore_steps[3])
             sql_path = os.path.join(extract_dir, "nextcloud-db.sql")
             if os.path.isfile(sql_path):
-                self.process_label.config(text="Restoring database ...")
+                self.process_label.config(text="Restoring database (this may take a few minutes) ...")
                 self.update_idletasks()
                 # Use credentials from GUI
                 restore_cmd = f'docker exec -i {db_container} bash -c "PGPASSWORD={self.restore_db_password} psql -U {self.restore_db_user} -d {self.restore_db_name}"'
                 try:
                     with open(sql_path, "rb") as f:
-                        proc = subprocess.Popen(restore_cmd, shell=True, stdin=f)
-                        proc.wait()
+                        proc = subprocess.Popen(restore_cmd, shell=True, stdin=f, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        stdout, stderr = proc.communicate()
                         if proc.returncode != 0:
-                            self.error_label.config(text="Database restore failed.")
+                            error_msg = stderr.decode('utf-8', errors='replace') if stderr else "Unknown error"
+                            self.error_label.config(text=f"Database restore failed: {error_msg}")
                             self.set_restore_progress(0, "Restore failed!")
                             return
+                    
+                    # Validate that database tables were imported
+                    self.process_label.config(text="Validating database restore ...")
+                    self.update_idletasks()
+                    check_cmd = f'docker exec {db_container} bash -c "PGPASSWORD={self.restore_db_password} psql -U {self.restore_db_user} -d {self.restore_db_name} -c \'\\dt\'"'
+                    result = subprocess.run(check_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                    if result.returncode == 0 and "oc_" in result.stdout:
+                        print(f"Database validation successful. Tables found.")
+                    else:
+                        warning_msg = "Warning: Could not validate database tables. Please check manually."
+                        self.error_label.config(text=warning_msg, fg="orange")
+                        print(f"Warning: Database validation unclear: {result.stdout}")
+                        
                 except Exception as db_err:
                     tb = traceback.format_exc()
                     self.error_label.config(text=f"Database restore error: {db_err}\n{tb}")
                     print(tb)
                     self.set_restore_progress(0, "Restore failed!")
                     return
+            else:
+                warning_msg = "Warning: No database backup file (nextcloud-db.sql) found in backup. Skipping database restore."
+                self.error_label.config(text=warning_msg, fg="orange")
+                print(warning_msg)
             
             # Update config.php with database credentials
             self.set_restore_progress(75, "Updating Nextcloud configuration ...")
@@ -1040,6 +1078,39 @@ php /tmp/update_config.php"
                 self.error_label.config(text=warning_msg, fg="orange")
                 print(f"Warning: config.php update failed: {config_err}")
 
+            # Validate that required files exist
+            self.set_restore_progress(85, "Validating restored files ...")
+            self.process_label.config(text="Validating config and data folders ...")
+            self.update_idletasks()
+            try:
+                # Check if config.php exists
+                check_config = subprocess.run(
+                    f'docker exec {nextcloud_container} test -f {nextcloud_path}/config/config.php',
+                    shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                )
+                if check_config.returncode != 0:
+                    error_msg = "Error: config.php not found after restore. The backup may be incomplete."
+                    self.error_label.config(text=error_msg, fg="red")
+                    self.set_restore_progress(0, "Restore failed!")
+                    return
+                
+                # Check if data folder exists
+                check_data = subprocess.run(
+                    f'docker exec {nextcloud_container} test -d {nextcloud_path}/data',
+                    shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                )
+                if check_data.returncode != 0:
+                    error_msg = "Error: data folder not found after restore. The backup may be incomplete."
+                    self.error_label.config(text=error_msg, fg="red")
+                    self.set_restore_progress(0, "Restore failed!")
+                    return
+                
+                print("File validation successful: config.php and data folder exist.")
+            except Exception as val_err:
+                warning_msg = f"Warning: Could not validate files: {val_err}"
+                self.error_label.config(text=warning_msg, fg="orange")
+                print(f"Warning: file validation error: {val_err}")
+            
             self.set_restore_progress(90, self.restore_steps[4])
             self.process_label.config(text="Setting permissions ...")
             self.update_idletasks()
@@ -1048,6 +1119,7 @@ php /tmp/update_config.php"
                     f'docker exec {nextcloud_container} chown -R www-data:www-data {nextcloud_path}/config {nextcloud_path}/data',
                     shell=True, check=True
                 )
+                print("Permissions set successfully.")
             except subprocess.CalledProcessError as perm_err:
                 # Display warning but allow restore to continue
                 warning_msg = f"Warning: Could not set file permissions (chown failed). You may need to set permissions manually."
@@ -1060,6 +1132,22 @@ php /tmp/update_config.php"
                 self.error_label.config(text=warning_msg, fg="orange")
                 self.process_label.config(text=f"Permission warning (continuing restore): {perm_err}")
                 print(f"Warning: permission error but continuing restore: {perm_err}")
+
+            # Restart Nextcloud container to apply all changes
+            self.set_restore_progress(95, "Restarting Nextcloud container ...")
+            self.process_label.config(text="Restarting Nextcloud container ...")
+            self.update_idletasks()
+            try:
+                subprocess.run(
+                    f'docker restart {nextcloud_container}',
+                    shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                )
+                print(f"Nextcloud container restarted successfully.")
+                time.sleep(3)  # Give container time to start
+            except Exception as restart_err:
+                warning_msg = f"Warning: Could not restart Nextcloud container: {restart_err}"
+                self.error_label.config(text=warning_msg, fg="orange")
+                print(f"Warning: container restart failed: {restart_err}")
 
             self.set_restore_progress(100, self.restore_steps[5])
             self.process_label.config(text="Restore complete.")
