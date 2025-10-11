@@ -648,34 +648,38 @@ class NextcloudRestoreWizard(tk.Tk):
         """Page 1: Backup Archive Selection and Decryption Password"""
         # Section 1: Backup file selection - all centered
         tk.Label(parent, text="Step 1: Select Backup Archive", font=("Arial", 14, "bold")).pack(pady=(10, 5), anchor="center")
-        tk.Label(parent, text="Choose the backup file to restore (.tar.gz.gpg or .tar.gz)", font=("Arial", 10), fg="gray").pack(anchor="center")
+        tk.Label(parent, text="Choose the backup file to restore (.tar.gz.gpg or .tar.gz)", font=("Arial", 10), fg="gray").pack(pady=(0, 5), anchor="center")
         
         # Create a container frame for the entry to control its width responsively
+        # Using anchor="center" ensures the frame itself is centered horizontally
         entry_container = tk.Frame(parent)
-        entry_container.pack(pady=5, fill="x", padx=50)
+        entry_container.pack(pady=5, fill="x", padx=50, anchor="center")
         
-        self.backup_entry = tk.Entry(entry_container, font=("Arial", 11))
+        self.backup_entry = tk.Entry(entry_container, font=("Arial", 11), justify="center")
         self.backup_entry.pack(fill="x", expand=True)
         
         # Restore saved value if exists
         if 'backup_path' in self.wizard_data:
+            self.backup_entry.delete(0, tk.END)
             self.backup_entry.insert(0, self.wizard_data['backup_path'])
         
         tk.Button(parent, text="Browse...", font=("Arial", 11), command=self.browse_backup).pack(pady=5, anchor="center")
         
         # Section 2: Decryption password - all centered
         tk.Label(parent, text="Step 2: Decryption Password", font=("Arial", 14, "bold")).pack(pady=(25, 5), anchor="center")
-        tk.Label(parent, text="Enter password if backup is encrypted (.gpg)", font=("Arial", 10), fg="gray").pack(anchor="center")
+        tk.Label(parent, text="Enter password if backup is encrypted (.gpg)", font=("Arial", 10), fg="gray").pack(pady=(0, 5), anchor="center")
         
         # Create a container frame for the password entry to control its width responsively
+        # Using anchor="center" ensures the frame itself is centered horizontally
         password_container = tk.Frame(parent)
-        password_container.pack(pady=5, fill="x", padx=100)
+        password_container.pack(pady=5, fill="x", padx=100, anchor="center")
         
-        self.password_entry = tk.Entry(password_container, show="*", font=("Arial", 12))
+        self.password_entry = tk.Entry(password_container, show="*", font=("Arial", 12), justify="center")
         self.password_entry.pack(fill="x", expand=True)
         
         # Restore saved value if exists
         if 'password' in self.wizard_data:
+            self.password_entry.delete(0, tk.END)
             self.password_entry.insert(0, self.wizard_data['password'])
     
     def create_wizard_page2(self, parent):
@@ -683,14 +687,14 @@ class NextcloudRestoreWizard(tk.Tk):
         # Section 3: Database credentials - all centered
         tk.Label(parent, text="Step 3: Database Configuration", font=("Arial", 14, "bold")).pack(pady=(10, 5), anchor="center")
         
-        # Info about auto-detection
+        # Info about auto-detection - centered
         info_frame = tk.Frame(parent, bg="#e3f2fd", relief="solid", borderwidth=1)
         info_frame.pack(pady=(5, 10), padx=50, fill="x", anchor="center")
-        tk.Label(info_frame, text="ℹ️ Database Type Auto-Detection", font=("Arial", 10, "bold"), bg="#e3f2fd").pack(pady=(5, 2))
+        tk.Label(info_frame, text="ℹ️ Database Type Auto-Detection", font=("Arial", 10, "bold"), bg="#e3f2fd").pack(pady=(5, 2), anchor="center")
         tk.Label(info_frame, text="The restore process will automatically detect your database type (SQLite, PostgreSQL, MySQL)", 
-                 font=("Arial", 9), bg="#e3f2fd", wraplength=600).pack(pady=2)
+                 font=("Arial", 9), bg="#e3f2fd", wraplength=600, justify="center").pack(pady=2, anchor="center")
         tk.Label(info_frame, text="from the config.php file in your backup and restore accordingly.", 
-                 font=("Arial", 9), bg="#e3f2fd", wraplength=600).pack(pady=(0, 5))
+                 font=("Arial", 9), bg="#e3f2fd", wraplength=600, justify="center").pack(pady=(0, 5), anchor="center")
         
         # SQLite-specific message (hidden by default, shown when SQLite is detected)
         # This message informs users that SQLite doesn't require separate database credentials
@@ -779,7 +783,7 @@ class NextcloudRestoreWizard(tk.Tk):
         
         # Section 4: Nextcloud admin credentials - all centered
         tk.Label(parent, text="Step 4: Nextcloud Admin Credentials", font=("Arial", 14, "bold")).pack(pady=(25, 5), anchor="center")
-        tk.Label(parent, text="Admin credentials for Nextcloud instance", font=("Arial", 10), fg="gray").pack(anchor="center")
+        tk.Label(parent, text="Admin credentials for Nextcloud instance", font=("Arial", 10), fg="gray").pack(pady=(0, 5), anchor="center")
         
         admin_frame = tk.Frame(parent)
         admin_frame.pack(pady=10, anchor="center", fill="x", padx=50)
@@ -802,7 +806,7 @@ class NextcloudRestoreWizard(tk.Tk):
         """Page 3: Container Configuration"""
         # Section 5: Container configuration - all centered
         tk.Label(parent, text="Step 5: Container Configuration", font=("Arial", 14, "bold")).pack(pady=(10, 5), anchor="center")
-        tk.Label(parent, text="Configure Nextcloud container settings", font=("Arial", 10), fg="gray").pack(anchor="center")
+        tk.Label(parent, text="Configure Nextcloud container settings", font=("Arial", 10), fg="gray").pack(pady=(0, 5), anchor="center")
         
         container_frame = tk.Frame(parent)
         container_frame.pack(pady=10, anchor="center", fill="x", padx=50)
@@ -830,11 +834,11 @@ class NextcloudRestoreWizard(tk.Tk):
             font=("Arial", 11)
         ).pack(pady=15, anchor="center")
         
-        # Add informative text about what will happen during restore
+        # Add informative text about what will happen during restore - centered
         info_frame = tk.Frame(parent, bg="#e8f4f8", relief="ridge", borderwidth=2)
-        info_frame.pack(pady=20, padx=50, fill="x")
+        info_frame.pack(pady=20, padx=50, fill="x", anchor="center")
         
-        tk.Label(info_frame, text="ℹ️ The restore process will automatically:", font=("Arial", 11, "bold"), bg="#e8f4f8").pack(pady=(10, 5))
+        tk.Label(info_frame, text="ℹ️ The restore process will automatically:", font=("Arial", 11, "bold"), bg="#e8f4f8").pack(pady=(10, 5), anchor="center")
         restore_info = [
             "• Extract your backup archive",
             "• Start database and Nextcloud containers (if needed)",
@@ -846,7 +850,7 @@ class NextcloudRestoreWizard(tk.Tk):
             "• Restart the Nextcloud container"
         ]
         for info in restore_info:
-            tk.Label(info_frame, text=info, font=("Arial", 10), bg="#e8f4f8", anchor="w").pack(anchor="w", padx=20, pady=2)
+            tk.Label(info_frame, text=info, font=("Arial", 10), bg="#e8f4f8", anchor="center", justify="center").pack(anchor="center", pady=2)
         tk.Label(info_frame, text="", bg="#e8f4f8").pack(pady=5)  # Spacing
     
     def wizard_navigate(self, direction):
