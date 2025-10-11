@@ -167,7 +167,7 @@ class NextcloudRestoreWizard(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Nextcloud Restore & Backup Utility")
-        self.geometry("700x670")
+        self.geometry("700x900")  # Increased height for more input fields
 
         self.header_frame = tk.Frame(self)
         tk.Label(self.header_frame, text="Nextcloud Restore & Backup Utility", font=("Arial", 22, "bold")).pack(pady=10)
@@ -392,16 +392,119 @@ class NextcloudRestoreWizard(tk.Tk):
         self.create_wizard()
 
     def create_wizard(self):
-        frame1 = tk.Frame(self.body_frame)
+        # Create a scrollable frame for all inputs
+        canvas = tk.Canvas(self.body_frame)
+        scrollbar = tk.Scrollbar(self.body_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        frame1 = scrollable_frame
+        
         btn_back = tk.Button(frame1, text="Return to Main Menu", font=("Arial", 12), command=self.show_landing)
         btn_back.pack(pady=8)
-        tk.Label(frame1, text="Step 1: Select PGP-encrypted backup archive (.tar.gz.gpg)", font=("Arial", 14)).pack(pady=10)
-        self.backup_entry = tk.Entry(frame1, width=80)
-        self.backup_entry.pack()
+        
+        # Section 1: Backup file selection
+        tk.Label(frame1, text="Step 1: Select Backup Archive", font=("Arial", 14, "bold")).pack(pady=(10, 5))
+        tk.Label(frame1, text="Choose the backup file to restore (.tar.gz.gpg or .tar.gz)", font=("Arial", 10), fg="gray").pack()
+        self.backup_entry = tk.Entry(frame1, width=70)
+        self.backup_entry.pack(pady=5)
         tk.Button(frame1, text="Browse...", command=self.browse_backup).pack(pady=5)
-        self.restore_now_btn = tk.Button(frame1, text="Restore Now", command=self.ask_password_if_needed)
+        
+        # Section 2: Decryption password (shown dynamically)
+        self.password_frame = tk.Frame(frame1)
+        self.password_frame.pack(pady=5)
+        tk.Label(self.password_frame, text="Step 2: Decryption Password", font=("Arial", 14, "bold")).pack(pady=(10, 5))
+        tk.Label(self.password_frame, text="Enter password if backup is encrypted (.gpg)", font=("Arial", 10), fg="gray").pack()
+        self.password_entry = tk.Entry(self.password_frame, show="*", font=("Arial", 12), width=40)
+        self.password_entry.pack(pady=5)
+        
+        # Section 3: Database credentials
+        tk.Label(frame1, text="Step 3: Database Configuration", font=("Arial", 14, "bold")).pack(pady=(15, 5))
+        tk.Label(frame1, text="Configure the PostgreSQL database settings", font=("Arial", 10), fg="gray").pack()
+        
+        db_frame = tk.Frame(frame1)
+        db_frame.pack(pady=5)
+        
+        tk.Label(db_frame, text="Database Host:", font=("Arial", 11)).grid(row=0, column=0, sticky="e", padx=5, pady=3)
+        self.db_host_entry = tk.Entry(db_frame, font=("Arial", 11), width=30)
+        self.db_host_entry.insert(0, "localhost")
+        self.db_host_entry.grid(row=0, column=1, padx=5, pady=3)
+        
+        tk.Label(db_frame, text="Database Name:", font=("Arial", 11)).grid(row=1, column=0, sticky="e", padx=5, pady=3)
+        self.db_name_entry = tk.Entry(db_frame, font=("Arial", 11), width=30)
+        self.db_name_entry.insert(0, POSTGRES_DB)
+        self.db_name_entry.grid(row=1, column=1, padx=5, pady=3)
+        
+        tk.Label(db_frame, text="Database User:", font=("Arial", 11)).grid(row=2, column=0, sticky="e", padx=5, pady=3)
+        self.db_user_entry = tk.Entry(db_frame, font=("Arial", 11), width=30)
+        self.db_user_entry.insert(0, POSTGRES_USER)
+        self.db_user_entry.grid(row=2, column=1, padx=5, pady=3)
+        
+        tk.Label(db_frame, text="Database Password:", font=("Arial", 11)).grid(row=3, column=0, sticky="e", padx=5, pady=3)
+        self.db_password_entry = tk.Entry(db_frame, show="*", font=("Arial", 11), width=30)
+        self.db_password_entry.insert(0, POSTGRES_PASSWORD)
+        self.db_password_entry.grid(row=3, column=1, padx=5, pady=3)
+        
+        # Section 4: Nextcloud admin credentials
+        tk.Label(frame1, text="Step 4: Nextcloud Admin Credentials", font=("Arial", 14, "bold")).pack(pady=(15, 5))
+        tk.Label(frame1, text="Admin credentials for Nextcloud instance", font=("Arial", 10), fg="gray").pack()
+        
+        admin_frame = tk.Frame(frame1)
+        admin_frame.pack(pady=5)
+        
+        tk.Label(admin_frame, text="Admin Username:", font=("Arial", 11)).grid(row=0, column=0, sticky="e", padx=5, pady=3)
+        self.admin_user_entry = tk.Entry(admin_frame, font=("Arial", 11), width=30)
+        self.admin_user_entry.insert(0, "admin")
+        self.admin_user_entry.grid(row=0, column=1, padx=5, pady=3)
+        
+        tk.Label(admin_frame, text="Admin Password:", font=("Arial", 11)).grid(row=1, column=0, sticky="e", padx=5, pady=3)
+        self.admin_password_entry = tk.Entry(admin_frame, show="*", font=("Arial", 11), width=30)
+        self.admin_password_entry.insert(0, "admin")
+        self.admin_password_entry.grid(row=1, column=1, padx=5, pady=3)
+        
+        # Section 5: Container configuration
+        tk.Label(frame1, text="Step 5: Container Configuration", font=("Arial", 14, "bold")).pack(pady=(15, 5))
+        tk.Label(frame1, text="Configure Nextcloud container settings", font=("Arial", 10), fg="gray").pack()
+        
+        container_frame = tk.Frame(frame1)
+        container_frame.pack(pady=5)
+        
+        tk.Label(container_frame, text="Container Name:", font=("Arial", 11)).grid(row=0, column=0, sticky="e", padx=5, pady=3)
+        self.container_name_entry = tk.Entry(container_frame, font=("Arial", 11), width=30)
+        self.container_name_entry.insert(0, NEXTCLOUD_CONTAINER_NAME)
+        self.container_name_entry.grid(row=0, column=1, padx=5, pady=3)
+        
+        tk.Label(container_frame, text="Container Port:", font=("Arial", 11)).grid(row=1, column=0, sticky="e", padx=5, pady=3)
+        self.container_port_entry = tk.Entry(container_frame, font=("Arial", 11), width=30)
+        self.container_port_entry.insert(0, "9000")
+        self.container_port_entry.grid(row=1, column=1, padx=5, pady=3)
+        
+        # Option to use existing container
+        self.use_existing_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(
+            frame1, 
+            text="Use existing Nextcloud container if found", 
+            variable=self.use_existing_var,
+            font=("Arial", 11)
+        ).pack(pady=10)
+        
+        # Restore button
+        self.restore_now_btn = tk.Button(
+            frame1, 
+            text="Start Restore", 
+            font=("Arial", 14, "bold"),
+            bg="#45bf55",
+            fg="white",
+            command=self.validate_and_start_restore
+        )
         self.restore_now_btn.pack(pady=20)
-        # Password widgets are added dynamically later
 
         # --- Progress bar, percent, process output, error label (all at the bottom) ---
         self.progressbar = ttk.Progressbar(frame1, length=520, mode='determinate', maximum=100)
@@ -413,7 +516,8 @@ class NextcloudRestoreWizard(tk.Tk):
         self.error_label = tk.Label(frame1, text="", font=("Arial", 13), fg="red")
         self.error_label.pack(pady=(4, 8))
 
-        frame1.pack(fill="both", expand=True)
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
         self.current_frame = frame1
 
     def browse_backup(self):
@@ -425,39 +529,83 @@ class NextcloudRestoreWizard(tk.Tk):
             self.backup_entry.delete(0, tk.END)
             self.backup_entry.insert(0, path)
 
-    def ask_password_if_needed(self):
-        backup_path = self.backup_entry.get()
+    def validate_and_start_restore(self):
+        """Validate all input fields and start the restore process"""
+        self.error_label.config(text="", fg="red")
+        
+        # Validate backup file
+        backup_path = self.backup_entry.get().strip()
         if not backup_path or not os.path.isfile(backup_path):
-            self.error_label.config(text="Please select a valid backup archive file.")
+            self.error_label.config(text="Error: Please select a valid backup archive file.")
             return
-
-        # If password is needed, show password entry in this frame
+        
+        # Validate password if encrypted
+        password = None
         if backup_path.endswith('.gpg'):
-            if hasattr(self, "password_entry") and self.password_entry:  # already shown
-                password = self.password_entry.get()
-                if not password:
-                    self.error_label.config(text="Please enter your decryption password.")
-                    return
-                self.restore_password = password
-                self.restore_backup_path = backup_path
-                self.error_label.config(text="")
-                self.start_restore_thread()
+            password = self.password_entry.get()
+            if not password:
+                self.error_label.config(text="Error: Please enter decryption password for encrypted backup.")
                 return
-            # Show password entry and label
-            self.restore_password = None
-            self.restore_backup_path = backup_path
-            self.password_label = tk.Label(self.current_frame, text="Enter the password to decrypt your backup archive (.tar.gz.gpg):", font=("Arial", 13))
-            self.password_label.pack(pady=5)
-            self.password_entry = tk.Entry(self.current_frame, show="*", font=("Arial", 13), width=30)
-            self.password_entry.pack(pady=8)
-            tk.Button(self.current_frame, text="Continue", font=("Arial", 12),
-                      command=self.ask_password_if_needed).pack(pady=5)
-            self.restore_now_btn.config(state="disabled")
-        else:
-            self.restore_password = None
-            self.restore_backup_path = backup_path
-            self.error_label.config(text="")
-            self.start_restore_thread()
+        
+        # Validate database credentials
+        db_host = self.db_host_entry.get().strip()
+        db_name = self.db_name_entry.get().strip()
+        db_user = self.db_user_entry.get().strip()
+        db_password = self.db_password_entry.get()
+        
+        if not db_host:
+            self.error_label.config(text="Error: Database host is required.")
+            return
+        if not db_name:
+            self.error_label.config(text="Error: Database name is required.")
+            return
+        if not db_user:
+            self.error_label.config(text="Error: Database user is required.")
+            return
+        if not db_password:
+            self.error_label.config(text="Error: Database password is required.")
+            return
+        
+        # Validate admin credentials
+        admin_user = self.admin_user_entry.get().strip()
+        admin_password = self.admin_password_entry.get()
+        
+        if not admin_user:
+            self.error_label.config(text="Error: Admin username is required.")
+            return
+        if not admin_password:
+            self.error_label.config(text="Error: Admin password is required.")
+            return
+        
+        # Validate container configuration
+        container_name = self.container_name_entry.get().strip()
+        container_port = self.container_port_entry.get().strip()
+        
+        if not container_name:
+            self.error_label.config(text="Error: Container name is required.")
+            return
+        if not container_port.isdigit() or not (1 <= int(container_port) <= 65535):
+            self.error_label.config(text="Error: Port must be a number between 1 and 65535.")
+            return
+        
+        # Store all values
+        self.restore_backup_path = backup_path
+        self.restore_password = password
+        self.restore_db_host = db_host
+        self.restore_db_name = db_name
+        self.restore_db_user = db_user
+        self.restore_db_password = db_password
+        self.restore_admin_user = admin_user
+        self.restore_admin_password = admin_password
+        self.restore_container_name = container_name
+        self.restore_container_port = int(container_port)
+        self.restore_use_existing = self.use_existing_var.get()
+        
+        # Disable the restore button
+        self.restore_now_btn.config(state="disabled")
+        
+        # Start restore
+        self.start_restore_thread()
 
     def set_restore_progress(self, percent, msg=""):
         # percent: 0-100
@@ -584,114 +732,70 @@ class NextcloudRestoreWizard(tk.Tk):
     # ... (rest of the code unchanged from your previous script) ...
 
     def ensure_nextcloud_container(self):
+        """Ensure Nextcloud container is running, using values from GUI"""
         container = get_nextcloud_container_name()
-        if container:
-            answer = messagebox.askyesno(
-                "Existing Nextcloud Container Found",
-                f"A running Nextcloud container named '{container}' was found.\n\n"
-                "Do you want to use this container for the restore?\n\n"
-                "Click 'Yes' to use the existing container.\n"
-                "Click 'No' to start a new one."
-            )
-            if answer:
-                return container
-            else:
-                # Always prompt for a new name and port!
-                new_container_name = thread_safe_askstring(
-                    self,
-                    "New Container Name",
-                    "Enter a name for the new Nextcloud container:",
-                    initialvalue="nextcloud-app"
-                )
-                if not new_container_name:
-                    self.set_restore_progress(0, "Restore cancelled!")
-                    self.error_label.config(text="Restore cancelled by user (no container name given).")
-                    return None
-                while True:
-                    port = thread_safe_askinteger(
-                        self,
-                        "Port Number",
-                        "Enter a port number for the new Nextcloud container:",
-                        initialvalue=9000,
-                        minvalue=1, maxvalue=65535
-                    )
-                    if port is None:
-                        self.set_restore_progress(0, "Restore cancelled!")
-                        self.error_label.config(text="Restore cancelled by user (no port given).")
-                        return None
-                    break
-                self.set_restore_progress(30, f"Starting a new Nextcloud container on port {port} ...")
-                self.process_label.config(text=f"Starting container: {new_container_name}")
-                self.update_idletasks()
-                result = subprocess.run(
-                    f'docker run -d --name {new_container_name} -p {port}:80 {NEXTCLOUD_IMAGE}',
-                    shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-                )
-                if result.returncode != 0:
-                    tb = traceback.format_exc()
-                    self.set_restore_progress(0, "Restore failed!")
-                    self.error_label.config(text=f"Failed to start Nextcloud container: {result.stderr}\n{tb}")
-                    print(tb)
-                    return None
-                container_id = new_container_name
-                self.set_restore_progress(35, f"Started Nextcloud container: {container_id} on port {port}")
-                self.process_label.config(text=f"Started container: {container_id} on port {port}")
-                self.update_idletasks()
-                time.sleep(5)
-                return container_id
-        else:
-            # No container found, start a new one (always ask port)
-            new_container_name = "nextcloud-app"
-            while True:
-                port = thread_safe_askinteger(
-                    self,
-                    "Port Number",
-                    "Enter a port number for the new Nextcloud container:",
-                    initialvalue=9000,
-                    minvalue=1, maxvalue=65535
-                )
-                if port is None:
-                    self.set_restore_progress(0, "Restore cancelled!")
-                    self.error_label.config(text="Restore cancelled by user (no port given).")
-                    return None
-                break
-            self.set_restore_progress(30, f"Starting a new Nextcloud container on port {port} ...")
-            self.process_label.config(text=f"Starting container: {new_container_name}")
+        
+        # Check if we should use existing container
+        if container and self.restore_use_existing:
+            self.set_restore_progress(30, f"Using existing Nextcloud container: {container}")
+            self.process_label.config(text=f"Using container: {container}")
             self.update_idletasks()
-            result = subprocess.run(
-                f'docker run -d --name {new_container_name} -p {port}:80 {NEXTCLOUD_IMAGE}',
-                shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-            )
-            if result.returncode != 0:
-                tb = traceback.format_exc()
-                self.set_restore_progress(0, "Restore failed!")
-                self.error_label.config(text=f"Failed to start Nextcloud container: {result.stderr}\n{tb}")
-                print(tb)
-                return None
-            container_id = new_container_name
-            self.set_restore_progress(35, f"Started Nextcloud container: {container_id} on port {port}")
-            self.process_label.config(text=f"Started container: {container_id} on port {port}")
-            self.update_idletasks()
-            time.sleep(5)
-            return container_id
+            return container
+        
+        # Start a new container with configured values
+        new_container_name = self.restore_container_name
+        port = self.restore_container_port
+        
+        self.set_restore_progress(30, f"Starting a new Nextcloud container on port {port} ...")
+        self.process_label.config(text=f"Starting container: {new_container_name}")
+        self.update_idletasks()
+        
+        result = subprocess.run(
+            f'docker run -d --name {new_container_name} -p {port}:80 {NEXTCLOUD_IMAGE}',
+            shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        )
+        
+        if result.returncode != 0:
+            tb = traceback.format_exc()
+            self.set_restore_progress(0, "Restore failed!")
+            self.error_label.config(text=f"Failed to start Nextcloud container: {result.stderr}\n{tb}")
+            print(tb)
+            return None
+        
+        container_id = new_container_name
+        self.set_restore_progress(35, f"Started Nextcloud container: {container_id} on port {port}")
+        self.process_label.config(text=f"Started container: {container_id} on port {port}")
+        self.update_idletasks()
+        time.sleep(5)
+        return container_id
 
     def ensure_db_container(self):
+        """Ensure database container is running, using credentials from GUI"""
         db_container = get_postgres_container_name()
         if db_container:
             return db_container
+        
         self.set_restore_progress(40, "No database container found. Starting a new PostgreSQL container ...")
         self.process_label.config(text=f"Starting DB container: {POSTGRES_CONTAINER_NAME}")
         self.update_idletasks()
+        
+        # Use credentials from GUI
         result = subprocess.run(
-            f'docker run -d --name {POSTGRES_CONTAINER_NAME} -e POSTGRES_DB={POSTGRES_DB} -e POSTGRES_USER={POSTGRES_USER} -e POSTGRES_PASSWORD={POSTGRES_PASSWORD} -p {POSTGRES_PORT}:5432 {POSTGRES_IMAGE}',
+            f'docker run -d --name {POSTGRES_CONTAINER_NAME} '
+            f'-e POSTGRES_DB={self.restore_db_name} '
+            f'-e POSTGRES_USER={self.restore_db_user} '
+            f'-e POSTGRES_PASSWORD={self.restore_db_password} '
+            f'-p {POSTGRES_PORT}:5432 {POSTGRES_IMAGE}',
             shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
+        
         if result.returncode != 0:
             tb = traceback.format_exc()
             self.set_restore_progress(0, "Restore failed!")
             self.error_label.config(text=f"Failed to start PostgreSQL container: {result.stderr}\n{tb}")
             print(tb)
             return None
+        
         db_container_id = POSTGRES_CONTAINER_NAME
         self.set_restore_progress(45, f"Started DB container: {db_container_id}")
         self.process_label.config(text=f"Started DB container: {db_container_id}")
@@ -699,6 +803,38 @@ class NextcloudRestoreWizard(tk.Tk):
         time.sleep(5)
         return db_container_id
 
+    def update_config_php(self, nextcloud_container, db_container):
+        """Update config.php with database credentials and admin settings"""
+        config_updates = f"""
+docker exec {nextcloud_container} bash -c "cat > /tmp/update_config.php << 'EOFPHP'
+<?php
+\\$configFile = '/var/www/html/config/config.php';
+if (file_exists(\\$configFile)) {{
+    \\$config = include(\\$configFile);
+    
+    // Update database configuration
+    \\$config['dbtype'] = 'pgsql';
+    \\$config['dbname'] = '{self.restore_db_name}';
+    \\$config['dbhost'] = '{db_container}';
+    \\$config['dbuser'] = '{self.restore_db_user}';
+    \\$config['dbpassword'] = '{self.restore_db_password}';
+    
+    // Write updated config
+    \\$output = '<?php' . PHP_EOL;
+    \\$output .= '\\$CONFIG = ' . var_export(\\$config, true) . ';' . PHP_EOL;
+    file_put_contents(\\$configFile, \\$output);
+    echo 'Config updated successfully';
+}} else {{
+    echo 'Config file not found';
+}}
+EOFPHP
+php /tmp/update_config.php"
+"""
+        result = subprocess.run(config_updates, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if result.returncode != 0:
+            raise Exception(f"Failed to update config.php: {result.stderr}")
+        print(f"Config.php update output: {result.stdout}")
+    
     def start_restore_thread(self):
         threading.Thread(target=self._restore_auto_thread, args=(self.restore_backup_path, self.restore_password), daemon=True).start()
 
@@ -745,7 +881,8 @@ class NextcloudRestoreWizard(tk.Tk):
             if os.path.isfile(sql_path):
                 self.process_label.config(text="Restoring database ...")
                 self.update_idletasks()
-                restore_cmd = f'docker exec -i {db_container} bash -c "PGPASSWORD={POSTGRES_PASSWORD} psql -U {POSTGRES_USER} -d {POSTGRES_DB}"'
+                # Use credentials from GUI
+                restore_cmd = f'docker exec -i {db_container} bash -c "PGPASSWORD={self.restore_db_password} psql -U {self.restore_db_user} -d {self.restore_db_name}"'
                 try:
                     with open(sql_path, "rb") as f:
                         proc = subprocess.Popen(restore_cmd, shell=True, stdin=f)
@@ -760,6 +897,18 @@ class NextcloudRestoreWizard(tk.Tk):
                     print(tb)
                     self.set_restore_progress(0, "Restore failed!")
                     return
+            
+            # Update config.php with database credentials
+            self.set_restore_progress(75, "Updating Nextcloud configuration ...")
+            self.process_label.config(text="Updating config.php with database credentials ...")
+            self.update_idletasks()
+            try:
+                self.update_config_php(nextcloud_container, db_container)
+            except Exception as config_err:
+                # Show warning but continue
+                warning_msg = f"Warning: Could not update config.php: {config_err}. You may need to configure manually."
+                self.error_label.config(text=warning_msg, fg="orange")
+                print(f"Warning: config.php update failed: {config_err}")
 
             self.set_restore_progress(90, self.restore_steps[4])
             self.process_label.config(text="Setting permissions ...")
