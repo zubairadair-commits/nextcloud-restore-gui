@@ -1,5 +1,13 @@
 # Multi-Page Restore Wizard - Implementation Summary
 
+## Latest Update (v11)
+
+**Database Configuration Improvements**: Step 3 has been enhanced with clearer guidance:
+- Removed Database Host field (now auto-configured)
+- Added prominent warning about using ORIGINAL credentials
+- Added inline help text for each database field
+- See `DATABASE_CONFIG_IMPROVEMENTS.md` for details
+
 ## Overview
 
 The Nextcloud Restore & Backup Utility has been upgraded from a single-page restore form to a **multi-page wizard** for better user experience and clearer workflow guidance.
