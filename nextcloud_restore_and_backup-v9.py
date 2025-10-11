@@ -337,12 +337,16 @@ class NextcloudRestoreWizard(tk.Tk):
         for widget in self.body_frame.winfo_children():
             widget.destroy()
         frame = tk.Frame(self.body_frame)
-        frame.pack(pady=30)
+        frame.pack(pady=30, fill="both", expand=True)
         btn_back = tk.Button(frame, text="Return to Main Menu", font=("Arial", 12), command=self.show_landing)
-        btn_back.pack(pady=8)
-        tk.Label(frame, text="Enter password to encrypt your backup (leave blank for no encryption):", font=("Arial", 13)).pack(pady=10)
-        pwd_entry = tk.Entry(frame, font=("Arial", 13), show="*", width=30)
-        pwd_entry.pack(pady=8)
+        btn_back.pack(pady=8, anchor="center")
+        tk.Label(frame, text="Enter password to encrypt your backup (leave blank for no encryption):", font=("Arial", 13)).pack(pady=10, anchor="center")
+        
+        # Create a container for the password entry to control its width responsively
+        pwd_container = tk.Frame(frame)
+        pwd_container.pack(pady=8, fill="x", padx=100)
+        pwd_entry = tk.Entry(pwd_container, font=("Arial", 13), show="*")
+        pwd_entry.pack(fill="x", expand=True)
         def submit_pwd():
             encryption_password = pwd_entry.get()
             encrypt = bool(encryption_password)
@@ -608,8 +612,12 @@ class NextcloudRestoreWizard(tk.Tk):
         tk.Label(parent, text="Step 1: Select Backup Archive", font=("Arial", 14, "bold")).pack(pady=(10, 5), anchor="center")
         tk.Label(parent, text="Choose the backup file to restore (.tar.gz.gpg or .tar.gz)", font=("Arial", 10), fg="gray").pack(anchor="center")
         
-        self.backup_entry = tk.Entry(parent, width=70, font=("Arial", 11))
-        self.backup_entry.pack(pady=5, anchor="center")
+        # Create a container frame for the entry to control its width responsively
+        entry_container = tk.Frame(parent)
+        entry_container.pack(pady=5, fill="x", padx=50)
+        
+        self.backup_entry = tk.Entry(entry_container, font=("Arial", 11))
+        self.backup_entry.pack(fill="x", expand=True)
         
         # Restore saved value if exists
         if 'backup_path' in self.wizard_data:
@@ -621,8 +629,12 @@ class NextcloudRestoreWizard(tk.Tk):
         tk.Label(parent, text="Step 2: Decryption Password", font=("Arial", 14, "bold")).pack(pady=(25, 5), anchor="center")
         tk.Label(parent, text="Enter password if backup is encrypted (.gpg)", font=("Arial", 10), fg="gray").pack(anchor="center")
         
-        self.password_entry = tk.Entry(parent, show="*", font=("Arial", 12), width=40)
-        self.password_entry.pack(pady=5, anchor="center")
+        # Create a container frame for the password entry to control its width responsively
+        password_container = tk.Frame(parent)
+        password_container.pack(pady=5, fill="x", padx=100)
+        
+        self.password_entry = tk.Entry(password_container, show="*", font=("Arial", 12))
+        self.password_entry.pack(fill="x", expand=True)
         
         # Restore saved value if exists
         if 'password' in self.wizard_data:
@@ -635,7 +647,7 @@ class NextcloudRestoreWizard(tk.Tk):
         
         # Info about auto-detection
         info_frame = tk.Frame(parent, bg="#e3f2fd", relief="solid", borderwidth=1)
-        info_frame.pack(pady=(5, 10), padx=20, anchor="center")
+        info_frame.pack(pady=(5, 10), padx=50, fill="x")
         tk.Label(info_frame, text="ℹ️ Database Type Auto-Detection", font=("Arial", 10, "bold"), bg="#e3f2fd").pack(pady=(5, 2))
         tk.Label(info_frame, text="The restore process will automatically detect your database type (SQLite, PostgreSQL, MySQL)", 
                  font=("Arial", 9), bg="#e3f2fd", wraplength=600).pack(pady=2)
@@ -671,15 +683,20 @@ class NextcloudRestoreWizard(tk.Tk):
         instruction_label2.pack(anchor="center", pady=(0, 10))
         
         db_frame = tk.Frame(parent)
-        db_frame.pack(pady=10, anchor="center")
+        db_frame.pack(pady=10, anchor="center", fill="x", padx=50)
+        
+        # Configure column weights for responsive layout
+        db_frame.grid_columnconfigure(0, weight=0)  # Label column - fixed width
+        db_frame.grid_columnconfigure(1, weight=1)  # Entry column - expandable
+        db_frame.grid_columnconfigure(2, weight=0)  # Hint column - fixed width
         
         # Database Name field
         db_name_label = tk.Label(db_frame, text="Database Name:", font=("Arial", 11))
         db_name_label.grid(row=0, column=0, sticky="e", padx=5, pady=5)
         
-        self.db_name_entry = tk.Entry(db_frame, font=("Arial", 11), width=30)
+        self.db_name_entry = tk.Entry(db_frame, font=("Arial", 11))
         self.db_name_entry.insert(0, self.wizard_data.get('db_name', POSTGRES_DB))
-        self.db_name_entry.grid(row=0, column=1, padx=5, pady=5)
+        self.db_name_entry.grid(row=0, column=1, sticky="ew", padx=5, pady=5)
         
         db_name_hint = tk.Label(db_frame, text="Must match your original database name", font=("Arial", 9), fg="gray")
         db_name_hint.grid(row=0, column=2, sticky="w", padx=(5, 0))
@@ -688,9 +705,9 @@ class NextcloudRestoreWizard(tk.Tk):
         db_user_label = tk.Label(db_frame, text="Database User:", font=("Arial", 11))
         db_user_label.grid(row=1, column=0, sticky="e", padx=5, pady=5)
         
-        self.db_user_entry = tk.Entry(db_frame, font=("Arial", 11), width=30)
+        self.db_user_entry = tk.Entry(db_frame, font=("Arial", 11))
         self.db_user_entry.insert(0, self.wizard_data.get('db_user', POSTGRES_USER))
-        self.db_user_entry.grid(row=1, column=1, padx=5, pady=5)
+        self.db_user_entry.grid(row=1, column=1, sticky="ew", padx=5, pady=5)
         
         db_user_hint = tk.Label(db_frame, text="Must match your original database user", font=("Arial", 9), fg="gray")
         db_user_hint.grid(row=1, column=2, sticky="w", padx=(5, 0))
@@ -699,9 +716,9 @@ class NextcloudRestoreWizard(tk.Tk):
         db_password_label = tk.Label(db_frame, text="Database Password:", font=("Arial", 11))
         db_password_label.grid(row=2, column=0, sticky="e", padx=5, pady=5)
         
-        self.db_password_entry = tk.Entry(db_frame, show="*", font=("Arial", 11), width=30)
+        self.db_password_entry = tk.Entry(db_frame, show="*", font=("Arial", 11))
         self.db_password_entry.insert(0, self.wizard_data.get('db_password', POSTGRES_PASSWORD))
-        self.db_password_entry.grid(row=2, column=1, padx=5, pady=5)
+        self.db_password_entry.grid(row=2, column=1, sticky="ew", padx=5, pady=5)
         
         db_password_hint = tk.Label(db_frame, text="Must match your original database password", font=("Arial", 9), fg="gray")
         db_password_hint.grid(row=2, column=2, sticky="w", padx=(5, 0))
@@ -733,17 +750,21 @@ class NextcloudRestoreWizard(tk.Tk):
         tk.Label(parent, text="Admin credentials for Nextcloud instance", font=("Arial", 10), fg="gray").pack(anchor="center")
         
         admin_frame = tk.Frame(parent)
-        admin_frame.pack(pady=10, anchor="center")
+        admin_frame.pack(pady=10, anchor="center", fill="x", padx=50)
+        
+        # Configure column weights for responsive layout
+        admin_frame.grid_columnconfigure(0, weight=0)  # Label column - fixed width
+        admin_frame.grid_columnconfigure(1, weight=1)  # Entry column - expandable
         
         tk.Label(admin_frame, text="Admin Username:", font=("Arial", 11)).grid(row=0, column=0, sticky="e", padx=5, pady=5)
-        self.admin_user_entry = tk.Entry(admin_frame, font=("Arial", 11), width=30)
+        self.admin_user_entry = tk.Entry(admin_frame, font=("Arial", 11))
         self.admin_user_entry.insert(0, self.wizard_data.get('admin_user', 'admin'))
-        self.admin_user_entry.grid(row=0, column=1, padx=5, pady=5)
+        self.admin_user_entry.grid(row=0, column=1, sticky="ew", padx=5, pady=5)
         
         tk.Label(admin_frame, text="Admin Password:", font=("Arial", 11)).grid(row=1, column=0, sticky="e", padx=5, pady=5)
-        self.admin_password_entry = tk.Entry(admin_frame, show="*", font=("Arial", 11), width=30)
+        self.admin_password_entry = tk.Entry(admin_frame, show="*", font=("Arial", 11))
         self.admin_password_entry.insert(0, self.wizard_data.get('admin_password', 'admin'))
-        self.admin_password_entry.grid(row=1, column=1, padx=5, pady=5)
+        self.admin_password_entry.grid(row=1, column=1, sticky="ew", padx=5, pady=5)
     
     def create_wizard_page3(self, parent):
         """Page 3: Container Configuration"""
@@ -752,17 +773,21 @@ class NextcloudRestoreWizard(tk.Tk):
         tk.Label(parent, text="Configure Nextcloud container settings", font=("Arial", 10), fg="gray").pack(anchor="center")
         
         container_frame = tk.Frame(parent)
-        container_frame.pack(pady=10, anchor="center")
+        container_frame.pack(pady=10, anchor="center", fill="x", padx=50)
+        
+        # Configure column weights for responsive layout
+        container_frame.grid_columnconfigure(0, weight=0)  # Label column - fixed width
+        container_frame.grid_columnconfigure(1, weight=1)  # Entry column - expandable
         
         tk.Label(container_frame, text="Container Name:", font=("Arial", 11)).grid(row=0, column=0, sticky="e", padx=5, pady=5)
-        self.container_name_entry = tk.Entry(container_frame, font=("Arial", 11), width=30)
+        self.container_name_entry = tk.Entry(container_frame, font=("Arial", 11))
         self.container_name_entry.insert(0, self.wizard_data.get('container_name', NEXTCLOUD_CONTAINER_NAME))
-        self.container_name_entry.grid(row=0, column=1, padx=5, pady=5)
+        self.container_name_entry.grid(row=0, column=1, sticky="ew", padx=5, pady=5)
         
         tk.Label(container_frame, text="Container Port:", font=("Arial", 11)).grid(row=1, column=0, sticky="e", padx=5, pady=5)
-        self.container_port_entry = tk.Entry(container_frame, font=("Arial", 11), width=30)
+        self.container_port_entry = tk.Entry(container_frame, font=("Arial", 11))
         self.container_port_entry.insert(0, self.wizard_data.get('container_port', '9000'))
-        self.container_port_entry.grid(row=1, column=1, padx=5, pady=5)
+        self.container_port_entry.grid(row=1, column=1, sticky="ew", padx=5, pady=5)
         
         # Option to use existing container - centered
         self.use_existing_var = tk.BooleanVar(value=self.wizard_data.get('use_existing', False))
@@ -775,7 +800,7 @@ class NextcloudRestoreWizard(tk.Tk):
         
         # Add informative text about what will happen during restore
         info_frame = tk.Frame(parent, bg="#e8f4f8", relief="ridge", borderwidth=2)
-        info_frame.pack(pady=20, padx=30, fill="x")
+        info_frame.pack(pady=20, padx=50, fill="x")
         
         tk.Label(info_frame, text="ℹ️ The restore process will automatically:", font=("Arial", 11, "bold"), bg="#e8f4f8").pack(pady=(10, 5))
         restore_info = [
