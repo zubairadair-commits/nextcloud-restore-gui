@@ -433,13 +433,13 @@ class NextcloudRestoreWizard(tk.Tk):
         frame = self.wizard_scrollable_frame
         self.wizard_page = page_num
         
-        # Return to Main Menu button at top
+        # Return to Main Menu button at top - centered
         btn_back = tk.Button(frame, text="Return to Main Menu", font=("Arial", 12), command=self.show_landing)
-        btn_back.pack(pady=8)
+        btn_back.pack(pady=8, anchor="center")
         
-        # Page title
+        # Page title - centered
         page_title = f"Restore Wizard: Page {page_num} of 3"
-        tk.Label(frame, text=page_title, font=("Arial", 16, "bold")).pack(pady=(5, 15))
+        tk.Label(frame, text=page_title, font=("Arial", 16, "bold")).pack(pady=(5, 15), anchor="center")
         
         if page_num == 1:
             self.create_wizard_page1(frame)
@@ -448,9 +448,9 @@ class NextcloudRestoreWizard(tk.Tk):
         elif page_num == 3:
             self.create_wizard_page3(frame)
         
-        # Navigation buttons
+        # Navigation buttons - centered
         nav_frame = tk.Frame(frame)
-        nav_frame.pack(pady=20)
+        nav_frame.pack(pady=20, anchor="center")
         
         if page_num > 1:
             tk.Button(
@@ -484,44 +484,44 @@ class NextcloudRestoreWizard(tk.Tk):
             )
             self.restore_now_btn.pack(side="left", padx=10)
         
-        # Error label
+        # Error label - centered
         self.error_label = tk.Label(frame, text="", font=("Arial", 12), fg="red", wraplength=600)
-        self.error_label.pack(pady=10)
+        self.error_label.pack(pady=10, anchor="center")
         
-        # Progress section (shown after restore starts)
+        # Progress section (shown after restore starts) - centered
         self.progressbar = ttk.Progressbar(frame, length=520, mode='determinate', maximum=100)
-        self.progressbar.pack(pady=(30, 3))
+        self.progressbar.pack(pady=(30, 3), anchor="center")
         self.progressbar.pack_forget()  # Hide initially
         
         self.progress_label = tk.Label(frame, text="0%", font=("Arial", 13))
-        self.progress_label.pack()
+        self.progress_label.pack(anchor="center")
         self.progress_label.pack_forget()  # Hide initially
         
-        self.process_label = tk.Label(frame, text="", font=("Arial", 11), fg="gray", anchor="w", justify="left")
-        self.process_label.pack(fill="x", padx=10, pady=4)
+        self.process_label = tk.Label(frame, text="", font=("Arial", 11), fg="gray", anchor="center", justify="center")
+        self.process_label.pack(padx=10, pady=4, anchor="center")
         self.process_label.pack_forget()  # Hide initially
         
     def create_wizard_page1(self, parent):
         """Page 1: Backup Archive Selection and Decryption Password"""
-        # Section 1: Backup file selection
-        tk.Label(parent, text="Step 1: Select Backup Archive", font=("Arial", 14, "bold")).pack(pady=(10, 5))
-        tk.Label(parent, text="Choose the backup file to restore (.tar.gz.gpg or .tar.gz)", font=("Arial", 10), fg="gray").pack()
+        # Section 1: Backup file selection - all centered
+        tk.Label(parent, text="Step 1: Select Backup Archive", font=("Arial", 14, "bold")).pack(pady=(10, 5), anchor="center")
+        tk.Label(parent, text="Choose the backup file to restore (.tar.gz.gpg or .tar.gz)", font=("Arial", 10), fg="gray").pack(anchor="center")
         
         self.backup_entry = tk.Entry(parent, width=70, font=("Arial", 11))
-        self.backup_entry.pack(pady=5)
+        self.backup_entry.pack(pady=5, anchor="center")
         
         # Restore saved value if exists
         if 'backup_path' in self.wizard_data:
             self.backup_entry.insert(0, self.wizard_data['backup_path'])
         
-        tk.Button(parent, text="Browse...", font=("Arial", 11), command=self.browse_backup).pack(pady=5)
+        tk.Button(parent, text="Browse...", font=("Arial", 11), command=self.browse_backup).pack(pady=5, anchor="center")
         
-        # Section 2: Decryption password
-        tk.Label(parent, text="Step 2: Decryption Password", font=("Arial", 14, "bold")).pack(pady=(25, 5))
-        tk.Label(parent, text="Enter password if backup is encrypted (.gpg)", font=("Arial", 10), fg="gray").pack()
+        # Section 2: Decryption password - all centered
+        tk.Label(parent, text="Step 2: Decryption Password", font=("Arial", 14, "bold")).pack(pady=(25, 5), anchor="center")
+        tk.Label(parent, text="Enter password if backup is encrypted (.gpg)", font=("Arial", 10), fg="gray").pack(anchor="center")
         
         self.password_entry = tk.Entry(parent, show="*", font=("Arial", 12), width=40)
-        self.password_entry.pack(pady=5)
+        self.password_entry.pack(pady=5, anchor="center")
         
         # Restore saved value if exists
         if 'password' in self.wizard_data:
@@ -529,12 +529,12 @@ class NextcloudRestoreWizard(tk.Tk):
     
     def create_wizard_page2(self, parent):
         """Page 2: Database Configuration and Admin Credentials"""
-        # Section 3: Database credentials
-        tk.Label(parent, text="Step 3: Database Configuration", font=("Arial", 14, "bold")).pack(pady=(10, 5))
-        tk.Label(parent, text="Configure the PostgreSQL database settings", font=("Arial", 10), fg="gray").pack()
+        # Section 3: Database credentials - all centered
+        tk.Label(parent, text="Step 3: Database Configuration", font=("Arial", 14, "bold")).pack(pady=(10, 5), anchor="center")
+        tk.Label(parent, text="Configure the PostgreSQL database settings", font=("Arial", 10), fg="gray").pack(anchor="center")
         
         db_frame = tk.Frame(parent)
-        db_frame.pack(pady=10)
+        db_frame.pack(pady=10, anchor="center")
         
         tk.Label(db_frame, text="Database Host:", font=("Arial", 11)).grid(row=0, column=0, sticky="e", padx=5, pady=5)
         self.db_host_entry = tk.Entry(db_frame, font=("Arial", 11), width=30)
@@ -556,12 +556,12 @@ class NextcloudRestoreWizard(tk.Tk):
         self.db_password_entry.insert(0, self.wizard_data.get('db_password', POSTGRES_PASSWORD))
         self.db_password_entry.grid(row=3, column=1, padx=5, pady=5)
         
-        # Section 4: Nextcloud admin credentials
-        tk.Label(parent, text="Step 4: Nextcloud Admin Credentials", font=("Arial", 14, "bold")).pack(pady=(25, 5))
-        tk.Label(parent, text="Admin credentials for Nextcloud instance", font=("Arial", 10), fg="gray").pack()
+        # Section 4: Nextcloud admin credentials - all centered
+        tk.Label(parent, text="Step 4: Nextcloud Admin Credentials", font=("Arial", 14, "bold")).pack(pady=(25, 5), anchor="center")
+        tk.Label(parent, text="Admin credentials for Nextcloud instance", font=("Arial", 10), fg="gray").pack(anchor="center")
         
         admin_frame = tk.Frame(parent)
-        admin_frame.pack(pady=10)
+        admin_frame.pack(pady=10, anchor="center")
         
         tk.Label(admin_frame, text="Admin Username:", font=("Arial", 11)).grid(row=0, column=0, sticky="e", padx=5, pady=5)
         self.admin_user_entry = tk.Entry(admin_frame, font=("Arial", 11), width=30)
@@ -575,12 +575,12 @@ class NextcloudRestoreWizard(tk.Tk):
     
     def create_wizard_page3(self, parent):
         """Page 3: Container Configuration"""
-        # Section 5: Container configuration
-        tk.Label(parent, text="Step 5: Container Configuration", font=("Arial", 14, "bold")).pack(pady=(10, 5))
-        tk.Label(parent, text="Configure Nextcloud container settings", font=("Arial", 10), fg="gray").pack()
+        # Section 5: Container configuration - all centered
+        tk.Label(parent, text="Step 5: Container Configuration", font=("Arial", 14, "bold")).pack(pady=(10, 5), anchor="center")
+        tk.Label(parent, text="Configure Nextcloud container settings", font=("Arial", 10), fg="gray").pack(anchor="center")
         
         container_frame = tk.Frame(parent)
-        container_frame.pack(pady=10)
+        container_frame.pack(pady=10, anchor="center")
         
         tk.Label(container_frame, text="Container Name:", font=("Arial", 11)).grid(row=0, column=0, sticky="e", padx=5, pady=5)
         self.container_name_entry = tk.Entry(container_frame, font=("Arial", 11), width=30)
@@ -592,14 +592,14 @@ class NextcloudRestoreWizard(tk.Tk):
         self.container_port_entry.insert(0, self.wizard_data.get('container_port', '9000'))
         self.container_port_entry.grid(row=1, column=1, padx=5, pady=5)
         
-        # Option to use existing container
+        # Option to use existing container - centered
         self.use_existing_var = tk.BooleanVar(value=self.wizard_data.get('use_existing', False))
         tk.Checkbutton(
             parent, 
             text="Use existing Nextcloud container if found", 
             variable=self.use_existing_var,
             font=("Arial", 11)
-        ).pack(pady=15)
+        ).pack(pady=15, anchor="center")
     
     def wizard_navigate(self, direction):
         """Navigate between wizard pages, saving current page data"""
