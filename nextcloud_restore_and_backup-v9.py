@@ -540,30 +540,29 @@ class NextcloudRestoreWizard(tk.Tk):
         """Page 2: Database Configuration and Admin Credentials"""
         # Section 3: Database credentials - all centered
         tk.Label(parent, text="Step 3: Database Configuration", font=("Arial", 14, "bold")).pack(pady=(10, 5), anchor="center")
-        tk.Label(parent, text="Configure the PostgreSQL database settings", font=("Arial", 10), fg="gray").pack(anchor="center")
+        tk.Label(parent, text="⚠️ Enter the database credentials from your ORIGINAL Nextcloud setup", font=("Arial", 10, "bold"), fg="red").pack(anchor="center")
+        tk.Label(parent, text="These must match the credentials you originally configured for your database", font=("Arial", 9), fg="gray").pack(anchor="center", pady=(0, 10))
         
         db_frame = tk.Frame(parent)
         db_frame.pack(pady=10, anchor="center")
         
-        tk.Label(db_frame, text="Database Host:", font=("Arial", 11)).grid(row=0, column=0, sticky="e", padx=5, pady=5)
-        self.db_host_entry = tk.Entry(db_frame, font=("Arial", 11), width=30)
-        self.db_host_entry.insert(0, self.wizard_data.get('db_host', 'localhost'))
-        self.db_host_entry.grid(row=0, column=1, padx=5, pady=5)
-        
-        tk.Label(db_frame, text="Database Name:", font=("Arial", 11)).grid(row=1, column=0, sticky="e", padx=5, pady=5)
+        tk.Label(db_frame, text="Database Name:", font=("Arial", 11)).grid(row=0, column=0, sticky="e", padx=5, pady=5)
         self.db_name_entry = tk.Entry(db_frame, font=("Arial", 11), width=30)
         self.db_name_entry.insert(0, self.wizard_data.get('db_name', POSTGRES_DB))
-        self.db_name_entry.grid(row=1, column=1, padx=5, pady=5)
+        self.db_name_entry.grid(row=0, column=1, padx=5, pady=5)
+        tk.Label(db_frame, text="Must match your original database name", font=("Arial", 9), fg="gray").grid(row=0, column=2, sticky="w", padx=(5, 0))
         
-        tk.Label(db_frame, text="Database User:", font=("Arial", 11)).grid(row=2, column=0, sticky="e", padx=5, pady=5)
+        tk.Label(db_frame, text="Database User:", font=("Arial", 11)).grid(row=1, column=0, sticky="e", padx=5, pady=5)
         self.db_user_entry = tk.Entry(db_frame, font=("Arial", 11), width=30)
         self.db_user_entry.insert(0, self.wizard_data.get('db_user', POSTGRES_USER))
-        self.db_user_entry.grid(row=2, column=1, padx=5, pady=5)
+        self.db_user_entry.grid(row=1, column=1, padx=5, pady=5)
+        tk.Label(db_frame, text="Must match your original database user", font=("Arial", 9), fg="gray").grid(row=1, column=2, sticky="w", padx=(5, 0))
         
-        tk.Label(db_frame, text="Database Password:", font=("Arial", 11)).grid(row=3, column=0, sticky="e", padx=5, pady=5)
+        tk.Label(db_frame, text="Database Password:", font=("Arial", 11)).grid(row=2, column=0, sticky="e", padx=5, pady=5)
         self.db_password_entry = tk.Entry(db_frame, show="*", font=("Arial", 11), width=30)
         self.db_password_entry.insert(0, self.wizard_data.get('db_password', POSTGRES_PASSWORD))
-        self.db_password_entry.grid(row=3, column=1, padx=5, pady=5)
+        self.db_password_entry.grid(row=2, column=1, padx=5, pady=5)
+        tk.Label(db_frame, text="Must match your original database password", font=("Arial", 9), fg="gray").grid(row=2, column=2, sticky="w", padx=(5, 0))
         
         # Section 4: Nextcloud admin credentials - all centered
         tk.Label(parent, text="Step 4: Nextcloud Admin Credentials", font=("Arial", 14, "bold")).pack(pady=(25, 5), anchor="center")
@@ -628,8 +627,6 @@ class NextcloudRestoreWizard(tk.Tk):
             if hasattr(self, 'password_entry'):
                 self.wizard_data['password'] = self.password_entry.get()
         elif self.wizard_page == 2:
-            if hasattr(self, 'db_host_entry'):
-                self.wizard_data['db_host'] = self.db_host_entry.get()
             if hasattr(self, 'db_name_entry'):
                 self.wizard_data['db_name'] = self.db_name_entry.get()
             if hasattr(self, 'db_user_entry'):
@@ -667,7 +664,6 @@ class NextcloudRestoreWizard(tk.Tk):
         # Get all values from wizard_data
         backup_path = self.wizard_data.get('backup_path', '').strip()
         password = self.wizard_data.get('password', '')
-        db_host = self.wizard_data.get('db_host', '').strip()
         db_name = self.wizard_data.get('db_name', '').strip()
         db_user = self.wizard_data.get('db_user', '').strip()
         db_password = self.wizard_data.get('db_password', '')
@@ -689,9 +685,6 @@ class NextcloudRestoreWizard(tk.Tk):
                 return
         
         # Validate database credentials
-        if not db_host:
-            self.error_label.config(text="Error: Database host is required.")
-            return
         if not db_name:
             self.error_label.config(text="Error: Database name is required.")
             return
@@ -721,7 +714,6 @@ class NextcloudRestoreWizard(tk.Tk):
         # Store all values for restore process
         self.restore_backup_path = backup_path
         self.restore_password = password if password else None
-        self.restore_db_host = db_host
         self.restore_db_name = db_name
         self.restore_db_user = db_user
         self.restore_db_password = db_password

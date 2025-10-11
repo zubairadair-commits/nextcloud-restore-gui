@@ -1,5 +1,34 @@
 # Restore Workflow Redesign - Changes Summary
 
+## Latest Changes (v11 - Database Configuration Improvements)
+Enhanced the database configuration step (Step 3) based on user feedback to improve clarity and reduce configuration errors:
+
+### Key Improvements
+1. **Removed Database Host Field**
+   - System now automatically uses the database container name (`nextcloud-db`)
+   - Eliminates user confusion and potential misconfiguration
+   - Host value is derived from the new database container created during restore
+
+2. **Added Prominent Warning Messages**
+   - Red warning text: "⚠️ Enter the database credentials from your ORIGINAL Nextcloud setup"
+   - Explanatory text emphasizing credentials must match original database
+   - Makes it crystal clear these are not new credentials
+
+3. **Added Inline Help Text**
+   - Database Name: "Must match your original database name"
+   - Database User: "Must match your original database user"
+   - Database Password: "Must match your original database password"
+   - Provides immediate contextual guidance at point of need
+
+### Technical Changes
+- Modified `create_wizard_page2()` to remove Database Host field and add help text
+- Updated `save_wizard_page_data()` to remove db_host storage
+- Updated `validate_and_start_restore()` to remove db_host validation
+- Database host now automatically uses `POSTGRES_CONTAINER_NAME` via `db_container` parameter
+- All changes preserve backwards compatibility and existing functionality
+
+See `DATABASE_CONFIG_IMPROVEMENTS.md` for detailed documentation.
+
 ## Overview (v10 - Multi-Page Wizard)
 Redesigned the restore workflow into a **multi-page wizard** with clear step progression and navigation. The wizard splits the 5 configuration steps across 3 pages, making the process more intuitive and less overwhelming for users.
 
@@ -40,10 +69,10 @@ Previously redesigned the restore workflow to eliminate pop-up dialog boxes and 
   - **Section 1**: Backup file selection (existing)
   - **Section 2**: Decryption password (moved from pop-up)
   - **Section 3**: Database Configuration
-    - Database Host (default: localhost)
-    - Database Name (default: nextcloud)
-    - Database User (default: nextcloud)
-    - Database Password (default: example)
+    - Database Name (default: nextcloud) - with help text
+    - Database User (default: nextcloud) - with help text
+    - Database Password (default: example) - with help text
+    - Note: Database Host removed in v11 - auto-configured to use container name
   - **Section 4**: Nextcloud Admin Credentials
     - Admin Username (default: admin)
     - Admin Password (default: admin)
