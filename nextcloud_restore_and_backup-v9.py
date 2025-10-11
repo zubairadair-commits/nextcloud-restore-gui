@@ -797,6 +797,17 @@ class NextcloudRestoreWizard(tk.Tk):
         # Save current page data
         self.save_wizard_page_data()
         
+        # If navigating back to Page 1 from Page 2, reset detection
+        # This allows users to change backup file or password and re-detect
+        if self.wizard_page == 2 and direction == -1:
+            # Only reset if detection was done via the "Next" button flow
+            # Don't reset if detection was done via browse_backup for unencrypted files
+            if self.detected_dbtype and self.wizard_data.get('backup_path', '').endswith('.gpg'):
+                print("Resetting detection - user navigating back to Page 1")
+                self.detected_dbtype = None
+                self.detected_db_config = None
+                self.db_auto_detected = False
+        
         # If navigating from Page 1 to Page 2, perform extraction and detection
         if self.wizard_page == 1 and direction == 1:
             if not self.perform_extraction_and_detection():
