@@ -284,7 +284,8 @@ class NextcloudRestoreWizard(tk.Tk):
         
         # Store references to database credential UI elements for conditional display
         # These will be set in create_wizard_page2()
-        self.db_credential_widgets = []  # List of widgets to hide/show for database credentials
+        self.db_credential_packed_widgets = []  # Packed widgets (warning/instruction labels)
+        self.db_credential_frame = None  # Frame containing grid widgets
         self.db_sqlite_message_label = None  # Label to show SQLite-specific message
 
         self.show_landing()
@@ -654,7 +655,7 @@ class NextcloudRestoreWizard(tk.Tk):
         
         # Info about auto-detection
         info_frame = tk.Frame(parent, bg="#e3f2fd", relief="solid", borderwidth=1)
-        info_frame.pack(pady=(5, 10), padx=50, fill="x")
+        info_frame.pack(pady=(5, 10), padx=50, fill="x", anchor="center")
         tk.Label(info_frame, text="ℹ️ Database Type Auto-Detection", font=("Arial", 10, "bold"), bg="#e3f2fd").pack(pady=(5, 2))
         tk.Label(info_frame, text="The restore process will automatically detect your database type (SQLite, PostgreSQL, MySQL)", 
                  font=("Arial", 9), bg="#e3f2fd", wraplength=600).pack(pady=2)
@@ -732,20 +733,14 @@ class NextcloudRestoreWizard(tk.Tk):
         
         # Store references to database credential widgets for conditional display
         # These widgets will be hidden when SQLite is detected
-        self.db_credential_widgets = [
+        # Note: We store packed widgets separately from the db_frame (which is also packed)
+        self.db_credential_packed_widgets = [
             warning_label,
             instruction_label1,
-            instruction_label2,
-            db_name_label,
-            self.db_name_entry,
-            db_name_hint,
-            db_user_label,
-            self.db_user_entry,
-            db_user_hint,
-            db_password_label,
-            self.db_password_entry,
-            db_password_hint
+            instruction_label2
         ]
+        # Store reference to the frame containing grid widgets
+        self.db_credential_frame = db_frame
         
         # If database type was already detected (e.g., user went back and forth),
         # update the UI accordingly
@@ -953,7 +948,7 @@ class NextcloudRestoreWizard(tk.Tk):
                 
                 # Update UI on page 2 if we're currently on that page or if it's been created
                 # This will hide/show database credential fields appropriately
-                if hasattr(self, 'db_credential_widgets') and self.db_credential_widgets:
+                if hasattr(self, 'db_credential_frame') and self.db_credential_frame:
                     self.update_database_credential_ui(dbtype)
             else:
                 print("Early detection not possible (encrypted or missing config.php)")
@@ -1613,20 +1608,32 @@ class NextcloudRestoreWizard(tk.Tk):
         is_sqlite = dbtype and dbtype.lower() in ['sqlite', 'sqlite3']
         
         if is_sqlite:
-            # Hide all database credential widgets
-            for widget in self.db_credential_widgets:
-                widget.grid_remove()  # Use grid_remove to preserve layout
+            # Hide packed warning/instruction labels
+            if hasattr(self, 'db_credential_packed_widgets'):
+                for widget in self.db_credential_packed_widgets:
+                    widget.pack_forget()
+            
+            # Hide the entire database credential frame (which contains grid widgets)
+            if hasattr(self, 'db_credential_frame'):
+                self.db_credential_frame.pack_forget()
             
             # Show SQLite informational message
-            if self.db_sqlite_message_label:
+            if hasattr(self, 'db_sqlite_message_label') and self.db_sqlite_message_label:
                 self.db_sqlite_message_label.pack(pady=(10, 10), anchor="center")
         else:
-            # Show all database credential widgets
-            for widget in self.db_credential_widgets:
-                widget.grid()  # Restore widgets to grid
+            # Show packed warning/instruction labels
+            if hasattr(self, 'db_credential_packed_widgets'):
+                # Re-pack in the correct order with original settings
+                self.db_credential_packed_widgets[0].pack(anchor="center", pady=(5, 0))  # warning_label
+                self.db_credential_packed_widgets[1].pack(anchor="center")  # instruction_label1
+                self.db_credential_packed_widgets[2].pack(anchor="center", pady=(0, 10))  # instruction_label2
+            
+            # Show the database credential frame
+            if hasattr(self, 'db_credential_frame'):
+                self.db_credential_frame.pack(pady=10, anchor="center", fill="x", padx=50)
             
             # Hide SQLite message
-            if self.db_sqlite_message_label:
+            if hasattr(self, 'db_sqlite_message_label') and self.db_sqlite_message_label:
                 self.db_sqlite_message_label.pack_forget()
         
         print(f"UI updated for database type: {dbtype} (is_sqlite={is_sqlite})")
