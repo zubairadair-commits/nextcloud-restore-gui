@@ -98,6 +98,32 @@ def thread_safe_askstring(parent, title, prompt, **kwargs):
     event.wait()
     return result[0]
 
+def find_config_php_recursive(directory):
+    """
+    Recursively search for config.php in any subdirectory.
+    Returns the full path to config.php if found, None otherwise.
+    """
+    try:
+        for root, dirs, files in os.walk(directory):
+            for filename in files:
+                if filename == 'config.php':
+                    # Found config.php - verify it's in a config directory or contains database config
+                    config_path = os.path.join(root, filename)
+                    # Quick check if this looks like a Nextcloud config.php
+                    try:
+                        with open(config_path, 'r', encoding='utf-8') as f:
+                            content = f.read(100)  # Read first 100 chars
+                            if '$CONFIG' in content or 'dbtype' in content:
+                                print(f"Found config.php at: {config_path}")
+                                return config_path
+                    except Exception:
+                        continue
+        print(f"config.php not found in {directory}")
+        return None
+    except Exception as e:
+        print(f"Error searching for config.php: {e}")
+        return None
+
 def parse_config_php_dbtype(config_php_path):
     """
     Parse config.php file and extract the database type.
@@ -233,17 +259,21 @@ def attach_container_to_network(container_name, network_name="bridge"):
         print(f"Error attaching container to network: {e}")
         return False
 
-# ----------- FASTER EXTRACTION USING SYSTEM TAR -----------
+# ----------- EXTRACTION USING PYTHON TARFILE MODULE -----------
 def fast_extract_tar_gz(archive_path, extract_to):
+    """
+    Extract tar.gz archive using Python's tarfile module.
+    This is more robust and platform-independent than using subprocess.
+    """
     os.makedirs(extract_to, exist_ok=True)
-    result = subprocess.run(
-        f'tar --ignore-failed-read -xzf "{archive_path}" -C "{extract_to}"',
-        shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-    )
-    # Accept exit code 0 (success) or 1 (warnings/errors that were ignored)
-    if result.returncode not in [0, 1]:
-        raise Exception("Extraction failed: " + result.stderr)
-# -----------------------------------------------------------
+    try:
+        with tarfile.open(archive_path, 'r:gz') as tar:
+            # Extract all members
+            tar.extractall(path=extract_to)
+        print(f"✓ Successfully extracted archive to {extract_to}")
+    except Exception as e:
+        raise Exception(f"Extraction failed: {e}")
+# ---------------------------------------------------------------
 
 class NextcloudRestoreWizard(tk.Tk):
     def __init__(self):
@@ -909,17 +939,22 @@ class NextcloudRestoreWizard(tk.Tk):
                 self.detected_dbtype = dbtype
                 self.detected_db_config = db_config
                 self.db_auto_detected = True
-                print(f"Database type detected before Page 2: {dbtype}")
+                print(f"✓ Database type detected before Page 2: {dbtype}")
                 self.error_label.config(text="")
                 return True
             else:
-                # Detection failed - allow navigation but show warning
-                print("Warning: Could not detect database type from backup")
-                self.error_label.config(text="Warning: Could not detect database type. Please verify credentials.", fg="orange")
+                # Detection failed - allow navigation but show clear warning
+                print("⚠️ Warning: Could not detect database type from backup")
+                warning_msg = (
+                    "⚠️ Warning: config.php not found or could not be read.\n"
+                    "Database type detection failed. You can still continue,\n"
+                    "but please ensure your database credentials are correct."
+                )
+                self.error_label.config(text=warning_msg, fg="orange")
                 self.detected_dbtype = None
                 self.detected_db_config = None
                 self.db_auto_detected = False
-                return True  # Still allow navigation
+                return True  # Still allow navigation - don't break workflow
                 
         except Exception as e:
             print(f"Error during extraction and detection: {e}")
@@ -1437,29 +1472,41 @@ class NextcloudRestoreWizard(tk.Tk):
     def detect_database_type(self, extract_dir):
         """
         Detect database type from config.php in the extracted backup.
+        Uses recursive search to find config.php in any subdirectory.
         Returns: (dbtype, db_config) or (None, None) if detection fails
         """
+        # First try the standard location
         config_path = os.path.join(extract_dir, "config", "config.php")
         
         if not os.path.exists(config_path):
-            print("Warning: config.php not found in backup, cannot auto-detect database type")
-            return None, None
+            print(f"config.php not found at standard location: {config_path}")
+            print("Performing recursive search for config.php...")
+            # Recursively search for config.php in any subdirectory
+            config_path = find_config_php_recursive(extract_dir)
+            
+            if not config_path:
+                print("⚠️ Warning: config.php not found in backup after recursive search")
+                print("Cannot auto-detect database type - will use defaults")
+                return None, None
+        else:
+            print(f"Found config.php at standard location: {config_path}")
         
         dbtype, db_config = parse_config_php_dbtype(config_path)
         
         if dbtype:
-            print(f"Auto-detected database type: {dbtype}")
+            print(f"✓ Auto-detected database type: {dbtype}")
             if db_config:
                 print(f"Database config from backup: {db_config}")
         else:
-            print("Warning: Could not parse database type from config.php")
+            print("⚠️ Warning: Could not parse database type from config.php")
         
         return dbtype, db_config
     
     def early_detect_database_type_from_backup(self, backup_path, password=None):
         """
-        Early detection: Extract only config.php from backup to detect database type
-        before user enters credentials. This avoids requiring database credentials for SQLite.
+        Early detection: Extract all files from backup using Python's tarfile module,
+        then recursively search for config.php to detect database type before user
+        enters credentials. This avoids requiring database credentials for SQLite.
         
         Args:
             backup_path: Path to the backup file (.tar.gz or .tar.gz.gpg)
@@ -1469,11 +1516,12 @@ class NextcloudRestoreWizard(tk.Tk):
         
         Note: Handles both encrypted (.gpg) and unencrypted backups.
         Normalizes 'sqlite3' to 'sqlite' for consistent handling.
+        Uses Python's tarfile module for extraction and recursive search for config.php.
         """
+        temp_extract_dir = None
+        temp_decrypted_path = None
+        
         try:
-            temp_extract_dir = None
-            temp_decrypted_path = None
-            
             # Handle encrypted backups
             if backup_path.endswith('.gpg'):
                 if not password:
@@ -1487,36 +1535,43 @@ class NextcloudRestoreWizard(tk.Tk):
                 
                 try:
                     decrypt_file_gpg(backup_path, temp_decrypted_path, password)
-                    print("Backup decrypted successfully for early detection")
+                    print("✓ Backup decrypted successfully for early detection")
                     # Use the decrypted file for extraction
                     backup_to_extract = temp_decrypted_path
                 except Exception as decrypt_err:
-                    print(f"Failed to decrypt backup: {decrypt_err}")
+                    print(f"✗ Failed to decrypt backup: {decrypt_err}")
                     return None, None
             else:
                 # Unencrypted backup - use directly
                 backup_to_extract = backup_path
             
-            # Create a temporary directory to extract just config.php
+            # Create a temporary directory to extract files
             temp_extract_dir = tempfile.mkdtemp(prefix="nextcloud_early_detect_")
+            print(f"Extracting backup for config.php detection to: {temp_extract_dir}")
             
-            # Extract only config/config.php from the backup
-            # Using tar's ability to extract specific files
-            config_file_in_archive = "config/config.php"
+            # Extract all files from the backup using Python's tarfile module
+            try:
+                with tarfile.open(backup_to_extract, 'r:gz') as tar:
+                    # Extract all files - this ensures we can find config.php wherever it is
+                    tar.extractall(path=temp_extract_dir)
+                    print(f"✓ Successfully extracted backup archive")
+            except Exception as extract_err:
+                print(f"✗ Failed to extract backup: {extract_err}")
+                return None, None
             
-            result = subprocess.run(
-                f'tar -xzf "{backup_to_extract}" -C "{temp_extract_dir}" "{config_file_in_archive}" 2>/dev/null',
-                shell=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
-            )
-            
+            # First try standard location
             config_path = os.path.join(temp_extract_dir, "config", "config.php")
             
             if not os.path.exists(config_path):
-                print("Early detection: config.php not found in backup")
-                return None, None
+                print("config.php not found at standard location, performing recursive search...")
+                # Recursively search for config.php in any subdirectory
+                config_path = find_config_php_recursive(temp_extract_dir)
+                
+                if not config_path:
+                    print("⚠️ Early detection: config.php not found in backup after recursive search")
+                    return None, None
+            else:
+                print(f"✓ Found config.php at standard location")
             
             # Parse the config.php file
             dbtype, db_config = parse_config_php_dbtype(config_path)
@@ -1528,16 +1583,17 @@ class NextcloudRestoreWizard(tk.Tk):
                     db_config['dbtype'] = 'sqlite'
             
             if dbtype:
-                print(f"Early detection successful: {dbtype}")
+                print(f"✓ Early detection successful: {dbtype}")
                 if db_config:
                     print(f"Database config: {db_config}")
             else:
-                print("Early detection: Could not parse database type from config.php")
+                print("⚠️ Early detection: Could not parse database type from config.php")
             
             return dbtype, db_config
             
         except Exception as e:
-            print(f"Early detection error: {e}")
+            print(f"✗ Early detection error: {e}")
+            traceback.print_exc()
             return None, None
         finally:
             # Clean up temporary decrypted file
@@ -1552,6 +1608,7 @@ class NextcloudRestoreWizard(tk.Tk):
             if temp_extract_dir and os.path.exists(temp_extract_dir):
                 try:
                     shutil.rmtree(temp_extract_dir)
+                    print("Cleaned up temporary extraction directory")
                 except Exception as cleanup_err:
                     print(f"Warning: Could not clean up temp directory: {cleanup_err}")
     
@@ -1685,12 +1742,18 @@ php /tmp/update_config.php"
                 time.sleep(2)  # Give user time to see the detection message
             else:
                 # Fallback: assume PostgreSQL (current default behavior)
-                warning_msg = "Warning: Could not detect database type from config.php. Using PostgreSQL as default."
+                warning_msg = (
+                    "⚠️ WARNING: config.php not found in backup!\n\n"
+                    "Database type could not be automatically detected.\n"
+                    "Using PostgreSQL as default. The restore will continue,\n"
+                    "but please verify your database configuration matches your backup."
+                )
                 self.error_label.config(text=warning_msg, fg="orange")
+                self.process_label.config(text="Proceeding with PostgreSQL (default)...")
                 print(warning_msg)
                 dbtype = 'pgsql'
                 self.detected_dbtype = dbtype
-                time.sleep(2)
+                time.sleep(3)  # Give user more time to see the warning
 
             self.set_restore_progress(20, self.restore_steps[1])
             
