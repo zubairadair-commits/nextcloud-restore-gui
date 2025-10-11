@@ -9,6 +9,7 @@ import tempfile
 import shutil
 import webbrowser
 import traceback
+import re
 
 DOCKER_INSTALLER_URL = "https://www.docker.com/products/docker-desktop/"
 GPG_DOWNLOAD_URL = "https://files.gpg4win.org/gpg4win-latest.exe"
@@ -96,6 +97,49 @@ def thread_safe_askstring(parent, title, prompt, **kwargs):
     parent.after(0, _ask)
     event.wait()
     return result[0]
+
+def parse_config_php_dbtype(config_php_path):
+    """
+    Parse config.php file and extract the database type.
+    Returns: (dbtype, db_config_dict) or (None, None) if parsing fails
+    dbtype can be: 'sqlite', 'pgsql', 'mysql'
+    """
+    try:
+        if not os.path.exists(config_php_path):
+            return None, None
+        
+        with open(config_php_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Look for 'dbtype' => 'value' pattern (with single or double quotes)
+        dbtype_match = re.search(r"['\"]dbtype['\"] => ['\"]([^'\"]+)['\"]", content)
+        if not dbtype_match:
+            return None, None
+        
+        dbtype = dbtype_match.group(1).lower()
+        
+        # Also extract other DB config for reference
+        db_config = {'dbtype': dbtype}
+        
+        # Extract dbname
+        dbname_match = re.search(r"['\"]dbname['\"] => ['\"]([^'\"]+)['\"]", content)
+        if dbname_match:
+            db_config['dbname'] = dbname_match.group(1)
+        
+        # Extract dbuser
+        dbuser_match = re.search(r"['\"]dbuser['\"] => ['\"]([^'\"]+)['\"]", content)
+        if dbuser_match:
+            db_config['dbuser'] = dbuser_match.group(1)
+        
+        # Extract dbhost
+        dbhost_match = re.search(r"['\"]dbhost['\"] => ['\"]([^'\"]+)['\"]", content)
+        if dbhost_match:
+            db_config['dbhost'] = dbhost_match.group(1)
+        
+        return dbtype, db_config
+    except Exception as e:
+        print(f"Error parsing config.php: {e}")
+        return None, None
 
 def thread_safe_askinteger(parent, title, prompt, **kwargs):
     """
@@ -232,6 +276,11 @@ class NextcloudRestoreWizard(tk.Tk):
         # Multi-page wizard state
         self.wizard_page = 1
         self.wizard_data = {}
+        
+        # Database auto-detection
+        self.detected_dbtype = None
+        self.detected_db_config = None
+        self.db_auto_detected = False
 
         self.show_landing()
 
@@ -578,7 +627,17 @@ class NextcloudRestoreWizard(tk.Tk):
         """Page 2: Database Configuration and Admin Credentials"""
         # Section 3: Database credentials - all centered
         tk.Label(parent, text="Step 3: Database Configuration", font=("Arial", 14, "bold")).pack(pady=(10, 5), anchor="center")
-        tk.Label(parent, text="⚠️ Enter the database credentials from your ORIGINAL Nextcloud setup", font=("Arial", 10, "bold"), fg="red").pack(anchor="center")
+        
+        # Info about auto-detection
+        info_frame = tk.Frame(parent, bg="#e3f2fd", relief="solid", borderwidth=1)
+        info_frame.pack(pady=(5, 10), padx=20, anchor="center")
+        tk.Label(info_frame, text="ℹ️ Database Type Auto-Detection", font=("Arial", 10, "bold"), bg="#e3f2fd").pack(pady=(5, 2))
+        tk.Label(info_frame, text="The restore process will automatically detect your database type (SQLite, PostgreSQL, MySQL)", 
+                 font=("Arial", 9), bg="#e3f2fd", wraplength=600).pack(pady=2)
+        tk.Label(info_frame, text="from the config.php file in your backup and restore accordingly.", 
+                 font=("Arial", 9), bg="#e3f2fd", wraplength=600).pack(pady=(0, 5))
+        
+        tk.Label(parent, text="⚠️ Enter the database credentials from your ORIGINAL Nextcloud setup", font=("Arial", 10, "bold"), fg="red").pack(anchor="center", pady=(5, 0))
         tk.Label(parent, text="These credentials are stored in your backup and must match exactly", font=("Arial", 9), fg="gray").pack(anchor="center")
         tk.Label(parent, text="The database will be automatically imported using these credentials", font=("Arial", 9), fg="gray").pack(anchor="center", pady=(0, 10))
         
@@ -1065,7 +1124,189 @@ class NextcloudRestoreWizard(tk.Tk):
         time.sleep(5)
         return db_container_id
 
-    def update_config_php(self, nextcloud_container, db_container):
+    def restore_sqlite_database(self, extract_dir, nextcloud_container, nextcloud_path):
+        """Restore SQLite database by copying the .db file"""
+        try:
+            # Look for SQLite database file (usually owncloud.db or nextcloud.db)
+            db_files = []
+            data_dir = os.path.join(extract_dir, "data")
+            
+            if os.path.exists(data_dir):
+                for file in os.listdir(data_dir):
+                    if file.endswith('.db'):
+                        db_files.append(file)
+            
+            if not db_files:
+                warning_msg = "Warning: No SQLite .db file found in backup data folder. Database restore skipped."
+                self.error_label.config(text=warning_msg, fg="orange")
+                print(warning_msg)
+                return False
+            
+            # Use the first .db file found (typically owncloud.db or nextcloud.db)
+            db_file = db_files[0]
+            db_path = os.path.join(data_dir, db_file)
+            
+            self.process_label.config(text=f"Restoring SQLite database: {db_file}")
+            self.update_idletasks()
+            
+            # The .db file should already be copied with the data folder
+            # Just verify it exists
+            check_cmd = f'docker exec {nextcloud_container} test -f {nextcloud_path}/data/{db_file}'
+            result = subprocess.run(check_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            
+            if result.returncode == 0:
+                print(f"SQLite database file {db_file} successfully restored")
+                return True
+            else:
+                error_msg = f"Error: SQLite database file {db_file} not found in container after copy"
+                self.error_label.config(text=error_msg, fg="red")
+                return False
+                
+        except Exception as e:
+            tb = traceback.format_exc()
+            self.error_label.config(text=f"SQLite database restore error: {e}\n{tb}")
+            print(tb)
+            return False
+    
+    def restore_mysql_database(self, extract_dir, db_container):
+        """Restore MySQL/MariaDB database from SQL dump"""
+        sql_path = os.path.join(extract_dir, "nextcloud-db.sql")
+        
+        if not os.path.isfile(sql_path):
+            warning_msg = "Warning: No database backup file (nextcloud-db.sql) found in backup. Skipping database restore."
+            self.error_label.config(text=warning_msg, fg="orange")
+            print(warning_msg)
+            return False
+        
+        try:
+            self.process_label.config(text="Restoring MySQL database (this may take a few minutes) ...")
+            self.update_idletasks()
+            
+            # Use credentials from GUI - MySQL version
+            restore_cmd = f'docker exec -i {db_container} bash -c "mysql -u {self.restore_db_user} -p{self.restore_db_password} {self.restore_db_name}"'
+            
+            with open(sql_path, "rb") as f:
+                proc = subprocess.Popen(restore_cmd, shell=True, stdin=f, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                stdout, stderr = proc.communicate()
+                if proc.returncode != 0:
+                    error_msg = stderr.decode('utf-8', errors='replace') if stderr else "Unknown error"
+                    self.error_label.config(text=f"MySQL database restore failed: {error_msg}")
+                    return False
+            
+            # Validate that database tables were imported
+            self.process_label.config(text="Validating MySQL database restore ...")
+            self.update_idletasks()
+            check_cmd = f'docker exec {db_container} bash -c "mysql -u {self.restore_db_user} -p{self.restore_db_password} {self.restore_db_name} -e \'SHOW TABLES;\'"'
+            result = subprocess.run(check_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            
+            if result.returncode == 0 and "oc_" in result.stdout:
+                print(f"MySQL database validation successful. Tables found.")
+                return True
+            else:
+                warning_msg = "Warning: Could not validate MySQL database tables. Please check manually."
+                self.error_label.config(text=warning_msg, fg="orange")
+                print(f"Warning: MySQL database validation unclear: {result.stdout}")
+                return True  # Don't fail restore, just warn
+                
+        except Exception as e:
+            tb = traceback.format_exc()
+            self.error_label.config(text=f"MySQL database restore error: {e}\n{tb}")
+            print(tb)
+            return False
+    
+    def restore_postgresql_database(self, extract_dir, db_container):
+        """Restore PostgreSQL database from SQL dump"""
+        sql_path = os.path.join(extract_dir, "nextcloud-db.sql")
+        
+        if not os.path.isfile(sql_path):
+            warning_msg = "Warning: No database backup file (nextcloud-db.sql) found in backup. Skipping database restore."
+            self.error_label.config(text=warning_msg, fg="orange")
+            print(warning_msg)
+            return False
+        
+        try:
+            self.process_label.config(text="Restoring PostgreSQL database (this may take a few minutes) ...")
+            self.update_idletasks()
+            
+            # Use credentials from GUI
+            restore_cmd = f'docker exec -i {db_container} bash -c "PGPASSWORD={self.restore_db_password} psql -U {self.restore_db_user} -d {self.restore_db_name}"'
+            
+            with open(sql_path, "rb") as f:
+                proc = subprocess.Popen(restore_cmd, shell=True, stdin=f, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                stdout, stderr = proc.communicate()
+                if proc.returncode != 0:
+                    error_msg = stderr.decode('utf-8', errors='replace') if stderr else "Unknown error"
+                    self.error_label.config(text=f"PostgreSQL database restore failed: {error_msg}")
+                    return False
+            
+            # Validate that database tables were imported
+            self.process_label.config(text="Validating PostgreSQL database restore ...")
+            self.update_idletasks()
+            check_cmd = f'docker exec {db_container} bash -c "PGPASSWORD={self.restore_db_password} psql -U {self.restore_db_user} -d {self.restore_db_name} -c \'\\dt\'"'
+            result = subprocess.run(check_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            
+            if result.returncode == 0 and "oc_" in result.stdout:
+                print(f"PostgreSQL database validation successful. Tables found.")
+                return True
+            else:
+                warning_msg = "Warning: Could not validate PostgreSQL database tables. Please check manually."
+                self.error_label.config(text=warning_msg, fg="orange")
+                print(f"Warning: PostgreSQL database validation unclear: {result.stdout}")
+                return True  # Don't fail restore, just warn
+                
+        except Exception as e:
+            tb = traceback.format_exc()
+            self.error_label.config(text=f"PostgreSQL database restore error: {e}\n{tb}")
+            print(tb)
+            return False
+    
+    def detect_database_type(self, extract_dir):
+        """
+        Detect database type from config.php in the extracted backup.
+        Returns: (dbtype, db_config) or (None, None) if detection fails
+        """
+        config_path = os.path.join(extract_dir, "config", "config.php")
+        
+        if not os.path.exists(config_path):
+            print("Warning: config.php not found in backup, cannot auto-detect database type")
+            return None, None
+        
+        dbtype, db_config = parse_config_php_dbtype(config_path)
+        
+        if dbtype:
+            print(f"Auto-detected database type: {dbtype}")
+            if db_config:
+                print(f"Database config from backup: {db_config}")
+        else:
+            print("Warning: Could not parse database type from config.php")
+        
+        return dbtype, db_config
+    
+    def show_db_detection_message(self, dbtype, db_config):
+        """Show a message to user about detected database type and allow override"""
+        db_display_names = {
+            'sqlite': 'SQLite',
+            'pgsql': 'PostgreSQL', 
+            'mysql': 'MySQL/MariaDB'
+        }
+        
+        db_name = db_display_names.get(dbtype, dbtype)
+        
+        msg = f"Auto-detected database type: {db_name}\n\n"
+        
+        if db_config:
+            if 'dbname' in db_config:
+                msg += f"Database name: {db_config['dbname']}\n"
+            if 'dbuser' in db_config:
+                msg += f"Database user: {db_config['dbuser']}\n"
+        
+        msg += "\nThe restore will use this configuration.\n"
+        msg += "Make sure the database credentials you entered match this backup."
+        
+        self.process_label.config(text=msg)
+        print(f"Detected database info shown to user: {dbtype}")
+    
+    def update_config_php(self, nextcloud_container, db_container, dbtype='pgsql'):
         """Update config.php with database credentials and admin settings"""
         config_updates = f"""
 docker exec {nextcloud_container} bash -c "cat > /tmp/update_config.php << 'EOFPHP'
@@ -1075,7 +1316,7 @@ if (file_exists(\\$configFile)) {{
     \\$config = include(\\$configFile);
     
     // Update database configuration
-    \\$config['dbtype'] = 'pgsql';
+    \\$config['dbtype'] = '{dbtype}';
     \\$config['dbname'] = '{self.restore_db_name}';
     \\$config['dbhost'] = '{db_container}';
     \\$config['dbuser'] = '{self.restore_db_user}';
@@ -1108,14 +1349,43 @@ php /tmp/update_config.php"
                 self.set_restore_progress(0, "Restore failed!")
                 return
 
-            self.set_restore_progress(20, self.restore_steps[1])
-            # Start database container first (needed for Nextcloud container linking)
-            db_container = self.ensure_db_container()
-            if not db_container:
-                self.set_restore_progress(0, "Restore failed!")
-                return
+            # Auto-detect database type from config.php
+            self.set_restore_progress(18, "Detecting database type ...")
+            self.process_label.config(text="Reading config.php to detect database type ...")
+            self.update_idletasks()
             
-            # Start Nextcloud container (linked to database)
+            dbtype, db_config = self.detect_database_type(extract_dir)
+            
+            if dbtype:
+                self.detected_dbtype = dbtype
+                self.detected_db_config = db_config
+                self.db_auto_detected = True
+                self.show_db_detection_message(dbtype, db_config)
+                time.sleep(2)  # Give user time to see the detection message
+            else:
+                # Fallback: assume PostgreSQL (current default behavior)
+                warning_msg = "Warning: Could not detect database type from config.php. Using PostgreSQL as default."
+                self.error_label.config(text=warning_msg, fg="orange")
+                print(warning_msg)
+                dbtype = 'pgsql'
+                self.detected_dbtype = dbtype
+                time.sleep(2)
+
+            self.set_restore_progress(20, self.restore_steps[1])
+            
+            # For SQLite, we don't need a separate database container
+            db_container = None
+            if dbtype != 'sqlite':
+                # Start database container first (needed for Nextcloud container linking)
+                db_container = self.ensure_db_container()
+                if not db_container:
+                    self.set_restore_progress(0, "Restore failed!")
+                    return
+            else:
+                self.process_label.config(text="SQLite detected - no separate database container needed")
+                self.update_idletasks()
+            
+            # Start Nextcloud container (linked to database if not SQLite)
             nextcloud_container = self.ensure_nextcloud_container()
             if not nextcloud_container:
                 self.set_restore_progress(0, "Restore failed!")
@@ -1148,43 +1418,30 @@ php /tmp/update_config.php"
                         self.set_restore_progress(0, "Restore failed!")
                         return
 
+            # Database restore - branch based on detected database type
             self.set_restore_progress(70, self.restore_steps[3])
-            sql_path = os.path.join(extract_dir, "nextcloud-db.sql")
-            if os.path.isfile(sql_path):
-                self.process_label.config(text="Restoring database (this may take a few minutes) ...")
-                self.update_idletasks()
-                # Use credentials from GUI
-                restore_cmd = f'docker exec -i {db_container} bash -c "PGPASSWORD={self.restore_db_password} psql -U {self.restore_db_user} -d {self.restore_db_name}"'
-                try:
-                    with open(sql_path, "rb") as f:
-                        proc = subprocess.Popen(restore_cmd, shell=True, stdin=f, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                        stdout, stderr = proc.communicate()
-                        if proc.returncode != 0:
-                            error_msg = stderr.decode('utf-8', errors='replace') if stderr else "Unknown error"
-                            self.error_label.config(text=f"Database restore failed: {error_msg}")
-                            self.set_restore_progress(0, "Restore failed!")
-                            return
-                    
-                    # Validate that database tables were imported
-                    self.process_label.config(text="Validating database restore ...")
-                    self.update_idletasks()
-                    check_cmd = f'docker exec {db_container} bash -c "PGPASSWORD={self.restore_db_password} psql -U {self.restore_db_user} -d {self.restore_db_name} -c \'\\dt\'"'
-                    result = subprocess.run(check_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                    if result.returncode == 0 and "oc_" in result.stdout:
-                        print(f"Database validation successful. Tables found.")
-                    else:
-                        warning_msg = "Warning: Could not validate database tables. Please check manually."
-                        self.error_label.config(text=warning_msg, fg="orange")
-                        print(f"Warning: Database validation unclear: {result.stdout}")
-                        
-                except Exception as db_err:
-                    tb = traceback.format_exc()
-                    self.error_label.config(text=f"Database restore error: {db_err}\n{tb}")
-                    print(tb)
-                    self.set_restore_progress(0, "Restore failed!")
-                    return
+            
+            db_restore_success = False
+            
+            if dbtype == 'sqlite':
+                # SQLite: restore by copying .db file (already done with data folder)
+                db_restore_success = self.restore_sqlite_database(extract_dir, nextcloud_container, nextcloud_path)
+            elif dbtype == 'mysql':
+                # MySQL/MariaDB: restore from SQL dump
+                db_restore_success = self.restore_mysql_database(extract_dir, db_container)
+            elif dbtype == 'pgsql':
+                # PostgreSQL: restore from SQL dump
+                db_restore_success = self.restore_postgresql_database(extract_dir, db_container)
             else:
-                warning_msg = "Warning: No database backup file (nextcloud-db.sql) found in backup. Skipping database restore."
+                # Unknown database type - show warning
+                warning_msg = f"Warning: Unknown database type '{dbtype}'. Skipping database restore."
+                self.error_label.config(text=warning_msg, fg="orange")
+                print(warning_msg)
+            
+            if not db_restore_success and dbtype != 'sqlite':
+                # For non-SQLite databases, if restore failed, we might want to continue with warning
+                # rather than failing the entire restore
+                warning_msg = f"Warning: Database restore had issues. Please check manually."
                 self.error_label.config(text=warning_msg, fg="orange")
                 print(warning_msg)
             
@@ -1193,7 +1450,7 @@ php /tmp/update_config.php"
             self.process_label.config(text="Updating config.php with database credentials ...")
             self.update_idletasks()
             try:
-                self.update_config_php(nextcloud_container, db_container)
+                self.update_config_php(nextcloud_container, db_container, dbtype)
             except Exception as config_err:
                 # Show warning but continue
                 warning_msg = f"Warning: Could not update config.php: {config_err}. You may need to configure manually."
