@@ -441,13 +441,16 @@ class NextcloudRestoreWizard(tk.Tk):
         frame = self.wizard_scrollable_frame
         self.wizard_page = page_num
         
-        # Return to Main Menu button at top - centered
+        # Header - centered (matches main app header)
+        tk.Label(frame, text="Nextcloud Restore & Backup Utility", font=("Arial", 22, "bold")).pack(pady=10, anchor="center")
+        
+        # Page title (subheader) - centered
+        page_title = f"Restore Wizard: Page {page_num} of 3"
+        tk.Label(frame, text=page_title, font=("Arial", 14)).pack(pady=(0, 10), anchor="center")
+        
+        # Return to Main Menu button - centered
         btn_back = tk.Button(frame, text="Return to Main Menu", font=("Arial", 12), command=self.show_landing)
         btn_back.pack(pady=8, anchor="center")
-        
-        # Page title - centered
-        page_title = f"Restore Wizard: Page {page_num} of 3"
-        tk.Label(frame, text=page_title, font=("Arial", 16, "bold")).pack(pady=(5, 15), anchor="center")
         
         if page_num == 1:
             self.create_wizard_page1(frame)
