@@ -797,6 +797,23 @@ class NextcloudRestoreWizard(tk.Tk):
         # Save current page data
         self.save_wizard_page_data()
         
+        # If navigating back to Page 1 from Page 2, reset detection
+        # This allows users to change backup file or password and re-detect
+        if self.wizard_page == 2 and direction == -1:
+            # Only reset if detection was done via the "Next" button flow
+            # Don't reset if detection was done via browse_backup for unencrypted files
+            if self.detected_dbtype and self.wizard_data.get('backup_path', '').endswith('.gpg'):
+                print("Resetting detection - user navigating back to Page 1")
+                self.detected_dbtype = None
+                self.detected_db_config = None
+                self.db_auto_detected = False
+        
+        # If navigating from Page 1 to Page 2, perform extraction and detection
+        if self.wizard_page == 1 and direction == 1:
+            if not self.perform_extraction_and_detection():
+                # Detection failed or was cancelled - don't navigate
+                return
+        
         # Navigate to new page
         new_page = self.wizard_page + direction
         if 1 <= new_page <= 3:
@@ -827,6 +844,60 @@ class NextcloudRestoreWizard(tk.Tk):
                 self.wizard_data['container_port'] = self.container_port_entry.get()
             if hasattr(self, 'use_existing_var'):
                 self.wizard_data['use_existing'] = self.use_existing_var.get()
+    
+    def perform_extraction_and_detection(self):
+        """
+        Perform backup extraction and database type detection before showing Page 2.
+        This is called when navigating from Page 1 to Page 2.
+        Returns True if successful (or already detected), False if validation fails.
+        """
+        # Get backup path and password from wizard data
+        backup_path = self.wizard_data.get('backup_path', '').strip()
+        password = self.wizard_data.get('password', '')
+        
+        # Validate backup file exists
+        if not backup_path or not os.path.isfile(backup_path):
+            self.error_label.config(text="Error: Please select a valid backup archive file.")
+            return False
+        
+        # Validate password for encrypted backups
+        if backup_path.endswith('.gpg') and not password:
+            self.error_label.config(text="Error: Please enter decryption password for encrypted backup.")
+            return False
+        
+        # If already detected, skip re-detection
+        if self.detected_dbtype:
+            print(f"Database type already detected: {self.detected_dbtype}")
+            return True
+        
+        # Show progress message
+        self.error_label.config(text="Extracting and detecting database type...", fg="blue")
+        self.update_idletasks()
+        
+        try:
+            # Perform detection with password support
+            dbtype, db_config = self.early_detect_database_type_from_backup(backup_path, password)
+            
+            if dbtype:
+                self.detected_dbtype = dbtype
+                self.detected_db_config = db_config
+                self.db_auto_detected = True
+                print(f"Database type detected before Page 2: {dbtype}")
+                self.error_label.config(text="")
+                return True
+            else:
+                # Detection failed - allow navigation but show warning
+                print("Warning: Could not detect database type from backup")
+                self.error_label.config(text="Warning: Could not detect database type. Please verify credentials.", fg="orange")
+                self.detected_dbtype = None
+                self.detected_db_config = None
+                self.db_auto_detected = False
+                return True  # Still allow navigation
+                
+        except Exception as e:
+            print(f"Error during extraction and detection: {e}")
+            self.error_label.config(text=f"Error: {str(e)}", fg="red")
+            return False
 
     def browse_backup(self):
         path = filedialog.askopenfilename(
@@ -1375,10 +1446,14 @@ class NextcloudRestoreWizard(tk.Tk):
         
         return dbtype, db_config
     
-    def early_detect_database_type_from_backup(self, backup_path):
+    def early_detect_database_type_from_backup(self, backup_path, password=None):
         """
         Early detection: Extract only config.php from backup to detect database type
         before user enters credentials. This avoids requiring database credentials for SQLite.
+        
+        Args:
+            backup_path: Path to the backup file (.tar.gz or .tar.gz.gpg)
+            password: Optional decryption password for encrypted backups
         
         Returns: (dbtype, db_config) or (None, None) if detection fails
         
@@ -1387,13 +1462,30 @@ class NextcloudRestoreWizard(tk.Tk):
         """
         try:
             temp_extract_dir = None
+            temp_decrypted_path = None
             
             # Handle encrypted backups
             if backup_path.endswith('.gpg'):
-                # For encrypted backups, we need the password first
-                # We'll skip early detection and rely on detection during restore
-                print("Encrypted backup detected - database type detection will occur during restore")
-                return None, None
+                if not password:
+                    # Password not provided - cannot decrypt
+                    print("Encrypted backup detected but no password provided - skipping early detection")
+                    return None, None
+                
+                print("Decrypting backup for early detection...")
+                # Decrypt to a temporary file
+                temp_decrypted_path = tempfile.mktemp(suffix=".tar.gz", prefix="nextcloud_decrypt_")
+                
+                try:
+                    decrypt_file_gpg(backup_path, temp_decrypted_path, password)
+                    print("Backup decrypted successfully for early detection")
+                    # Use the decrypted file for extraction
+                    backup_to_extract = temp_decrypted_path
+                except Exception as decrypt_err:
+                    print(f"Failed to decrypt backup: {decrypt_err}")
+                    return None, None
+            else:
+                # Unencrypted backup - use directly
+                backup_to_extract = backup_path
             
             # Create a temporary directory to extract just config.php
             temp_extract_dir = tempfile.mkdtemp(prefix="nextcloud_early_detect_")
@@ -1403,7 +1495,7 @@ class NextcloudRestoreWizard(tk.Tk):
             config_file_in_archive = "config/config.php"
             
             result = subprocess.run(
-                f'tar -xzf "{backup_path}" -C "{temp_extract_dir}" "{config_file_in_archive}" 2>/dev/null',
+                f'tar -xzf "{backup_to_extract}" -C "{temp_extract_dir}" "{config_file_in_archive}" 2>/dev/null',
                 shell=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -1438,6 +1530,14 @@ class NextcloudRestoreWizard(tk.Tk):
             print(f"Early detection error: {e}")
             return None, None
         finally:
+            # Clean up temporary decrypted file
+            if temp_decrypted_path and os.path.exists(temp_decrypted_path):
+                try:
+                    os.remove(temp_decrypted_path)
+                    print("Cleaned up temporary decrypted file")
+                except Exception as cleanup_err:
+                    print(f"Warning: Could not clean up temp decrypted file: {cleanup_err}")
+            
             # Clean up temporary directory
             if temp_extract_dir and os.path.exists(temp_extract_dir):
                 try:
