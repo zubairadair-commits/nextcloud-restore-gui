@@ -541,7 +541,8 @@ class NextcloudRestoreWizard(tk.Tk):
         # Section 3: Database credentials - all centered
         tk.Label(parent, text="Step 3: Database Configuration", font=("Arial", 14, "bold")).pack(pady=(10, 5), anchor="center")
         tk.Label(parent, text="⚠️ Enter the database credentials from your ORIGINAL Nextcloud setup", font=("Arial", 10, "bold"), fg="red").pack(anchor="center")
-        tk.Label(parent, text="These must match the credentials you originally configured for your database", font=("Arial", 9), fg="gray").pack(anchor="center", pady=(0, 10))
+        tk.Label(parent, text="These credentials are stored in your backup and must match exactly", font=("Arial", 9), fg="gray").pack(anchor="center")
+        tk.Label(parent, text="The database will be automatically imported using these credentials", font=("Arial", 9), fg="gray").pack(anchor="center", pady=(0, 10))
         
         db_frame = tk.Frame(parent)
         db_frame.pack(pady=10, anchor="center")
@@ -608,6 +609,25 @@ class NextcloudRestoreWizard(tk.Tk):
             variable=self.use_existing_var,
             font=("Arial", 11)
         ).pack(pady=15, anchor="center")
+        
+        # Add informative text about what will happen during restore
+        info_frame = tk.Frame(parent, bg="#e8f4f8", relief="ridge", borderwidth=2)
+        info_frame.pack(pady=20, padx=30, fill="x")
+        
+        tk.Label(info_frame, text="ℹ️ The restore process will automatically:", font=("Arial", 11, "bold"), bg="#e8f4f8").pack(pady=(10, 5))
+        restore_info = [
+            "• Extract your backup archive",
+            "• Start database and Nextcloud containers (if needed)",
+            "• Copy config, data, and app folders to /var/www/html",
+            "• Import the database backup",
+            "• Update config.php with correct database credentials",
+            "• Set proper file permissions (www-data:www-data)",
+            "• Validate all files and database tables exist",
+            "• Restart the Nextcloud container"
+        ]
+        for info in restore_info:
+            tk.Label(info_frame, text=info, font=("Arial", 10), bg="#e8f4f8", anchor="w").pack(anchor="w", padx=20, pady=2)
+        tk.Label(info_frame, text="", bg="#e8f4f8").pack(pady=5)  # Spacing
     
     def wizard_navigate(self, direction):
         """Navigate between wizard pages, saving current page data"""
