@@ -281,6 +281,11 @@ class NextcloudRestoreWizard(tk.Tk):
         self.detected_dbtype = None
         self.detected_db_config = None
         self.db_auto_detected = False
+        
+        # Store references to database credential UI elements for conditional display
+        # These will be set in create_wizard_page2()
+        self.db_credential_widgets = []  # List of widgets to hide/show for database credentials
+        self.db_sqlite_message_label = None  # Label to show SQLite-specific message
 
         self.show_landing()
 
@@ -637,30 +642,91 @@ class NextcloudRestoreWizard(tk.Tk):
         tk.Label(info_frame, text="from the config.php file in your backup and restore accordingly.", 
                  font=("Arial", 9), bg="#e3f2fd", wraplength=600).pack(pady=(0, 5))
         
-        tk.Label(parent, text="⚠️ Enter the database credentials from your ORIGINAL Nextcloud setup", font=("Arial", 10, "bold"), fg="red").pack(anchor="center", pady=(5, 0))
-        tk.Label(parent, text="These credentials are stored in your backup and must match exactly", font=("Arial", 9), fg="gray").pack(anchor="center")
-        tk.Label(parent, text="The database will be automatically imported using these credentials", font=("Arial", 9), fg="gray").pack(anchor="center", pady=(0, 10))
+        # SQLite-specific message (hidden by default, shown when SQLite is detected)
+        # This message informs users that SQLite doesn't require separate database credentials
+        self.db_sqlite_message_label = tk.Label(
+            parent, 
+            text="✓ SQLite Database Detected\n\nNo database credentials are needed for SQLite.\nThe database is stored as a single file within your backup.",
+            font=("Arial", 11), 
+            fg="#2e7d32",  # Dark green color
+            bg="#e8f5e9",  # Light green background
+            relief="solid",
+            borderwidth=1,
+            padx=20,
+            pady=15,
+            justify="center"
+        )
+        # Initially hidden - will be shown if SQLite is detected
+        # Note: We don't pack it here; it will be shown/hidden dynamically
+        
+        # Warning and instructions for non-SQLite databases
+        # These will be hidden when SQLite is detected
+        warning_label = tk.Label(parent, text="⚠️ Enter the database credentials from your ORIGINAL Nextcloud setup", font=("Arial", 10, "bold"), fg="red")
+        warning_label.pack(anchor="center", pady=(5, 0))
+        
+        instruction_label1 = tk.Label(parent, text="These credentials are stored in your backup and must match exactly", font=("Arial", 9), fg="gray")
+        instruction_label1.pack(anchor="center")
+        
+        instruction_label2 = tk.Label(parent, text="The database will be automatically imported using these credentials", font=("Arial", 9), fg="gray")
+        instruction_label2.pack(anchor="center", pady=(0, 10))
         
         db_frame = tk.Frame(parent)
         db_frame.pack(pady=10, anchor="center")
         
-        tk.Label(db_frame, text="Database Name:", font=("Arial", 11)).grid(row=0, column=0, sticky="e", padx=5, pady=5)
+        # Database Name field
+        db_name_label = tk.Label(db_frame, text="Database Name:", font=("Arial", 11))
+        db_name_label.grid(row=0, column=0, sticky="e", padx=5, pady=5)
+        
         self.db_name_entry = tk.Entry(db_frame, font=("Arial", 11), width=30)
         self.db_name_entry.insert(0, self.wizard_data.get('db_name', POSTGRES_DB))
         self.db_name_entry.grid(row=0, column=1, padx=5, pady=5)
-        tk.Label(db_frame, text="Must match your original database name", font=("Arial", 9), fg="gray").grid(row=0, column=2, sticky="w", padx=(5, 0))
         
-        tk.Label(db_frame, text="Database User:", font=("Arial", 11)).grid(row=1, column=0, sticky="e", padx=5, pady=5)
+        db_name_hint = tk.Label(db_frame, text="Must match your original database name", font=("Arial", 9), fg="gray")
+        db_name_hint.grid(row=0, column=2, sticky="w", padx=(5, 0))
+        
+        # Database User field
+        db_user_label = tk.Label(db_frame, text="Database User:", font=("Arial", 11))
+        db_user_label.grid(row=1, column=0, sticky="e", padx=5, pady=5)
+        
         self.db_user_entry = tk.Entry(db_frame, font=("Arial", 11), width=30)
         self.db_user_entry.insert(0, self.wizard_data.get('db_user', POSTGRES_USER))
         self.db_user_entry.grid(row=1, column=1, padx=5, pady=5)
-        tk.Label(db_frame, text="Must match your original database user", font=("Arial", 9), fg="gray").grid(row=1, column=2, sticky="w", padx=(5, 0))
         
-        tk.Label(db_frame, text="Database Password:", font=("Arial", 11)).grid(row=2, column=0, sticky="e", padx=5, pady=5)
+        db_user_hint = tk.Label(db_frame, text="Must match your original database user", font=("Arial", 9), fg="gray")
+        db_user_hint.grid(row=1, column=2, sticky="w", padx=(5, 0))
+        
+        # Database Password field
+        db_password_label = tk.Label(db_frame, text="Database Password:", font=("Arial", 11))
+        db_password_label.grid(row=2, column=0, sticky="e", padx=5, pady=5)
+        
         self.db_password_entry = tk.Entry(db_frame, show="*", font=("Arial", 11), width=30)
         self.db_password_entry.insert(0, self.wizard_data.get('db_password', POSTGRES_PASSWORD))
         self.db_password_entry.grid(row=2, column=1, padx=5, pady=5)
-        tk.Label(db_frame, text="Must match your original database password", font=("Arial", 9), fg="gray").grid(row=2, column=2, sticky="w", padx=(5, 0))
+        
+        db_password_hint = tk.Label(db_frame, text="Must match your original database password", font=("Arial", 9), fg="gray")
+        db_password_hint.grid(row=2, column=2, sticky="w", padx=(5, 0))
+        
+        # Store references to database credential widgets for conditional display
+        # These widgets will be hidden when SQLite is detected
+        self.db_credential_widgets = [
+            warning_label,
+            instruction_label1,
+            instruction_label2,
+            db_name_label,
+            self.db_name_entry,
+            db_name_hint,
+            db_user_label,
+            self.db_user_entry,
+            db_user_hint,
+            db_password_label,
+            self.db_password_entry,
+            db_password_hint
+        ]
+        
+        # If database type was already detected (e.g., user went back and forth),
+        # update the UI accordingly
+        if self.detected_dbtype:
+            self.update_database_credential_ui(self.detected_dbtype)
         
         # Section 4: Nextcloud admin credentials - all centered
         tk.Label(parent, text="Step 4: Nextcloud Admin Credentials", font=("Arial", 14, "bold")).pack(pady=(25, 5), anchor="center")
@@ -770,6 +836,28 @@ class NextcloudRestoreWizard(tk.Tk):
         if path:
             self.backup_entry.delete(0, tk.END)
             self.backup_entry.insert(0, path)
+            
+            # Perform early database type detection to conditionally show/hide credential fields
+            # This improves UX by not requiring credentials for SQLite databases
+            print(f"Attempting early database type detection for: {path}")
+            dbtype, db_config = self.early_detect_database_type_from_backup(path)
+            
+            if dbtype:
+                self.detected_dbtype = dbtype
+                self.detected_db_config = db_config
+                self.db_auto_detected = True
+                print(f"Early detection successful: {dbtype}")
+                
+                # Update UI on page 2 if we're currently on that page or if it's been created
+                # This will hide/show database credential fields appropriately
+                if hasattr(self, 'db_credential_widgets') and self.db_credential_widgets:
+                    self.update_database_credential_ui(dbtype)
+            else:
+                print("Early detection not possible (encrypted or missing config.php)")
+                # Reset detection state - credentials will be required
+                self.detected_dbtype = None
+                self.detected_db_config = None
+                self.db_auto_detected = False
 
     def validate_and_start_restore(self):
         """Validate all input fields and start the restore process"""
@@ -801,16 +889,21 @@ class NextcloudRestoreWizard(tk.Tk):
                 self.error_label.config(text="Error: Please enter decryption password for encrypted backup.")
                 return
         
-        # Validate database credentials
-        if not db_name:
-            self.error_label.config(text="Error: Database name is required.")
-            return
-        if not db_user:
-            self.error_label.config(text="Error: Database user is required.")
-            return
-        if not db_password:
-            self.error_label.config(text="Error: Database password is required.")
-            return
+        # Validate database credentials (skip for SQLite databases)
+        # SQLite databases don't require separate credentials as they're file-based
+        is_sqlite = self.detected_dbtype and self.detected_dbtype.lower() in ['sqlite', 'sqlite3']
+        
+        if not is_sqlite:
+            # Only validate database credentials for MySQL and PostgreSQL
+            if not db_name:
+                self.error_label.config(text="Error: Database name is required.")
+                return
+            if not db_user:
+                self.error_label.config(text="Error: Database user is required.")
+                return
+            if not db_password:
+                self.error_label.config(text="Error: Database password is required.")
+                return
         
         # Validate admin credentials
         if not admin_user:
@@ -1282,6 +1375,76 @@ class NextcloudRestoreWizard(tk.Tk):
         
         return dbtype, db_config
     
+    def early_detect_database_type_from_backup(self, backup_path):
+        """
+        Early detection: Extract only config.php from backup to detect database type
+        before user enters credentials. This avoids requiring database credentials for SQLite.
+        
+        Returns: (dbtype, db_config) or (None, None) if detection fails
+        
+        Note: Handles both encrypted (.gpg) and unencrypted backups.
+        Normalizes 'sqlite3' to 'sqlite' for consistent handling.
+        """
+        try:
+            temp_extract_dir = None
+            
+            # Handle encrypted backups
+            if backup_path.endswith('.gpg'):
+                # For encrypted backups, we need the password first
+                # We'll skip early detection and rely on detection during restore
+                print("Encrypted backup detected - database type detection will occur during restore")
+                return None, None
+            
+            # Create a temporary directory to extract just config.php
+            temp_extract_dir = tempfile.mkdtemp(prefix="nextcloud_early_detect_")
+            
+            # Extract only config/config.php from the backup
+            # Using tar's ability to extract specific files
+            config_file_in_archive = "config/config.php"
+            
+            result = subprocess.run(
+                f'tar -xzf "{backup_path}" -C "{temp_extract_dir}" "{config_file_in_archive}" 2>/dev/null',
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            
+            config_path = os.path.join(temp_extract_dir, "config", "config.php")
+            
+            if not os.path.exists(config_path):
+                print("Early detection: config.php not found in backup")
+                return None, None
+            
+            # Parse the config.php file
+            dbtype, db_config = parse_config_php_dbtype(config_path)
+            
+            # Normalize sqlite3 to sqlite for consistent handling
+            if dbtype and dbtype.lower() in ['sqlite', 'sqlite3']:
+                dbtype = 'sqlite'
+                if db_config:
+                    db_config['dbtype'] = 'sqlite'
+            
+            if dbtype:
+                print(f"Early detection successful: {dbtype}")
+                if db_config:
+                    print(f"Database config: {db_config}")
+            else:
+                print("Early detection: Could not parse database type from config.php")
+            
+            return dbtype, db_config
+            
+        except Exception as e:
+            print(f"Early detection error: {e}")
+            return None, None
+        finally:
+            # Clean up temporary directory
+            if temp_extract_dir and os.path.exists(temp_extract_dir):
+                try:
+                    shutil.rmtree(temp_extract_dir)
+                except Exception as cleanup_err:
+                    print(f"Warning: Could not clean up temp directory: {cleanup_err}")
+    
     def show_db_detection_message(self, dbtype, db_config):
         """Show a message to user about detected database type and allow override"""
         db_display_names = {
@@ -1305,6 +1468,36 @@ class NextcloudRestoreWizard(tk.Tk):
         
         self.process_label.config(text=msg)
         print(f"Detected database info shown to user: {dbtype}")
+    
+    def update_database_credential_ui(self, dbtype):
+        """
+        Update the database credential UI based on detected database type.
+        
+        For SQLite/sqlite3: Hide credential fields and show informational message
+        For MySQL/PostgreSQL: Show credential fields and hide SQLite message
+        
+        This method is called after early detection when user selects a backup file.
+        """
+        is_sqlite = dbtype and dbtype.lower() in ['sqlite', 'sqlite3']
+        
+        if is_sqlite:
+            # Hide all database credential widgets
+            for widget in self.db_credential_widgets:
+                widget.grid_remove()  # Use grid_remove to preserve layout
+            
+            # Show SQLite informational message
+            if self.db_sqlite_message_label:
+                self.db_sqlite_message_label.pack(pady=(10, 10), anchor="center")
+        else:
+            # Show all database credential widgets
+            for widget in self.db_credential_widgets:
+                widget.grid()  # Restore widgets to grid
+            
+            # Hide SQLite message
+            if self.db_sqlite_message_label:
+                self.db_sqlite_message_label.pack_forget()
+        
+        print(f"UI updated for database type: {dbtype} (is_sqlite={is_sqlite})")
     
     def update_config_php(self, nextcloud_container, db_container, dbtype='pgsql'):
         """Update config.php with database credentials and admin settings"""
@@ -1357,6 +1550,12 @@ php /tmp/update_config.php"
             dbtype, db_config = self.detect_database_type(extract_dir)
             
             if dbtype:
+                # Normalize sqlite3 to sqlite for consistent handling
+                if dbtype.lower() in ['sqlite', 'sqlite3']:
+                    dbtype = 'sqlite'
+                    if db_config:
+                        db_config['dbtype'] = 'sqlite'
+                
                 self.detected_dbtype = dbtype
                 self.detected_db_config = db_config
                 self.db_auto_detected = True
