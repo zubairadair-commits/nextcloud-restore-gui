@@ -405,13 +405,21 @@ class NextcloudRestoreWizard(tk.Tk):
         scrollbar = tk.Scrollbar(self.body_frame, orient="vertical", command=canvas.yview)
         scrollable_frame = tk.Frame(canvas)
         
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
+        def on_configure(e):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            # Center the window horizontally
+            canvas_width = canvas.winfo_width()
+            if canvas_width > 1:  # Only update if canvas has been rendered
+                canvas.coords(self.canvas_window, canvas_width // 2, 0)
         
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        scrollable_frame.bind("<Configure>", on_configure)
+        
+        # Create window with north (top-center) anchor for horizontal centering
+        self.canvas_window = canvas.create_window((0, 0), window=scrollable_frame, anchor="n")
         canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Also bind canvas resize to re-center content
+        canvas.bind("<Configure>", on_configure)
         
         # Store references
         self.wizard_canvas = canvas
