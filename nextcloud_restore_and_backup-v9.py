@@ -151,6 +151,44 @@ def get_postgres_container_name():
         pass
     return None
 
+def check_container_network(container_name, network_name="bridge"):
+    """Check if a container is connected to a specific network"""
+    try:
+        result = subprocess.run(
+            ['docker', 'inspect', container_name, '--format', '{{range $net, $config := .NetworkSettings.Networks}}{{$net}} {{end}}'],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        )
+        if result.returncode == 0:
+            networks = result.stdout.strip().split()
+            return network_name in networks
+    except Exception as e:
+        print(f"Error checking container network: {e}")
+    return False
+
+def attach_container_to_network(container_name, network_name="bridge"):
+    """Attach a container to a specific network with error handling"""
+    try:
+        # First check if already connected
+        if check_container_network(container_name, network_name):
+            print(f"Container {container_name} is already connected to {network_name} network")
+            return True
+        
+        # Try to connect the container to the network
+        result = subprocess.run(
+            ['docker', 'network', 'connect', network_name, container_name],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        )
+        
+        if result.returncode == 0:
+            print(f"Successfully attached {container_name} to {network_name} network")
+            return True
+        else:
+            print(f"Failed to attach {container_name} to {network_name} network: {result.stderr}")
+            return False
+    except Exception as e:
+        print(f"Error attaching container to network: {e}")
+        return False
+
 # ----------- FASTER EXTRACTION USING SYSTEM TAR -----------
 def fast_extract_tar_gz(archive_path, extract_to):
     os.makedirs(extract_to, exist_ok=True)
@@ -890,6 +928,29 @@ class NextcloudRestoreWizard(tk.Tk):
             self.set_restore_progress(30, f"Using existing Nextcloud container: {container}")
             self.process_label.config(text=f"Using container: {container}")
             self.update_idletasks()
+            
+            # Check and attach to bridge network if not connected
+            if not check_container_network(container, "bridge"):
+                self.set_restore_progress(32, f"Attaching {container} to bridge network...")
+                self.process_label.config(text=f"Connecting container to bridge network...")
+                self.update_idletasks()
+                
+                if not attach_container_to_network(container, "bridge"):
+                    error_msg = (
+                        f"Failed to attach container '{container}' to bridge network.\n\n"
+                        "This is required for the restore process to work correctly.\n"
+                        "Please ensure the container is running and you have permission to modify it.\n\n"
+                        "You can manually attach it using:\n"
+                        f"  docker network connect bridge {container}\n\n"
+                        "Or restart the container with proper network settings."
+                    )
+                    self.set_restore_progress(0, "Restore failed!")
+                    self.error_label.config(text=error_msg)
+                    messagebox.showerror("Network Connection Failed", error_msg)
+                    return None
+                
+                self.set_restore_progress(33, f"Container {container} attached to bridge network")
+            
             return container
         
         # Start a new container with configured values
@@ -901,25 +962,34 @@ class NextcloudRestoreWizard(tk.Tk):
         self.update_idletasks()
         
         # Try to link to database container for proper Docker networking
-        # First attempt with link, if it fails (e.g., db container not found), try without
+        # First attempt with link and explicit bridge network
         result = subprocess.run(
-            f'docker run -d --name {new_container_name} --link {POSTGRES_CONTAINER_NAME}:db -p {port}:80 {NEXTCLOUD_IMAGE}',
+            f'docker run -d --name {new_container_name} --network bridge --link {POSTGRES_CONTAINER_NAME}:db -p {port}:80 {NEXTCLOUD_IMAGE}',
             shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
         
-        # If linking failed, try without link (for cases where DB might not be available yet)
+        # If linking failed, try without link but still with bridge network
         if result.returncode != 0 and "Could not find" in result.stderr:
             print(f"Warning: Could not link to database container, starting without link: {result.stderr}")
             result = subprocess.run(
-                f'docker run -d --name {new_container_name} -p {port}:80 {NEXTCLOUD_IMAGE}',
+                f'docker run -d --name {new_container_name} --network bridge -p {port}:80 {NEXTCLOUD_IMAGE}',
                 shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
             )
         
         if result.returncode != 0:
             tb = traceback.format_exc()
+            error_msg = (
+                f"Failed to start Nextcloud container.\n\n"
+                f"Error: {result.stderr}\n\n"
+                "Common issues:\n"
+                "- Container name already in use (try a different name)\n"
+                "- Port already in use (try a different port)\n"
+                "- Not attached to default bridge network\n\n"
+                "Please check Docker status and try again."
+            )
             self.set_restore_progress(0, "Restore failed!")
-            self.error_label.config(text=f"Failed to start Nextcloud container: {result.stderr}\n{tb}")
-            print(tb)
+            self.error_label.config(text=error_msg)
+            print(f"Container start failed: {result.stderr}\n{tb}")
             return None
         
         container_id = new_container_name
@@ -933,15 +1003,38 @@ class NextcloudRestoreWizard(tk.Tk):
         """Ensure database container is running, using credentials from GUI"""
         db_container = get_postgres_container_name()
         if db_container:
+            # Check and attach to bridge network if not connected
+            if not check_container_network(db_container, "bridge"):
+                self.set_restore_progress(42, f"Attaching {db_container} to bridge network...")
+                self.process_label.config(text=f"Connecting DB container to bridge network...")
+                self.update_idletasks()
+                
+                if not attach_container_to_network(db_container, "bridge"):
+                    error_msg = (
+                        f"Failed to attach database container '{db_container}' to bridge network.\n\n"
+                        "This is required for the restore process to work correctly.\n"
+                        "Please ensure the container is running and you have permission to modify it.\n\n"
+                        "You can manually attach it using:\n"
+                        f"  docker network connect bridge {db_container}\n\n"
+                        "Or restart the container with proper network settings."
+                    )
+                    self.set_restore_progress(0, "Restore failed!")
+                    self.error_label.config(text=error_msg)
+                    messagebox.showerror("Network Connection Failed", error_msg)
+                    return None
+                
+                self.set_restore_progress(43, f"Database container {db_container} attached to bridge network")
+            
             return db_container
         
         self.set_restore_progress(40, "No database container found. Starting a new PostgreSQL container ...")
         self.process_label.config(text=f"Starting DB container: {POSTGRES_CONTAINER_NAME}")
         self.update_idletasks()
         
-        # Use credentials from GUI
+        # Use credentials from GUI and explicitly set network to bridge
         result = subprocess.run(
             f'docker run -d --name {POSTGRES_CONTAINER_NAME} '
+            f'--network bridge '
             f'-e POSTGRES_DB={self.restore_db_name} '
             f'-e POSTGRES_USER={self.restore_db_user} '
             f'-e POSTGRES_PASSWORD={self.restore_db_password} '
@@ -951,9 +1044,18 @@ class NextcloudRestoreWizard(tk.Tk):
         
         if result.returncode != 0:
             tb = traceback.format_exc()
+            error_msg = (
+                f"Failed to start PostgreSQL container.\n\n"
+                f"Error: {result.stderr}\n\n"
+                "Common issues:\n"
+                "- Container name already in use\n"
+                "- Port 5432 already in use\n"
+                "- Not attached to default bridge network\n\n"
+                "Please check Docker status and try again."
+            )
             self.set_restore_progress(0, "Restore failed!")
-            self.error_label.config(text=f"Failed to start PostgreSQL container: {result.stderr}\n{tb}")
-            print(tb)
+            self.error_label.config(text=error_msg)
+            print(f"Database container start failed: {result.stderr}\n{tb}")
             return None
         
         db_container_id = POSTGRES_CONTAINER_NAME
@@ -1248,13 +1350,22 @@ php /tmp/update_config.php"
         try:
             self.status_label.config(text=f"Pulling nextcloud image and starting container on port {port}...")
             result = subprocess.run(
-                f'docker run -d --name {NEXTCLOUD_CONTAINER_NAME} -p {port}:80 {NEXTCLOUD_IMAGE}',
+                f'docker run -d --name {NEXTCLOUD_CONTAINER_NAME} --network bridge -p {port}:80 {NEXTCLOUD_IMAGE}',
                 shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
             )
             if result.returncode != 0:
                 tb = traceback.format_exc()
-                messagebox.showerror("Docker Error", f"Failed to start Nextcloud: {result.stderr}\n{tb}")
-                print(tb)
+                error_msg = (
+                    f"Failed to start Nextcloud container.\n\n"
+                    f"Error: {result.stderr}\n\n"
+                    "Common issues:\n"
+                    "- Container name already in use\n"
+                    "- Port already in use\n"
+                    "- Not attached to default bridge network\n\n"
+                    "Please check Docker status and try again."
+                )
+                messagebox.showerror("Docker Error", error_msg)
+                print(f"Container start failed: {result.stderr}\n{tb}")
                 self.show_landing()
                 return
             container_id = NEXTCLOUD_CONTAINER_NAME
