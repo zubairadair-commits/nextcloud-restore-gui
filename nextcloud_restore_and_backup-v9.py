@@ -487,7 +487,40 @@ class NextcloudRestoreWizard(tk.Tk):
                 self.set_restore_progress(5, "Decrypting backup archive ...")
                 self.process_label.config(text=f"Decrypting: {os.path.basename(backup_path)}")
                 self.update_idletasks()
-                decrypt_file_gpg(backup_path, decrypted_file, password)
+                
+                # Start decryption with progress monitoring
+                decryption_done = [False]  # Use list for mutable flag
+                
+                def do_decryption():
+                    try:
+                        decrypt_file_gpg(backup_path, decrypted_file, password)
+                        decryption_done[0] = True
+                    except Exception as ex:
+                        decryption_done[0] = ex
+                
+                # Start decryption in a thread
+                decryption_thread = threading.Thread(target=do_decryption, daemon=True)
+                decryption_thread.start()
+                
+                # Update progress while decryption is running
+                progress_val = 5
+                while decryption_thread.is_alive():
+                    if progress_val < 9:
+                        progress_val += 1
+                        self.set_restore_progress(progress_val, "Decrypting backup archive ...")
+                        self.update_idletasks()
+                    time.sleep(0.3)  # Check every 0.3 seconds
+                
+                # Wait for thread to finish
+                decryption_thread.join()
+                
+                # Check if decryption failed
+                if decryption_done[0] is not True:
+                    if isinstance(decryption_done[0], Exception):
+                        raise decryption_done[0]
+                    else:
+                        raise Exception("Decryption failed")
+                
                 extracted_file = decrypted_file
             except Exception as e:
                 tb = traceback.format_exc()
@@ -497,10 +530,44 @@ class NextcloudRestoreWizard(tk.Tk):
                 shutil.rmtree(extract_temp, ignore_errors=True)
                 return None
 
-        # Step 2: FAST EXTRACTION using system tar
+        # Step 2: FAST EXTRACTION using system tar with progress monitoring
         try:
             self.set_restore_progress(10, "Extracting backup archive (fast) ...")
-            fast_extract_tar_gz(extracted_file, extract_temp)
+            self.update_idletasks()
+            
+            # Start extraction in a separate thread-like approach with progress updates
+            extraction_done = [False]  # Use list for mutable flag
+            
+            def do_extraction():
+                try:
+                    fast_extract_tar_gz(extracted_file, extract_temp)
+                    extraction_done[0] = True
+                except Exception as ex:
+                    extraction_done[0] = ex
+            
+            # Start extraction in a thread
+            extraction_thread = threading.Thread(target=do_extraction, daemon=True)
+            extraction_thread.start()
+            
+            # Update progress while extraction is running
+            progress_val = 10
+            while extraction_thread.is_alive():
+                if progress_val < 18:
+                    progress_val += 2
+                    self.set_restore_progress(progress_val, "Extracting backup archive ...")
+                    self.update_idletasks()
+                time.sleep(0.5)  # Check every 0.5 seconds
+            
+            # Wait for thread to finish
+            extraction_thread.join()
+            
+            # Check if extraction failed
+            if extraction_done[0] is not True:
+                if isinstance(extraction_done[0], Exception):
+                    raise extraction_done[0]
+                else:
+                    raise Exception("Extraction failed")
+                    
         except Exception as e:
             tb = traceback.format_exc()
             self.set_restore_progress(0, "Restore failed!")
@@ -702,16 +769,31 @@ class NextcloudRestoreWizard(tk.Tk):
                     f'docker exec {nextcloud_container} chown -R www-data:www-data {nextcloud_path}/config {nextcloud_path}/data',
                     shell=True, check=True
                 )
+            except subprocess.CalledProcessError as perm_err:
+                # Display warning but allow restore to continue
+                warning_msg = f"Warning: Could not set file permissions (chown failed). You may need to set permissions manually."
+                self.error_label.config(text=warning_msg, fg="orange")
+                self.process_label.config(text=f"Permission warning (continuing restore): {perm_err}")
+                print(f"Warning: chown failed but continuing restore: {perm_err}")
             except Exception as perm_err:
-                tb = traceback.format_exc()
-                self.error_label.config(text=f"Error setting permissions: {perm_err}\n{tb}")
-                print(tb)
-                self.set_restore_progress(0, "Restore failed!")
-                return
+                # For other exceptions, show warning but also continue
+                warning_msg = f"Warning: Error setting permissions: {perm_err}. You may need to set permissions manually."
+                self.error_label.config(text=warning_msg, fg="orange")
+                self.process_label.config(text=f"Permission warning (continuing restore): {perm_err}")
+                print(f"Warning: permission error but continuing restore: {perm_err}")
 
             self.set_restore_progress(100, self.restore_steps[5])
             self.process_label.config(text="Restore complete.")
-            self.error_label.config(text="")
+            
+            # Clear or show final status in error label
+            if hasattr(self, "error_label") and self.error_label:
+                current_text = self.error_label.cget("text")
+                if current_text and "Warning" in current_text:
+                    # Keep the warning message but add success note
+                    pass  # Keep the warning visible
+                else:
+                    self.error_label.config(text="", fg="red")
+            
             messagebox.showinfo("Restore Complete", "Your Nextcloud instance was successfully restored from backup.")
             shutil.rmtree(extract_dir, ignore_errors=True)
             self.show_landing()
