@@ -1,0 +1,164 @@
+================================================================================
+                    BEFORE: MySQL/PostgreSQL Database
+================================================================================
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│                                                                          │
+│                Nextcloud Restore & Backup Utility                        │
+│                                                                          │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│                    Restore Wizard: Page 2 of 3                           │
+│                                                                          │
+│                  Step 3: Database Configuration                          │
+│                                                                          │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │ ℹ️  Database Type Auto-Detection                                   │ │
+│  │                                                                     │ │
+│  │ The restore process will automatically detect your database type   │ │
+│  │ (SQLite, PostgreSQL, MySQL) from the config.php file in your       │ │
+│  │ backup and restore accordingly.                                    │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+│                                                                          │
+│  ⚠️  Enter the database credentials from your ORIGINAL Nextcloud setup  │
+│  These credentials are stored in your backup and must match exactly     │
+│  The database will be automatically imported using these credentials    │
+│                                                                          │
+│                                                                          │
+│     Database Name:     ┌───────────────────────────────┐                │
+│                        │ nextcloud                     │                │
+│                        └───────────────────────────────┘                │
+│                        Must match your original database name           │
+│                                                                          │
+│     Database User:     ┌───────────────────────────────┐                │
+│                        │ nextcloud                     │                │
+│                        └───────────────────────────────┘                │
+│                        Must match your original database user           │
+│                                                                          │
+│     Database Password: ┌───────────────────────────────┐                │
+│                        │ ••••••••                      │                │
+│                        └───────────────────────────────┘                │
+│                        Must match your original database password       │
+│                                                                          │
+│                                                                          │
+│                  Step 4: Nextcloud Admin Credentials                     │
+│                  Admin credentials for Nextcloud instance                │
+│                                                                          │
+│     Admin Username:    ┌───────────────────────────────┐                │
+│                        │ admin                         │                │
+│                        └───────────────────────────────┘                │
+│                                                                          │
+│     Admin Password:    ┌───────────────────────────────┐                │
+│                        │ •••••                         │                │
+│                        └───────────────────────────────┘                │
+│                                                                          │
+│                                                                          │
+│               ┌──────────┐                    ┌──────────┐              │
+│               │ ← Back   │                    │ Next →   │              │
+│               └──────────┘                    └──────────┘              │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+
+================================================================================
+                     AFTER: SQLite Database Detected
+================================================================================
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│                                                                          │
+│                Nextcloud Restore & Backup Utility                        │
+│                                                                          │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│                    Restore Wizard: Page 2 of 3                           │
+│                                                                          │
+│                  Step 3: Database Configuration                          │
+│                                                                          │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │ ℹ️  Database Type Auto-Detection                                   │ │
+│  │                                                                     │ │
+│  │ The restore process will automatically detect your database type   │ │
+│  │ (SQLite, PostgreSQL, MySQL) from the config.php file in your       │ │
+│  │ backup and restore accordingly.                                    │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+│                                                                          │
+│                                                                          │
+│  ╔════════════════════════════════════════════════════════════════════╗ │
+│  ║                   ✓ SQLite Database Detected                       ║ │
+│  ║                                                                    ║ │
+│  ║         No database credentials are needed for SQLite.             ║ │
+│  ║    The database is stored as a single file within your backup.    ║ │
+│  ╚════════════════════════════════════════════════════════════════════╝ │
+│                                                                          │
+│                       (Green background, dark green text)                │
+│                                                                          │
+│                                                                          │
+│                  Step 4: Nextcloud Admin Credentials                     │
+│                  Admin credentials for Nextcloud instance                │
+│                                                                          │
+│     Admin Username:    ┌───────────────────────────────┐                │
+│                        │ admin                         │                │
+│                        └───────────────────────────────┘                │
+│                                                                          │
+│     Admin Password:    ┌───────────────────────────────┐                │
+│                        │ •••••                         │                │
+│                        └───────────────────────────────┘                │
+│                                                                          │
+│                                                                          │
+│               ┌──────────┐                    ┌──────────┐              │
+│               │ ← Back   │                    │ Next →   │              │
+│               └──────────┘                    └──────────┘              │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+
+================================================================================
+                            KEY CHANGES SUMMARY
+================================================================================
+
+REMOVED (when SQLite detected):
+  ❌ Warning message: "⚠️ Enter the database credentials..."
+  ❌ Instruction text about matching credentials
+  ❌ Database Name input field
+  ❌ Database User input field  
+  ❌ Database Password input field
+  ❌ All related hint text
+
+ADDED (when SQLite detected):
+  ✅ Green informational box with checkmark icon
+  ✅ Clear message explaining SQLite doesn't need credentials
+  ✅ Explanation that database is file-based
+
+UNCHANGED:
+  ✓ Auto-detection information panel
+  ✓ Admin credentials section (still required)
+  ✓ Navigation buttons
+  ✓ Overall wizard structure
+
+
+================================================================================
+                          TECHNICAL BEHAVIOR
+================================================================================
+
+1. EARLY DETECTION (on backup file selection):
+   - Extracts config/config.php from backup
+   - Detects dbtype = 'sqlite' or 'sqlite3'
+   - Normalizes to 'sqlite'
+   - Updates UI immediately
+
+2. UI UPDATE:
+   - Hides 12 widgets (labels, entries, hints) using grid_remove()
+   - Shows SQLite message using pack()
+   - Preserves layout configuration
+
+3. VALIDATION:
+   - Skips database credential validation for SQLite
+   - Only validates admin credentials
+   - Allows restore to proceed without database credentials
+
+4. RESTORE PROCESS:
+   - Skips database container creation for SQLite
+   - Restores .db file directly to data folder
+   - No SQL import needed
+
+================================================================================
