@@ -168,6 +168,7 @@ class NextcloudRestoreWizard(tk.Tk):
         super().__init__()
         self.title("Nextcloud Restore & Backup Utility")
         self.geometry("700x900")  # Increased height for more input fields
+        self.minsize(600, 700)  # Set minimum window size to prevent excessive collapsing
 
         self.header_frame = tk.Frame(self)
         tk.Label(self.header_frame, text="Nextcloud Restore & Backup Utility", font=("Arial", 22, "bold")).pack(pady=10)
@@ -441,12 +442,9 @@ class NextcloudRestoreWizard(tk.Tk):
         frame = self.wizard_scrollable_frame
         self.wizard_page = page_num
         
-        # Header - centered (matches main app header)
-        tk.Label(frame, text="Nextcloud Restore & Backup Utility", font=("Arial", 22, "bold")).pack(pady=10, anchor="center")
-        
         # Page title (subheader) - centered
         page_title = f"Restore Wizard: Page {page_num} of 3"
-        tk.Label(frame, text=page_title, font=("Arial", 14)).pack(pady=(0, 10), anchor="center")
+        tk.Label(frame, text=page_title, font=("Arial", 14)).pack(pady=(10, 10), anchor="center")
         
         # Return to Main Menu button - centered
         btn_back = tk.Button(frame, text="Return to Main Menu", font=("Arial", 12), command=self.show_landing)
