@@ -523,11 +523,18 @@ class NextcloudRestoreWizard(tk.Tk):
         self.wizard_scrollbar = scrollbar
         self.wizard_scrollable_frame = scrollable_frame
         
+        # Pack canvas and scrollbar first
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
         # Show first page
         self.show_wizard_page(1)
         
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
+        # Force an immediate update to center the content on initial display
+        canvas.update_idletasks()
+        canvas_width = canvas.winfo_width()
+        if canvas_width > 1:
+            canvas.coords(self.canvas_window, canvas_width // 2, 0)
     
     def show_wizard_page(self, page_num):
         """Display a specific page of the wizard"""
