@@ -1697,7 +1697,7 @@ class NextcloudRestoreWizard(tk.Tk):
         self.show_landing()
     
     def apply_theme(self):
-        """Apply the current theme to all root-level widgets"""
+        """Apply the current theme to all root-level widgets and recursively to children"""
         self.configure(bg=self.theme_colors['bg'])
         self.header_frame.config(bg=self.theme_colors['header_bg'])
         self.header_label.config(
@@ -1709,6 +1709,88 @@ class NextcloudRestoreWizard(tk.Tk):
             fg=self.theme_colors['status_fg']
         )
         self.body_frame.config(bg=self.theme_colors['bg'])
+        
+        # Apply theme recursively to all children in body_frame
+        self.apply_theme_recursive(self.body_frame)
+    
+    def apply_theme_recursive(self, parent):
+        """
+        Recursively apply theme to all child widgets
+        Args:
+            parent: The parent widget to start from
+        """
+        try:
+            for child in parent.winfo_children():
+                widget_class = child.winfo_class()
+                
+                if widget_class == 'Frame':
+                    # Apply frame background
+                    try:
+                        current_bg = child.cget('bg')
+                        # Only update if it's using default or theme-able colors
+                        if current_bg in ['', 'SystemButtonFace', '#f0f0f0', '#1e1e1e', '#e3f2fd', '#e8f5e9', '#e8f4f8', '#1a3a4a', '#2a3a2a']:
+                            child.config(bg=self.theme_colors['bg'])
+                    except tk.TclError:
+                        pass
+                    # Recursively apply to frame's children
+                    self.apply_theme_recursive(child)
+                
+                elif widget_class == 'Label':
+                    # Apply label colors
+                    try:
+                        current_bg = child.cget('bg')
+                        current_fg = child.cget('fg')
+                        # Only update if using default colors
+                        if current_bg in ['', 'SystemButtonFace', '#f0f0f0', '#1e1e1e', '#e3f2fd', '#e8f5e9', '#e8f4f8', '#1a3a4a', '#2a3a2a']:
+                            child.config(bg=self.theme_colors['bg'])
+                        if current_fg in ['', 'SystemButtonText', 'black', '#000000']:
+                            child.config(fg=self.theme_colors['fg'])
+                        # Special colors like error, hint, etc. are preserved
+                    except tk.TclError:
+                        pass
+                
+                elif widget_class == 'Button':
+                    # Apply button colors (skip themed buttons with custom colors)
+                    try:
+                        current_bg = child.cget('bg')
+                        # Only update generic buttons, not the themed main buttons
+                        if current_bg in ['', 'SystemButtonFace', '#e0e0e0', '#2d2d2d']:
+                            child.config(
+                                bg=self.theme_colors['button_bg'],
+                                fg=self.theme_colors['button_fg'],
+                                activebackground=self.theme_colors['button_active_bg']
+                            )
+                    except tk.TclError:
+                        pass
+                
+                elif widget_class == 'Entry':
+                    # Apply entry colors
+                    try:
+                        child.config(
+                            bg=self.theme_colors['entry_bg'],
+                            fg=self.theme_colors['entry_fg'],
+                            insertbackground=self.theme_colors['entry_fg']
+                        )
+                    except tk.TclError:
+                        pass
+                
+                elif widget_class in ['Text', 'Listbox']:
+                    # Apply to text widgets
+                    try:
+                        child.config(
+                            bg=self.theme_colors['entry_bg'],
+                            fg=self.theme_colors['entry_fg']
+                        )
+                    except tk.TclError:
+                        pass
+                
+                # Continue recursion for container widgets
+                elif hasattr(child, 'winfo_children'):
+                    self.apply_theme_recursive(child)
+                    
+        except Exception as e:
+            # Silently continue if a widget fails to update
+            pass
     
     def apply_theme_to_widget(self, widget, widget_type='frame', **kwargs):
         """
