@@ -12,6 +12,9 @@ import traceback
 import re
 import platform
 import sys
+import argparse
+import json
+from datetime import datetime, timedelta
 
 DOCKER_INSTALLER_URL = "https://www.docker.com/products/docker-desktop/"
 GPG_DOWNLOAD_URL = "https://files.gpg4win.org/gpg4win-latest.exe"
@@ -1275,6 +1278,252 @@ def fast_extract_tar_gz(archive_path, extract_to):
             raise Exception(f"File system error during extraction: {e}")
     except Exception as e:
         raise Exception(f"Extraction failed: {e}")
+
+# --- Scheduled Backup Functions (Windows Task Scheduler Integration) ---
+
+def get_schedule_config_path():
+    """Get the path to the schedule configuration file."""
+    config_dir = os.path.join(os.path.expanduser("~"), ".nextcloud_backup")
+    os.makedirs(config_dir, exist_ok=True)
+    return os.path.join(config_dir, "schedule_config.json")
+
+def load_schedule_config():
+    """Load the schedule configuration from file."""
+    config_path = get_schedule_config_path()
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Error loading schedule config: {e}")
+    return None
+
+def save_schedule_config(config):
+    """Save the schedule configuration to file."""
+    config_path = get_schedule_config_path()
+    try:
+        with open(config_path, 'w') as f:
+            json.dump(config, f, indent=2)
+        return True
+    except Exception as e:
+        print(f"Error saving schedule config: {e}")
+        return False
+
+def get_exe_path():
+    """Get the path to the current executable or script."""
+    if getattr(sys, 'frozen', False):
+        # Running as compiled executable
+        return sys.executable
+    else:
+        # Running as script
+        return os.path.abspath(sys.argv[0])
+
+def create_scheduled_task(task_name, schedule_type, schedule_time, backup_dir, encrypt, password=""):
+    """
+    Create a Windows scheduled task for automatic backups.
+    
+    Args:
+        task_name: Name for the scheduled task
+        schedule_type: 'daily', 'weekly', 'monthly', or 'custom'
+        schedule_time: Time in HH:MM format
+        backup_dir: Directory to save backups
+        encrypt: Boolean for encryption
+        password: Encryption password (optional)
+    
+    Returns: (success, message) tuple
+    """
+    if platform.system() != "Windows":
+        return False, "Scheduled backups are only supported on Windows at this time."
+    
+    try:
+        # Get the executable path
+        exe_path = get_exe_path()
+        
+        # Build the command arguments for scheduled execution
+        args = [
+            "--scheduled",
+            "--backup-dir", backup_dir,
+            "--encrypt" if encrypt else "--no-encrypt"
+        ]
+        
+        if encrypt and password:
+            args.extend(["--password", password])
+        
+        # Build the full command
+        command = f'"{exe_path}" {" ".join(args)}'
+        
+        # Map schedule_type to schtasks frequency
+        if schedule_type == "daily":
+            schedule_args = "/SC DAILY"
+        elif schedule_type == "weekly":
+            schedule_args = "/SC WEEKLY /D MON"  # Default to Monday
+        elif schedule_type == "monthly":
+            schedule_args = "/SC MONTHLY /D 1"  # Default to 1st of month
+        else:
+            return False, f"Unsupported schedule type: {schedule_type}"
+        
+        # Create the scheduled task using schtasks
+        creation_flags = get_subprocess_creation_flags()
+        
+        # Delete existing task if it exists
+        subprocess.run(
+            ["schtasks", "/Delete", "/TN", task_name, "/F"],
+            creationflags=creation_flags,
+            capture_output=True,
+            text=True
+        )
+        
+        # Create new task
+        schtasks_cmd = [
+            "schtasks", "/Create",
+            "/TN", task_name,
+            "/TR", command,
+            "/ST", schedule_time,
+            schedule_args,
+            "/F"  # Force creation, overwrite if exists
+        ]
+        
+        result = subprocess.run(
+            schtasks_cmd,
+            creationflags=creation_flags,
+            capture_output=True,
+            text=True
+        )
+        
+        if result.returncode == 0:
+            return True, f"Scheduled task '{task_name}' created successfully."
+        else:
+            return False, f"Failed to create task: {result.stderr}"
+    
+    except Exception as e:
+        return False, f"Error creating scheduled task: {e}"
+
+def delete_scheduled_task(task_name):
+    """
+    Delete a Windows scheduled task.
+    
+    Args:
+        task_name: Name of the scheduled task to delete
+    
+    Returns: (success, message) tuple
+    """
+    if platform.system() != "Windows":
+        return False, "Scheduled backups are only supported on Windows at this time."
+    
+    try:
+        creation_flags = get_subprocess_creation_flags()
+        
+        result = subprocess.run(
+            ["schtasks", "/Delete", "/TN", task_name, "/F"],
+            creationflags=creation_flags,
+            capture_output=True,
+            text=True
+        )
+        
+        if result.returncode == 0:
+            return True, f"Scheduled task '{task_name}' deleted successfully."
+        else:
+            # Check if task doesn't exist
+            if "cannot find the file" in result.stderr.lower() or "does not exist" in result.stderr.lower():
+                return True, "Scheduled task was not found (may already be deleted)."
+            return False, f"Failed to delete task: {result.stderr}"
+    
+    except Exception as e:
+        return False, f"Error deleting scheduled task: {e}"
+
+def get_scheduled_task_status(task_name):
+    """
+    Get the status of a Windows scheduled task.
+    
+    Args:
+        task_name: Name of the scheduled task
+    
+    Returns: dict with status info or None if not found
+    """
+    if platform.system() != "Windows":
+        return None
+    
+    try:
+        creation_flags = get_subprocess_creation_flags()
+        
+        result = subprocess.run(
+            ["schtasks", "/Query", "/TN", task_name, "/FO", "LIST", "/V"],
+            creationflags=creation_flags,
+            capture_output=True,
+            text=True
+        )
+        
+        if result.returncode == 0:
+            # Parse the output
+            lines = result.stdout.strip().split('\n')
+            status = {}
+            for line in lines:
+                if ':' in line:
+                    key, value = line.split(':', 1)
+                    key = key.strip()
+                    value = value.strip()
+                    status[key] = value
+            
+            return {
+                'exists': True,
+                'status': status.get('Status', 'Unknown'),
+                'next_run': status.get('Next Run Time', 'Unknown'),
+                'last_run': status.get('Last Run Time', 'Unknown'),
+                'task_state': status.get('Task To Run', 'Unknown')
+            }
+        else:
+            return {'exists': False}
+    
+    except Exception as e:
+        print(f"Error checking task status: {e}")
+        return None
+
+def enable_scheduled_task(task_name):
+    """Enable a Windows scheduled task."""
+    if platform.system() != "Windows":
+        return False, "Scheduled backups are only supported on Windows at this time."
+    
+    try:
+        creation_flags = get_subprocess_creation_flags()
+        
+        result = subprocess.run(
+            ["schtasks", "/Change", "/TN", task_name, "/ENABLE"],
+            creationflags=creation_flags,
+            capture_output=True,
+            text=True
+        )
+        
+        if result.returncode == 0:
+            return True, f"Scheduled task '{task_name}' enabled."
+        else:
+            return False, f"Failed to enable task: {result.stderr}"
+    
+    except Exception as e:
+        return False, f"Error enabling scheduled task: {e}"
+
+def disable_scheduled_task(task_name):
+    """Disable a Windows scheduled task."""
+    if platform.system() != "Windows":
+        return False, "Scheduled backups are only supported on Windows at this time."
+    
+    try:
+        creation_flags = get_subprocess_creation_flags()
+        
+        result = subprocess.run(
+            ["schtasks", "/Change", "/TN", task_name, "/DISABLE"],
+            creationflags=creation_flags,
+            capture_output=True,
+            text=True
+        )
+        
+        if result.returncode == 0:
+            return True, f"Scheduled task '{task_name}' disabled."
+        else:
+            return False, f"Failed to disable task: {result.stderr}"
+    
+    except Exception as e:
+        return False, f"Error disabling scheduled task: {e}"
+
 # ---------------------------------------------------------------
 
 class NextcloudRestoreWizard(tk.Tk):
@@ -1379,7 +1628,17 @@ class NextcloudRestoreWizard(tk.Tk):
             landing_frame, text="✨ Start New Nextcloud Instance", font=("Arial", 16, "bold"),
             height=2, width=24, bg="#f7b32b", fg="white", command=self.start_new_instance_workflow
         )
-        self.new_btn.pack(pady=(6,22))
+        self.new_btn.pack(pady=(6,12))
+        
+        # Add scheduled backup button
+        self.schedule_btn = tk.Button(
+            landing_frame, text="📅 Schedule Backup", font=("Arial", 16, "bold"),
+            height=2, width=24, bg="#9b59b6", fg="white", command=self.show_schedule_backup
+        )
+        self.schedule_btn.pack(pady=(6,22))
+        
+        # Show schedule status if exists
+        self._update_schedule_status_label(landing_frame)
 
     # ----- Backup logic -----
     def start_backup(self):
@@ -3860,8 +4119,499 @@ php /tmp/update_config.php"
             print(tb)
             self.show_landing()
 
+    # ----- Scheduled Backup Methods -----
+    
+    def _update_schedule_status_label(self, parent):
+        """Update the schedule status label on the landing page."""
+        config = load_schedule_config()
+        if config and config.get('enabled'):
+            task_name = config.get('task_name', 'NextcloudBackup')
+            status = get_scheduled_task_status(task_name)
+            
+            if status and status.get('exists'):
+                status_text = f"📅 Scheduled: {config.get('frequency', 'Unknown')} at {config.get('time', 'Unknown')}"
+                status_label = tk.Label(
+                    parent, 
+                    text=status_text, 
+                    font=("Arial", 11), 
+                    fg="#27ae60"
+                )
+                status_label.pack(pady=(0, 10))
+    
+    def show_schedule_backup(self):
+        """Show the schedule backup configuration UI."""
+        for widget in self.body_frame.winfo_children():
+            widget.destroy()
+        
+        self.status_label.config(text="Schedule Backup Configuration")
+        
+        # Create main frame
+        frame = tk.Frame(self.body_frame)
+        frame.pack(pady=20, fill="both", expand=True)
+        
+        # Back button
+        tk.Button(
+            frame, 
+            text="Return to Main Menu", 
+            font=("Arial", 12), 
+            command=self.show_landing
+        ).pack(pady=8)
+        
+        # Title
+        tk.Label(
+            frame, 
+            text="Schedule Automatic Backups", 
+            font=("Arial", 18, "bold")
+        ).pack(pady=15)
+        
+        # Load existing config
+        config = load_schedule_config()
+        
+        # Show current status
+        task_name = config.get('task_name', 'NextcloudBackup') if config else 'NextcloudBackup'
+        status = get_scheduled_task_status(task_name)
+        
+        status_frame = tk.Frame(frame, bg="#e8f4f8", relief="ridge", borderwidth=2)
+        status_frame.pack(pady=10, fill="x", padx=40)
+        
+        tk.Label(
+            status_frame, 
+            text="Current Status", 
+            font=("Arial", 14, "bold"), 
+            bg="#e8f4f8"
+        ).pack(pady=5)
+        
+        if status and status.get('exists'):
+            status_text = f"✓ Scheduled backup is active\n"
+            if config:
+                status_text += f"Frequency: {config.get('frequency', 'Unknown')}\n"
+                status_text += f"Time: {config.get('time', 'Unknown')}\n"
+                status_text += f"Backup Directory: {config.get('backup_dir', 'Unknown')}"
+            
+            tk.Label(
+                status_frame, 
+                text=status_text, 
+                font=("Arial", 11), 
+                bg="#e8f4f8", 
+                fg="#27ae60"
+            ).pack(pady=5)
+            
+            # Add buttons for managing existing schedule
+            btn_frame = tk.Frame(status_frame, bg="#e8f4f8")
+            btn_frame.pack(pady=10)
+            
+            tk.Button(
+                btn_frame, 
+                text="Disable Schedule", 
+                font=("Arial", 11),
+                command=lambda: self._disable_schedule(task_name)
+            ).pack(side="left", padx=5)
+            
+            tk.Button(
+                btn_frame, 
+                text="Delete Schedule", 
+                font=("Arial", 11),
+                command=lambda: self._delete_schedule(task_name)
+            ).pack(side="left", padx=5)
+        else:
+            tk.Label(
+                status_frame, 
+                text="✗ No scheduled backup configured", 
+                font=("Arial", 11), 
+                bg="#e8f4f8", 
+                fg="#e74c3c"
+            ).pack(pady=5)
+        
+        # Configuration section
+        config_frame = tk.Frame(frame)
+        config_frame.pack(pady=20, fill="x", padx=40)
+        
+        tk.Label(
+            config_frame, 
+            text="Configure New Schedule", 
+            font=("Arial", 14, "bold")
+        ).pack(pady=10)
+        
+        # Backup directory
+        tk.Label(config_frame, text="Backup Directory:", font=("Arial", 11)).pack(pady=5)
+        dir_frame = tk.Frame(config_frame)
+        dir_frame.pack(pady=5, fill="x")
+        
+        backup_dir_var = tk.StringVar(value=config.get('backup_dir', '') if config else '')
+        dir_entry = tk.Entry(dir_frame, textvariable=backup_dir_var, font=("Arial", 11))
+        dir_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        
+        tk.Button(
+            dir_frame, 
+            text="Browse", 
+            font=("Arial", 10),
+            command=lambda: self._browse_backup_dir(backup_dir_var)
+        ).pack(side="right")
+        
+        # Frequency
+        tk.Label(config_frame, text="Frequency:", font=("Arial", 11)).pack(pady=(15, 5))
+        frequency_var = tk.StringVar(value=config.get('frequency', 'daily') if config else 'daily')
+        
+        freq_frame = tk.Frame(config_frame)
+        freq_frame.pack(pady=5)
+        
+        for freq in ['daily', 'weekly', 'monthly']:
+            tk.Radiobutton(
+                freq_frame, 
+                text=freq.capitalize(), 
+                variable=frequency_var, 
+                value=freq,
+                font=("Arial", 11)
+            ).pack(side="left", padx=10)
+        
+        # Time
+        tk.Label(config_frame, text="Backup Time (HH:MM):", font=("Arial", 11)).pack(pady=(15, 5))
+        time_var = tk.StringVar(value=config.get('time', '02:00') if config else '02:00')
+        time_entry = tk.Entry(config_frame, textvariable=time_var, font=("Arial", 11), width=10)
+        time_entry.pack(pady=5)
+        
+        # Encryption
+        encrypt_var = tk.BooleanVar(value=config.get('encrypt', False) if config else False)
+        tk.Checkbutton(
+            config_frame, 
+            text="Encrypt backups", 
+            variable=encrypt_var,
+            font=("Arial", 11)
+        ).pack(pady=10)
+        
+        # Password (shown only if encryption is enabled)
+        password_frame = tk.Frame(config_frame)
+        password_frame.pack(pady=5)
+        
+        tk.Label(password_frame, text="Encryption Password:", font=("Arial", 11)).pack()
+        password_var = tk.StringVar(value=config.get('password', '') if config else '')
+        password_entry = tk.Entry(password_frame, textvariable=password_var, show="*", font=("Arial", 11), width=30)
+        password_entry.pack(pady=5)
+        
+        def toggle_password_field(*args):
+            if encrypt_var.get():
+                password_frame.pack(pady=5)
+            else:
+                password_frame.pack_forget()
+        
+        encrypt_var.trace_add('write', toggle_password_field)
+        toggle_password_field()  # Initial state
+        
+        # Note about Windows only
+        if platform.system() != "Windows":
+            warning_label = tk.Label(
+                config_frame,
+                text="⚠️ Note: Scheduled backups are currently only supported on Windows",
+                font=("Arial", 10),
+                fg="#e67e22"
+            )
+            warning_label.pack(pady=10)
+        
+        # Create schedule button
+        tk.Button(
+            config_frame,
+            text="Create/Update Schedule",
+            font=("Arial", 13, "bold"),
+            bg="#27ae60",
+            fg="white",
+            command=lambda: self._create_schedule(
+                backup_dir_var.get(),
+                frequency_var.get(),
+                time_var.get(),
+                encrypt_var.get(),
+                password_var.get()
+            )
+        ).pack(pady=20)
+    
+    def _browse_backup_dir(self, var):
+        """Browse for backup directory."""
+        directory = filedialog.askdirectory(title="Select backup destination folder")
+        if directory:
+            var.set(directory)
+    
+    def _create_schedule(self, backup_dir, frequency, time, encrypt, password):
+        """Create or update a scheduled backup."""
+        # Validate inputs
+        if not backup_dir:
+            messagebox.showerror("Error", "Please select a backup directory.")
+            return
+        
+        if not os.path.isdir(backup_dir):
+            messagebox.showerror("Error", "Invalid backup directory.")
+            return
+        
+        # Validate time format
+        try:
+            time_obj = datetime.strptime(time, "%H:%M")
+        except ValueError:
+            messagebox.showerror("Error", "Invalid time format. Please use HH:MM (e.g., 02:00)")
+            return
+        
+        if encrypt and not password:
+            messagebox.showerror("Error", "Please provide an encryption password or disable encryption.")
+            return
+        
+        # Create the scheduled task
+        task_name = "NextcloudBackup"
+        success, message = create_scheduled_task(
+            task_name, 
+            frequency, 
+            time, 
+            backup_dir, 
+            encrypt, 
+            password
+        )
+        
+        if success:
+            # Save configuration
+            config = {
+                'task_name': task_name,
+                'backup_dir': backup_dir,
+                'frequency': frequency,
+                'time': time,
+                'encrypt': encrypt,
+                'password': password,  # Note: In production, consider more secure storage
+                'enabled': True,
+                'created_at': datetime.now().isoformat()
+            }
+            
+            if save_schedule_config(config):
+                messagebox.showinfo(
+                    "Success", 
+                    f"Scheduled backup created successfully!\n\n"
+                    f"Frequency: {frequency}\n"
+                    f"Time: {time}\n"
+                    f"Backup Directory: {backup_dir}\n\n"
+                    f"Your backups will run automatically according to this schedule."
+                )
+                self.show_landing()
+            else:
+                messagebox.showwarning(
+                    "Warning", 
+                    "Task created but configuration could not be saved."
+                )
+        else:
+            messagebox.showerror("Error", f"Failed to create scheduled task:\n{message}")
+    
+    def _disable_schedule(self, task_name):
+        """Disable the scheduled backup."""
+        success, message = disable_scheduled_task(task_name)
+        
+        if success:
+            # Update config
+            config = load_schedule_config()
+            if config:
+                config['enabled'] = False
+                save_schedule_config(config)
+            
+            messagebox.showinfo("Success", "Scheduled backup has been disabled.")
+            self.show_schedule_backup()  # Refresh the UI
+        else:
+            messagebox.showerror("Error", f"Failed to disable schedule:\n{message}")
+    
+    def _delete_schedule(self, task_name):
+        """Delete the scheduled backup."""
+        confirm = messagebox.askyesno(
+            "Confirm Delete", 
+            "Are you sure you want to delete the scheduled backup?\n\n"
+            "This will remove the scheduled task completely."
+        )
+        
+        if not confirm:
+            return
+        
+        success, message = delete_scheduled_task(task_name)
+        
+        if success:
+            # Delete config file
+            config_path = get_schedule_config_path()
+            if os.path.exists(config_path):
+                os.remove(config_path)
+            
+            messagebox.showinfo("Success", "Scheduled backup has been deleted.")
+            self.show_landing()
+        else:
+            messagebox.showerror("Error", f"Failed to delete schedule:\n{message}")
+    
+    def run_scheduled_backup(self, backup_dir, encrypt, password):
+        """
+        Run a backup in scheduled/silent mode (no GUI interactions).
+        This is called when the app is launched with --scheduled flag.
+        """
+        try:
+            # Check if Docker is running
+            if not is_docker_running():
+                print("ERROR: Docker is not running. Cannot perform backup.")
+                return
+            
+            # Get Nextcloud container
+            container_names = get_nextcloud_container_name()
+            if not container_names:
+                print("ERROR: No running Nextcloud container found.")
+                return
+            
+            chosen_container = container_names
+            
+            # Detect database type
+            dbtype, db_config = detect_database_type_from_container(chosen_container)
+            if not dbtype:
+                dbtype = 'pgsql'  # Default to PostgreSQL
+            
+            # Store for backup process
+            self.backup_dbtype = dbtype
+            self.backup_db_config = db_config
+            
+            # Override set_progress to use print instead of GUI
+            self._scheduled_mode = True
+            
+            # Run backup process silently
+            print(f"Starting scheduled backup to {backup_dir}")
+            self.run_backup_process_scheduled(backup_dir, encrypt, password, chosen_container)
+            print("Scheduled backup completed successfully")
+            
+        except Exception as e:
+            print(f"ERROR: Scheduled backup failed: {e}")
+            traceback.print_exc()
+    
+    def run_backup_process_scheduled(self, backup_dir, encrypt, encryption_password, container_name):
+        """
+        Run backup process in scheduled mode (no GUI, just logging to console).
+        """
+        NEXTCLOUD_PATH = "/var/www/html"
+        try:
+            print("Step 1/10: Preparing backup...")
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            backup_temp = os.path.join(tempfile.gettempdir(), f"ncbackup_{timestamp}")
+            os.makedirs(backup_temp, exist_ok=True)
+            backup_file = os.path.join(backup_dir, f"nextcloud-backup-{timestamp}.tar.gz")
+            encrypted_file = backup_file + ".gpg"
+
+            folders_to_copy = [
+                ("config", True),
+                ("data", True),
+                ("apps", False),
+                ("custom_apps", False),
+            ]
+            copied_folders = []
+            skipped_folders = []
+            
+            for idx, (folder, is_critical) in enumerate(folders_to_copy, start=2):
+                print(f"Step {idx}/10: Checking and copying '{folder}'...")
+                check = subprocess.run(
+                    f'docker exec {container_name} test -d {NEXTCLOUD_PATH}/{folder}',
+                    shell=True
+                )
+                if check.returncode == 0:
+                    try:
+                        subprocess.run(
+                            f'docker cp {container_name}:{NEXTCLOUD_PATH}/{folder} {backup_temp}/{folder}',
+                            shell=True, check=True
+                        )
+                        copied_folders.append(folder)
+                        print(f"  ✓ Copied '{folder}'")
+                    except Exception as cp_err:
+                        print(f"  ✗ Failed to copy '{folder}' but continuing...")
+                else:
+                    if is_critical:
+                        print(f"CRITICAL FOLDER '{folder}' IS MISSING! Backup aborted.")
+                        shutil.rmtree(backup_temp, ignore_errors=True)
+                        return
+                    else:
+                        skipped_folders.append(folder)
+                        print(f"  - Skipping '{folder}' (not found; not critical)")
+
+            # Database backup
+            dbtype = getattr(self, 'backup_dbtype', 'pgsql')
+            db_config = getattr(self, 'backup_db_config', {})
+            
+            if dbtype == 'sqlite':
+                print("Step 6/10: SQLite database backed up with data folder")
+            else:
+                db_name = dbtype.upper() if dbtype == 'pgsql' else 'MySQL/MariaDB'
+                print(f"Step 6/10: Dumping {db_name} database...")
+                dump_file = os.path.join(backup_temp, "nextcloud-db.sql")
+                db_dump_result = None
+                
+                try:
+                    if dbtype == 'pgsql':
+                        db_container = get_postgres_container_name() or POSTGRES_CONTAINER_NAME
+                        db_name_actual = db_config.get('dbname', POSTGRES_DB)
+                        db_user = db_config.get('dbuser', POSTGRES_USER)
+                        db_password = POSTGRES_PASSWORD
+                        
+                        db_dump_cmd = f'docker exec {db_container} bash -c "PGPASSWORD=\'{db_password}\' pg_dump -U {db_user} {db_name_actual}"'
+                    elif dbtype in ['mysql', 'mariadb']:
+                        db_host = db_config.get('dbhost', 'db')
+                        db_name_actual = db_config.get('dbname', 'nextcloud')
+                        db_user = db_config.get('dbuser', 'nextcloud')
+                        
+                        db_dump_cmd = f'docker exec {container_name} bash -c "mysqldump -h {db_host} -u {db_user} -p{POSTGRES_PASSWORD} {db_name_actual}"'
+                    else:
+                        raise Exception(f"Unsupported database type: {dbtype}")
+                    
+                    with open(dump_file, "w", encoding="utf8") as f:
+                        proc = subprocess.Popen(db_dump_cmd, shell=True, stdout=f, stderr=subprocess.PIPE)
+                        proc.wait()
+                        db_dump_result = proc.returncode
+                        
+                except Exception as e:
+                    print(f"Database dump error: {e}")
+                    db_dump_result = 1
+                
+                if db_dump_result != 0:
+                    print(f"CRITICAL: Database backup failed! Backup aborted.")
+                    shutil.rmtree(backup_temp, ignore_errors=True)
+                    return
+
+            print("Step 7/10: Creating archive...")
+            shutil.make_archive(backup_file.replace('.tar.gz',''), 'gztar', backup_temp)
+            
+            if encrypt and encryption_password:
+                print("Step 8/10: Encrypting archive...")
+                encrypt_file_gpg(backup_file, encrypted_file, encryption_password)
+                os.remove(backup_file)
+                final_file = encrypted_file
+            else:
+                final_file = backup_file
+            
+            print("Step 9/10: Cleaning up temp files...")
+            shutil.rmtree(backup_temp, ignore_errors=True)
+
+            print(f"Step 10/10: Backup complete!")
+            print(f"Backup saved to: {final_file}")
+            
+        except Exception as e:
+            tb = traceback.format_exc()
+            print(f"Backup failed: {e}")
+            print(tb)
+    
     def check_dependencies(self):
         pass # handled stepwise
 
 if __name__ == "__main__":
-    NextcloudRestoreWizard().mainloop()
+    # Parse command-line arguments for scheduled execution
+    parser = argparse.ArgumentParser(description='Nextcloud Restore & Backup Utility')
+    parser.add_argument('--scheduled', action='store_true', help='Run in scheduled backup mode (no GUI)')
+    parser.add_argument('--backup-dir', type=str, help='Backup directory path')
+    parser.add_argument('--encrypt', action='store_true', help='Enable encryption')
+    parser.add_argument('--no-encrypt', action='store_true', help='Disable encryption')
+    parser.add_argument('--password', type=str, default='', help='Encryption password')
+    
+    args = parser.parse_args()
+    
+    if args.scheduled:
+        # Run in scheduled mode (no GUI)
+        if not args.backup_dir:
+            print("ERROR: --backup-dir is required for scheduled backups")
+            sys.exit(1)
+        
+        encrypt = args.encrypt and not args.no_encrypt
+        
+        # Create a minimal app instance just to run the backup
+        app = NextcloudRestoreWizard()
+        app.withdraw()  # Hide the main window
+        app.run_scheduled_backup(args.backup_dir, encrypt, args.password)
+        sys.exit(0)
+    else:
+        # Normal GUI mode
+        NextcloudRestoreWizard().mainloop()
