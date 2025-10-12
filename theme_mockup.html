@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nextcloud Restore & Backup - Theme Mockup</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #444;
+        }
+        .container {
+            display: flex;
+            gap: 40px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .window {
+            width: 500px;
+            border: 2px solid #333;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        .title {
+            text-align: center;
+            margin: 20px 0;
+            font-size: 24px;
+            font-weight: bold;
+            color: white;
+        }
+        
+        /* Light Theme */
+        .light {
+            background: #f0f0f0;
+            color: #000;
+        }
+        .light .header {
+            background: #f0f0f0;
+            padding: 20px;
+            text-align: center;
+            font-size: 22px;
+            font-weight: bold;
+            border-bottom: 2px solid #ddd;
+        }
+        .light .body {
+            padding: 40px;
+            background: #f0f0f0;
+        }
+        .light .button {
+            background: #3daee9;
+            color: white;
+            padding: 20px;
+            margin: 10px 0;
+            text-align: center;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+            border: none;
+            width: 100%;
+        }
+        .light .button:hover {
+            opacity: 0.9;
+        }
+        .light .button.backup { background: #3daee9; }
+        .light .button.restore { background: #45bf55; }
+        .light .button.new-instance { background: #f7b32b; }
+        .light .button.schedule { background: #9b59b6; }
+        .light .button.theme-toggle {
+            background: #e0e0e0;
+            color: #000;
+            padding: 12px;
+            font-size: 14px;
+            width: 60%;
+            margin: 10px auto;
+        }
+        .light .status {
+            text-align: center;
+            margin-top: 15px;
+            color: #27ae60;
+            font-size: 13px;
+        }
+        
+        /* Dark Theme */
+        .dark {
+            background: #1e1e1e;
+            color: #e0e0e0;
+        }
+        .dark .header {
+            background: #252525;
+            color: #e0e0e0;
+            padding: 20px;
+            text-align: center;
+            font-size: 22px;
+            font-weight: bold;
+            border-bottom: 2px solid #333;
+        }
+        .dark .body {
+            padding: 40px;
+            background: #1e1e1e;
+        }
+        .dark .button {
+            background: #2c8ab8;
+            color: white;
+            padding: 20px;
+            margin: 10px 0;
+            text-align: center;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+            border: none;
+            width: 100%;
+        }
+        .dark .button:hover {
+            opacity: 0.9;
+        }
+        .dark .button.backup { background: #2c8ab8; }
+        .dark .button.restore { background: #378d44; }
+        .dark .button.new-instance { background: #c89020; }
+        .dark .button.schedule { background: #7b4a85; }
+        .dark .button.theme-toggle {
+            background: #2d2d2d;
+            color: #e0e0e0;
+            padding: 12px;
+            font-size: 14px;
+            width: 60%;
+            margin: 10px auto;
+        }
+        .dark .status {
+            text-align: center;
+            margin-top: 15px;
+            color: #7cb342;
+            font-size: 13px;
+        }
+        
+        .comparison {
+            text-align: center;
+            margin: 20px 0;
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        
+        .note {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            color: #856404;
+            padding: 15px;
+            margin: 20px auto;
+            border-radius: 4px;
+            max-width: 1000px;
+            text-align: center;
+        }
+        
+        .highlight {
+            background: #d4edda;
+            border: 1px solid #28a745;
+            color: #155724;
+            padding: 10px;
+            margin: 20px 0;
+            border-radius: 4px;
+            text-align: center;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="comparison">
+        GUI Improvements: Main Menu Mockup
+    </div>
+    
+    <div class="note">
+        <strong>Implementation Summary:</strong><br>
+        ✓ Button width increased from 24 to 30 characters (+25%)<br>
+        ✓ Dark theme toggle added<br>
+        ✓ All button labels now fully visible<br>
+        ✓ Professional, balanced appearance
+    </div>
+    
+    <div class="container">
+        <!-- Light Theme Window -->
+        <div class="window light">
+            <div class="header">
+                Nextcloud Restore & Backup Utility
+            </div>
+            <div class="body">
+                <button class="button backup">🔄 Backup Now</button>
+                <button class="button restore">🛠 Restore from Backup</button>
+                <button class="button new-instance">✨ Start New Nextcloud Instance</button>
+                <div class="highlight">
+                    ↑ Label now fully visible (width: 30 chars)
+                </div>
+                <button class="button schedule">📅 Schedule Backup</button>
+                <button class="button theme-toggle">🌙 Dark Theme</button>
+                <div class="status">
+                    📅 Scheduled: daily at 02:00
+                </div>
+            </div>
+        </div>
+        
+        <!-- Dark Theme Window -->
+        <div class="window dark">
+            <div class="header">
+                Nextcloud Restore & Backup Utility
+            </div>
+            <div class="body">
+                <button class="button backup">🔄 Backup Now</button>
+                <button class="button restore">🛠 Restore from Backup</button>
+                <button class="button new-instance">✨ Start New Nextcloud Instance</button>
+                <div class="highlight" style="background: #2a3a2a; color: #7cb342; border-color: #4caf50;">
+                    ↑ Same width, darker colors for dark theme
+                </div>
+                <button class="button schedule">📅 Schedule Backup</button>
+                <button class="button theme-toggle">☀️ Light Theme</button>
+                <div class="status">
+                    📅 Scheduled: daily at 02:00
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="note" style="margin-top: 40px;">
+        <strong>Key Changes:</strong><br><br>
+        <div style="text-align: left; max-width: 600px; margin: 0 auto;">
+            <strong>1. Button Width Fix:</strong><br>
+            • All buttons increased from 24 to 30 characters<br>
+            • "Start New Nextcloud Instance" no longer truncated<br>
+            • Consistent sizing across all buttons<br><br>
+            
+            <strong>2. Dark Theme Toggle:</strong><br>
+            • New button below Schedule Backup<br>
+            • Icon changes: 🌙 (light) / ☀️ (dark)<br>
+            • Instant theme switching<br><br>
+            
+            <strong>3. Professional Appearance:</strong><br>
+            • Clean, modern design<br>
+            • High contrast for accessibility<br>
+            • Balanced layout and spacing<br>
+            • All text clearly readable
+        </div>
+    </div>
+</body>
+</html>
