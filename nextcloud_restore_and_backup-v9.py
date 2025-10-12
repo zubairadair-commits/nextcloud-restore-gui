@@ -260,18 +260,93 @@ def attach_container_to_network(container_name, network_name="bridge"):
         return False
 
 # ----------- EXTRACTION USING PYTHON TARFILE MODULE -----------
+def extract_config_php_only(archive_path, extract_to):
+    """
+    Efficiently extract only the config.php file from a tar.gz archive.
+    
+    This function searches for config.php in the archive and extracts only the first
+    matching file, avoiding the overhead of extracting the entire backup which can be
+    several gigabytes in size.
+    
+    Rationale: During early database detection, we only need to read config.php to
+    determine the database type (SQLite, MySQL, or PostgreSQL). This allows the GUI
+    to show/hide the appropriate input fields without extracting the full backup.
+    
+    Args:
+        archive_path: Path to the .tar.gz backup archive
+        extract_to: Directory where config.php should be extracted
+    
+    Returns:
+        Path to extracted config.php file, or None if not found
+    
+    Raises:
+        Exception: If archive is corrupted, unreadable, or extraction fails
+    """
+    os.makedirs(extract_to, exist_ok=True)
+    
+    try:
+        with tarfile.open(archive_path, 'r:gz') as tar:
+            # Iterate through archive members to find config.php
+            # This is efficient as it doesn't extract anything until we find the target
+            for member in tar:
+                # Check if this is a config.php file
+                if member.isfile() and member.name.endswith('config.php'):
+                    # Quick validation: check if path contains 'config' directory
+                    # This helps ensure we get the Nextcloud config.php, not some other file
+                    path_parts = member.name.split('/')
+                    if 'config' in path_parts or '.config' in path_parts:
+                        print(f"✓ Found config.php in archive: {member.name}")
+                        
+                        # Extract only this single file
+                        tar.extract(member, path=extract_to)
+                        
+                        # Return the full path to the extracted file
+                        extracted_path = os.path.join(extract_to, member.name)
+                        print(f"✓ Extracted config.php to: {extracted_path}")
+                        return extracted_path
+            
+            # If we get here, config.php was not found in the archive
+            print("⚠️ config.php not found in archive")
+            return None
+            
+    except tarfile.ReadError as e:
+        raise Exception(f"Invalid or corrupted archive: {e}")
+    except OSError as e:
+        if e.errno == 28:  # ENOSPC - No space left on device
+            raise Exception(f"No space left on device: {e}")
+        elif e.errno == 13:  # EACCES - Permission denied
+            raise Exception(f"Permission denied: {e}")
+        else:
+            raise Exception(f"File system error during extraction: {e}")
+    except Exception as e:
+        raise Exception(f"Extraction failed: {e}")
+
+
 def fast_extract_tar_gz(archive_path, extract_to):
     """
-    Extract tar.gz archive using Python's tarfile module.
-    This is more robust and platform-independent than using subprocess.
-    Provides detailed error messages for common failure cases.
+    Extract full tar.gz archive using Python's tarfile module.
+    
+    This function performs a complete extraction of all files in the backup archive.
+    It should only be called during the actual restore process, not during initial
+    database detection (use extract_config_php_only for that).
+    
+    Rationale: Full extraction is a heavy operation that can take minutes for large
+    backups (several GB). By deferring this until the user confirms they want to
+    proceed with the restore, we keep the initial UI responsive and fast.
+    
+    Args:
+        archive_path: Path to the .tar.gz backup archive
+        extract_to: Directory where all files should be extracted
+    
+    Raises:
+        Exception: If archive is corrupted, unreadable, or extraction fails
     """
     os.makedirs(extract_to, exist_ok=True)
     try:
         with tarfile.open(archive_path, 'r:gz') as tar:
             # Extract all members
             tar.extractall(path=extract_to)
-        print(f"✓ Successfully extracted archive to {extract_to}")
+        print(f"✓ Successfully extracted full archive to {extract_to}")
     except tarfile.ReadError as e:
         raise Exception(f"Invalid or corrupted archive: {e}")
     except OSError as e:
@@ -918,11 +993,29 @@ class NextcloudRestoreWizard(tk.Tk):
     
     def perform_extraction_and_detection(self):
         """
-        Perform backup extraction and database type detection before showing Page 2.
-        This is called when navigating from Page 1 to Page 2.
-        Returns True if successful (or already detected), False if validation fails.
+        Perform database type detection before showing Page 2.
         
-        This method runs the detection in a background thread to keep the GUI responsive.
+        This is the entry point for early database detection, called when the user
+        clicks "Next" on Page 1 to navigate to the database configuration page.
+        
+        EXTRACTION STRATEGY:
+        - ONLY config.php is extracted at this stage (not the full backup)
+        - This is a lightweight operation (<1 second) vs full extraction (minutes)
+        - Full backup extraction is deferred until the actual restore process
+        
+        WHY THIS MATTERS:
+        - SQLite users can immediately see that no database credentials are needed
+        - MySQL/PostgreSQL users see the appropriate credential fields
+        - GUI remains responsive - no waiting for multi-GB extraction
+        - Better user experience with immediate feedback
+        
+        THREADING:
+        - Detection runs in a background thread to keep GUI responsive
+        - Animated spinner shows progress while detection is in progress
+        - All GUI updates happen on the main thread (thread-safe)
+        
+        Returns:
+            True if detection successful (or already detected), False if validation fails
         """
         # Get backup path and password from wizard data
         backup_path = self.wizard_data.get('backup_path', '').strip()
@@ -1130,6 +1223,33 @@ class NextcloudRestoreWizard(tk.Tk):
         self.update_idletasks()
 
     def auto_extract_backup(self, backup_path, password=None):
+        """
+        Perform FULL backup extraction during the actual restore process.
+        
+        WHEN THIS IS CALLED:
+        - Only called when user clicks "Start Restore" on Page 3
+        - This is the actual restore process, not the initial detection
+        - At this point, database type has already been detected from config.php
+        
+        WHAT THIS DOES:
+        - Decrypts the backup if encrypted (full backup decryption)
+        - Extracts ALL files from the backup archive (apps, config, data, database)
+        - This is the heavy operation that can take minutes for large backups
+        
+        WHY DEFERRED UNTIL NOW:
+        - User has already confirmed they want to proceed with restore
+        - Database credentials have been collected and validated
+        - All configuration has been finalized
+        - No point extracting everything until we're ready to use it
+        
+        THREADING:
+        - Decryption runs in background thread with progress updates
+        - Extraction runs in background thread with progress updates
+        - GUI remains responsive throughout with animated progress indicators
+        
+        Returns:
+            Path to extracted directory, or None if extraction fails
+        """
         extract_temp = os.path.join(tempfile.gettempdir(), "nextcloud_restore_extract")
         shutil.rmtree(extract_temp, ignore_errors=True)
         os.makedirs(extract_temp, exist_ok=True)
@@ -1198,16 +1318,19 @@ class NextcloudRestoreWizard(tk.Tk):
                 shutil.rmtree(extract_temp, ignore_errors=True)
                 return None
 
-        # Step 2: FAST EXTRACTION using system tar with progress monitoring
+        # Step 2: FULL EXTRACTION - Extract all files from backup archive
+        # This is where the complete backup (apps, config, data, database) is extracted
+        # Unlike early detection which only extracted config.php, this extracts everything
         try:
-            self.set_restore_progress(10, "Extracting backup archive (fast) ...")
+            self.set_restore_progress(10, "Extracting full backup archive...")
             self.update_idletasks()
             
-            # Start extraction in a separate thread-like approach with progress updates
+            # Start extraction in a background thread with progress updates
             extraction_done = [False]  # Use list for mutable flag
             
             def do_extraction():
                 try:
+                    # Extract ALL files from the backup (not just config.php)
                     fast_extract_tar_gz(extracted_file, extract_temp)
                     extraction_done[0] = True
                 except Exception as ex:
@@ -1578,32 +1701,48 @@ class NextcloudRestoreWizard(tk.Tk):
     
     def early_detect_database_type_from_backup(self, backup_path, password=None):
         """
-        Early detection: Extract all files from backup using Python's tarfile module,
-        then recursively search for config.php to detect database type before user
-        enters credentials. This avoids requiring database credentials for SQLite.
+        Early detection: Extract ONLY config.php from backup to detect database type.
+        
+        This is a lightweight operation that allows us to determine the database type
+        (SQLite, MySQL, or PostgreSQL) without extracting the full backup archive, which
+        can be several gigabytes and take minutes to extract.
+        
+        IMPORTANT BEHAVIOR:
+        - On startup/Page 1 navigation: Only config.php is extracted (fast, <1 second)
+        - Database type is detected from config.php to control UI (show/hide credential fields)
+        - Full archive extraction is deferred until actual restore process begins
+        
+        This two-phase approach keeps the GUI responsive and provides a better user experience:
+        - SQLite users never see unnecessary database credential fields
+        - MySQL/PostgreSQL users see the appropriate fields immediately
+        - No waiting for full extraction until user is ready to proceed
         
         Args:
             backup_path: Path to the backup file (.tar.gz or .tar.gz.gpg)
             password: Optional decryption password for encrypted backups
         
-        Returns: (dbtype, db_config) or (None, None) if detection fails
-        
-        Note: Handles both encrypted (.gpg) and unencrypted backups.
-        Normalizes 'sqlite3' to 'sqlite' for consistent handling.
-        Uses Python's tarfile module for extraction and recursive search for config.php.
+        Returns: 
+            (dbtype, db_config): Database type and configuration dict, or (None, None) if detection fails
+            
+        Note: 
+            - Handles both encrypted (.gpg) and unencrypted backups
+            - Normalizes 'sqlite3' to 'sqlite' for consistent handling
+            - All operations run in background thread for GUI responsiveness
+            - Temporary files are cleaned up automatically
         """
         temp_extract_dir = None
         temp_decrypted_path = None
         
         try:
-            # Handle encrypted backups
+            # Step 1: Handle encrypted backups - decrypt if needed
             if backup_path.endswith('.gpg'):
                 if not password:
                     # Password not provided - cannot decrypt
                     # This is expected when called before password entry - detection will happen later
+                    print("⚠️ Encrypted backup requires password for detection")
                     return None, None
                 
-                print("Decrypting backup for database type detection...")
+                print("🔐 Decrypting backup for database type detection...")
                 # Decrypt to a temporary file
                 temp_decrypted_path = tempfile.mktemp(suffix=".tar.gz", prefix="nextcloud_decrypt_")
                 
@@ -1625,16 +1764,21 @@ class NextcloudRestoreWizard(tk.Tk):
                 # Unencrypted backup - use directly
                 backup_to_extract = backup_path
             
-            # Create a temporary directory to extract files
+            # Step 2: Extract ONLY config.php (efficient single-file extraction)
+            # This is much faster than extracting the entire multi-gigabyte backup
             temp_extract_dir = tempfile.mkdtemp(prefix="nextcloud_early_detect_")
-            print(f"Extracting backup for config.php detection to: {temp_extract_dir}")
+            print(f"📂 Extracting config.php only for database detection...")
+            print(f"   Extraction directory: {temp_extract_dir}")
             
-            # Extract all files from the backup using Python's tarfile module
             try:
-                with tarfile.open(backup_to_extract, 'r:gz') as tar:
-                    # Extract all files - this ensures we can find config.php wherever it is
-                    tar.extractall(path=temp_extract_dir)
-                    print(f"✓ Successfully extracted backup archive")
+                # Use efficient single-file extraction instead of extracting everything
+                config_path = extract_config_php_only(backup_to_extract, temp_extract_dir)
+                
+                if not config_path:
+                    print("⚠️ Early detection: config.php not found in backup archive")
+                    print("   This may indicate an incompatible backup format")
+                    return None, None
+                    
             except tarfile.ReadError as extract_err:
                 print(f"✗ Failed to extract backup: Invalid or corrupted archive")
                 print(f"  Error details: {extract_err}")
@@ -1643,35 +1787,24 @@ class NextcloudRestoreWizard(tk.Tk):
                 print(f"✗ Failed to extract backup: {extract_err}")
                 return None, None
             
-            # First try standard location
-            config_path = os.path.join(temp_extract_dir, "config", "config.php")
-            
-            if not os.path.exists(config_path):
-                print("config.php not found at standard location, performing recursive search...")
-                # Recursively search for config.php in any subdirectory
-                config_path = find_config_php_recursive(temp_extract_dir)
-                
-                if not config_path:
-                    print("⚠️ Early detection: config.php not found in backup after recursive search")
-                    return None, None
-            else:
-                print(f"✓ Found config.php at standard location")
-            
-            # Parse the config.php file
+            # Step 3: Parse the config.php file to extract database configuration
+            print(f"📖 Parsing config.php to detect database type...")
             dbtype, db_config = parse_config_php_dbtype(config_path)
             
-            # Normalize sqlite3 to sqlite for consistent handling
+            # Normalize sqlite3 to sqlite for consistent handling throughout the app
             if dbtype and dbtype.lower() in ['sqlite', 'sqlite3']:
                 dbtype = 'sqlite'
                 if db_config:
                     db_config['dbtype'] = 'sqlite'
             
+            # Report results
             if dbtype:
                 print(f"✓ Early detection successful: {dbtype}")
                 if db_config:
-                    print(f"Database config: {db_config}")
+                    print(f"  Database config from backup: {db_config}")
             else:
                 print("⚠️ Early detection: Could not parse database type from config.php")
+                print("   The config.php file may be malformed or use an unexpected format")
             
             return dbtype, db_config
             
@@ -1680,21 +1813,24 @@ class NextcloudRestoreWizard(tk.Tk):
             traceback.print_exc()
             return None, None
         finally:
-            # Clean up temporary decrypted file
+            # Step 4: Clean up temporary files
+            # Always clean up, even if an error occurred, to avoid leaving temp files
+            
+            # Clean up temporary decrypted file (only exists for encrypted backups)
             if temp_decrypted_path and os.path.exists(temp_decrypted_path):
                 try:
                     os.remove(temp_decrypted_path)
-                    print("Cleaned up temporary decrypted file")
+                    print("🧹 Cleaned up temporary decrypted file")
                 except Exception as cleanup_err:
-                    print(f"Warning: Could not clean up temp decrypted file: {cleanup_err}")
+                    print(f"⚠️ Warning: Could not clean up temp decrypted file: {cleanup_err}")
             
-            # Clean up temporary directory
+            # Clean up temporary extraction directory (contains only config.php)
             if temp_extract_dir and os.path.exists(temp_extract_dir):
                 try:
                     shutil.rmtree(temp_extract_dir)
-                    print("Cleaned up temporary extraction directory")
+                    print("🧹 Cleaned up temporary extraction directory")
                 except Exception as cleanup_err:
-                    print(f"Warning: Could not clean up temp directory: {cleanup_err}")
+                    print(f"⚠️ Warning: Could not clean up temp directory: {cleanup_err}")
     
     def show_db_detection_message(self, dbtype, db_config):
         """Show a message to user about detected database type and allow override"""
