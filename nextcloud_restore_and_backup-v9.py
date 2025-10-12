@@ -283,6 +283,8 @@ def extract_config_php_only(archive_path, extract_to):
         Exception: If archive is corrupted, unreadable, or extraction fails
     """
     os.makedirs(extract_to, exist_ok=True)
+    print(f"🔍 Searching for config.php in archive: {os.path.basename(archive_path)}")
+    print(f"📂 Extraction target directory: {extract_to}")
     
     try:
         with tarfile.open(archive_path, 'r:gz') as tar:
@@ -296,40 +298,63 @@ def extract_config_php_only(archive_path, extract_to):
                 # This prevents matching files like "apache-pretty-urls.config.php"
                 if member.isfile() and os.path.basename(member.name) == 'config.php':
                     potential_configs.append(member.name)
-                    print(f"Found potential config.php: {member.name}")
+                    print(f"📄 Found potential config.php: {member.name}")
                     
                     # Validate: check if path contains 'config' directory
                     # This helps ensure we get the Nextcloud config.php in config/ folder
                     path_parts = member.name.split('/')
                     if 'config' in path_parts:
-                        print(f"✓ Path contains 'config' directory: {member.name}")
+                        # Get the parent directory name for logging
+                        parent_dir = os.path.dirname(member.name)
+                        print(f"✓ Parent directory validation passed")
+                        print(f"  - Full path: {member.name}")
+                        print(f"  - Parent directory: {parent_dir}")
+                        print(f"  - Contains 'config' directory: Yes")
                         
                         # Extract only this single file to validate its content
+                        print(f"📦 Extracting config.php to: {extract_to}")
                         tar.extract(member, path=extract_to)
                         extracted_path = os.path.join(extract_to, member.name)
+                        print(f"✓ Extraction complete: {extracted_path}")
                         
                         # Validate the file content before accepting it
                         # Check for $CONFIG and dbtype to confirm it's a real Nextcloud config
+                        print(f"🔍 Validating file content...")
                         try:
                             with open(extracted_path, 'r', encoding='utf-8') as f:
                                 content = f.read(200)  # Read first 200 chars for validation
                                 if '$CONFIG' in content or 'dbtype' in content:
-                                    print(f"✓ Validated config.php contains Nextcloud config markers")
+                                    print(f"✓ Content validation passed")
+                                    print(f"  - Contains '$CONFIG': {'$CONFIG' in content}")
+                                    print(f"  - Contains 'dbtype': {'dbtype' in content}")
                                     print(f"✓ Using config.php from: {member.name}")
                                     return extracted_path
                                 else:
-                                    print(f"⚠️ File {member.name} doesn't contain $CONFIG or dbtype, skipping")
+                                    print(f"✗ Content validation failed")
+                                    print(f"  - File {member.name} doesn't contain $CONFIG or dbtype")
+                                    print(f"  - Skipping this file and continuing search")
                         except Exception as e:
                             print(f"⚠️ Could not validate {member.name}: {e}")
                             continue
+                    else:
+                        print(f"✗ Parent directory validation failed")
+                        print(f"  - Path: {member.name}")
+                        print(f"  - Parent directory: {os.path.dirname(member.name)}")
+                        print(f"  - Reason: Path does not contain 'config' directory")
+                        print(f"  - Skipping this file")
             
             # If we get here, config.php was not found in the archive
+            print(f"✗ No valid config.php found in archive")
             if potential_configs:
-                print(f"⚠️ Found {len(potential_configs)} config.php file(s) but none in 'config' directory or valid:")
+                print(f"⚠️ Summary: Found {len(potential_configs)} config.php file(s) but none passed all validation checks:")
                 for config in potential_configs:
                     print(f"   - {config}")
+                print(f"   Possible reasons:")
+                print(f"   - Not in a 'config' directory")
+                print(f"   - Doesn't contain $CONFIG or dbtype markers")
             else:
-                print("⚠️ config.php not found in archive")
+                print("⚠️ No files named exactly 'config.php' found in archive")
+                print(f"   (Files ending with 'config.php' but with different basenames are excluded)")
             return None
             
     except tarfile.ReadError as e:
@@ -1789,9 +1814,16 @@ class NextcloudRestoreWizard(tk.Tk):
             
             # Step 2: Extract ONLY config.php (efficient single-file extraction)
             # This is much faster than extracting the entire multi-gigabyte backup
-            temp_extract_dir = tempfile.mkdtemp(prefix="nextcloud_early_detect_")
-            print(f"📂 Extracting config.php only for database detection...")
-            print(f"   Extraction directory: {temp_extract_dir}")
+            # Use timestamp-based directory for better traceability
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            temp_extract_dir = tempfile.mkdtemp(prefix=f"ncbackup_extract_{timestamp}_")
+            print(f"=" * 70)
+            print(f"📂 Config.php Extraction for Database Detection")
+            print(f"=" * 70)
+            print(f"Backup file: {os.path.basename(backup_to_extract)}")
+            print(f"Extraction directory: {temp_extract_dir}")
+            print(f"Detection only occurs in this temporary directory")
+            print(f"=" * 70)
             
             try:
                 # Use efficient single-file extraction instead of extracting everything
@@ -1821,13 +1853,24 @@ class NextcloudRestoreWizard(tk.Tk):
                     db_config['dbtype'] = 'sqlite'
             
             # Report results
+            print(f"=" * 70)
+            print(f"📊 Database Detection Results")
+            print(f"=" * 70)
             if dbtype:
-                print(f"✓ Early detection successful: {dbtype}")
+                print(f"✓ Detection Status: Successful")
+                print(f"Database Type: {dbtype.upper()}")
                 if db_config:
-                    print(f"  Database config from backup: {db_config}")
+                    print(f"Database Configuration:")
+                    for key, value in db_config.items():
+                        # Don't print sensitive info like passwords
+                        if 'password' not in key.lower():
+                            print(f"  - {key}: {value}")
+                print(f"=" * 70)
             else:
-                print("⚠️ Early detection: Could not parse database type from config.php")
-                print("   The config.php file may be malformed or use an unexpected format")
+                print(f"✗ Detection Status: Failed")
+                print(f"Reason: Could not parse database type from config.php")
+                print(f"Details: The config.php file may be malformed or use an unexpected format")
+                print(f"=" * 70)
             
             return dbtype, db_config
             
@@ -1842,18 +1885,44 @@ class NextcloudRestoreWizard(tk.Tk):
             # Clean up temporary decrypted file (only exists for encrypted backups)
             if temp_decrypted_path and os.path.exists(temp_decrypted_path):
                 try:
+                    file_size = os.path.getsize(temp_decrypted_path)
                     os.remove(temp_decrypted_path)
-                    print("🧹 Cleaned up temporary decrypted file")
+                    print(f"=" * 70)
+                    print(f"🧹 Cleanup: Temporary Decrypted File")
+                    print(f"=" * 70)
+                    print(f"Removed: {temp_decrypted_path}")
+                    print(f"Size: {file_size / (1024*1024):.2f} MB")
+                    print(f"✓ Cleanup successful")
+                    print(f"=" * 70)
                 except Exception as cleanup_err:
-                    print(f"⚠️ Warning: Could not clean up temp decrypted file: {cleanup_err}")
+                    print(f"⚠️ Warning: Could not clean up temp decrypted file")
+                    print(f"   Path: {temp_decrypted_path}")
+                    print(f"   Error: {cleanup_err}")
             
             # Clean up temporary extraction directory (contains only config.php)
             if temp_extract_dir and os.path.exists(temp_extract_dir):
                 try:
+                    # Calculate directory size before cleanup
+                    dir_size = sum(
+                        os.path.getsize(os.path.join(root, file))
+                        for root, _, files in os.walk(temp_extract_dir)
+                        for file in files
+                    )
+                    file_count = sum(len(files) for _, _, files in os.walk(temp_extract_dir))
+                    
                     shutil.rmtree(temp_extract_dir)
-                    print("🧹 Cleaned up temporary extraction directory")
+                    print(f"=" * 70)
+                    print(f"🧹 Cleanup: Temporary Extraction Directory")
+                    print(f"=" * 70)
+                    print(f"Removed: {temp_extract_dir}")
+                    print(f"Files removed: {file_count}")
+                    print(f"Space freed: {dir_size / 1024:.2f} KB")
+                    print(f"✓ Cleanup successful")
+                    print(f"=" * 70)
                 except Exception as cleanup_err:
-                    print(f"⚠️ Warning: Could not clean up temp directory: {cleanup_err}")
+                    print(f"⚠️ Warning: Could not clean up temp directory")
+                    print(f"   Path: {temp_extract_dir}")
+                    print(f"   Error: {cleanup_err}")
     
     def show_db_detection_message(self, dbtype, db_config):
         """Show a message to user about detected database type and allow override"""
