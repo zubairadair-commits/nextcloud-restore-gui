@@ -140,9 +140,9 @@ def new_approach_single_file(archive_path):
     config_path = None
     with tarfile.open(archive_path, 'r:gz') as tar:
         for member in tar:
-            if member.isfile() and member.name.endswith('config.php'):
+            if member.isfile() and os.path.basename(member.name) == 'config.php':
                 path_parts = member.name.split('/')
-                if 'config' in path_parts or '.config' in path_parts:
+                if 'config' in path_parts:
                     print(f"✓ Found config.php: {member.name}")
                     tar.extract(member, path=temp_dir)
                     config_path = os.path.join(temp_dir, member.name)
