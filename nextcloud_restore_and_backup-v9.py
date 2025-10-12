@@ -26,6 +26,182 @@ POSTGRES_USER = "nextcloud"
 POSTGRES_PASSWORD = "example"
 POSTGRES_PORT = 5432
 
+# --- Silent subprocess execution utilities ---
+def get_subprocess_creation_flags():
+    """
+    Get the appropriate creation flags for subprocess to prevent console windows on Windows.
+    Returns: creation flags for subprocess or 0 if not on Windows
+    """
+    if platform.system() == "Windows":
+        # CREATE_NO_WINDOW flag prevents console window from appearing
+        return 0x08000000  # CREATE_NO_WINDOW
+    return 0
+
+def run_docker_command_silent(cmd, timeout=10):
+    """
+    Run a Docker command silently (no console window on Windows).
+    Args:
+        cmd: Command as list or string
+        timeout: Timeout in seconds
+    Returns: subprocess.CompletedProcess result or None on error
+    """
+    try:
+        creation_flags = get_subprocess_creation_flags()
+        
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=timeout,
+            creationflags=creation_flags,
+            shell=isinstance(cmd, str)
+        )
+        return result
+    except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
+        print(f"Docker command error: {e}")
+        return None
+
+def list_running_database_containers():
+    """
+    List all running database containers (MySQL, MariaDB, PostgreSQL).
+    Returns: list of dicts with container info: {'name': str, 'image': str, 'type': str}
+    """
+    db_containers = []
+    
+    try:
+        result = run_docker_command_silent(['docker', 'ps', '--format', '{{.Names}}|{{.Image}}'])
+        if not result or result.returncode != 0:
+            return db_containers
+        
+        for line in result.stdout.strip().split('\n'):
+            if not line:
+                continue
+            
+            parts = line.split('|')
+            if len(parts) != 2:
+                continue
+            
+            name, image = parts
+            image_lower = image.lower()
+            
+            # Detect database type from image name
+            if 'mysql' in image_lower and 'mariadb' not in image_lower:
+                db_containers.append({'name': name, 'image': image, 'type': 'mysql'})
+            elif 'mariadb' in image_lower:
+                db_containers.append({'name': name, 'image': image, 'type': 'mariadb'})
+            elif 'postgres' in image_lower:
+                db_containers.append({'name': name, 'image': image, 'type': 'pgsql'})
+    
+    except Exception as e:
+        print(f"Error listing database containers: {e}")
+    
+    return db_containers
+
+def inspect_container_environment(container_name):
+    """
+    Inspect a container's environment variables to gather database info.
+    Returns: dict with environment variables or empty dict on error
+    """
+    env_vars = {}
+    
+    try:
+        result = run_docker_command_silent(
+            ['docker', 'inspect', container_name, '--format', '{{range .Config.Env}}{{println .}}{{end}}']
+        )
+        
+        if not result or result.returncode != 0:
+            return env_vars
+        
+        for line in result.stdout.strip().split('\n'):
+            if '=' in line:
+                key, value = line.split('=', 1)
+                env_vars[key] = value
+    
+    except Exception as e:
+        print(f"Error inspecting container environment: {e}")
+    
+    return env_vars
+
+def detect_db_from_container_inspection(nextcloud_container, db_containers):
+    """
+    Detect database type by inspecting running containers and their relationships.
+    
+    Args:
+        nextcloud_container: Name of the Nextcloud container
+        db_containers: List of database containers from list_running_database_containers()
+    
+    Returns: (dbtype, db_info) where dbtype is 'mysql', 'mariadb', 'pgsql' or None
+             db_info is a dict with container details
+    """
+    # Strategy 1: Check Nextcloud container's config.php (existing method)
+    dbtype_from_config, db_config = detect_database_type_from_container(nextcloud_container)
+    
+    if dbtype_from_config:
+        # Try to match with running database containers
+        for db_container in db_containers:
+            if db_container['type'] == dbtype_from_config:
+                print(f"✓ Matched database type {dbtype_from_config} with container {db_container['name']}")
+                return dbtype_from_config, {
+                    'container': db_container['name'],
+                    'image': db_container['image'],
+                    'config': db_config
+                }
+        
+        # Config.php has dbtype but no matching container found
+        # Return the dbtype anyway, it might be correct
+        return dbtype_from_config, {'config': db_config}
+    
+    # Strategy 2: If config.php didn't work, check if there's only one DB container
+    if len(db_containers) == 1:
+        db_container = db_containers[0]
+        dbtype = 'mysql' if db_container['type'] in ['mysql', 'mariadb'] else db_container['type']
+        print(f"✓ Found single database container: {db_container['name']} ({db_container['type']})")
+        
+        # Inspect environment for additional info
+        env_vars = inspect_container_environment(db_container['name'])
+        
+        return dbtype, {
+            'container': db_container['name'],
+            'image': db_container['image'],
+            'env': env_vars
+        }
+    
+    # Strategy 3: Multiple DB containers - check network connections
+    if len(db_containers) > 1:
+        # Get Nextcloud container's networks
+        result = run_docker_command_silent(
+            ['docker', 'inspect', nextcloud_container, '--format', '{{range $net, $config := .NetworkSettings.Networks}}{{$net}} {{end}}']
+        )
+        
+        if result and result.returncode == 0:
+            nc_networks = set(result.stdout.strip().split())
+            
+            # Check which DB container shares a network with Nextcloud
+            for db_container in db_containers:
+                result = run_docker_command_silent(
+                    ['docker', 'inspect', db_container['name'], '--format', '{{range $net, $config := .NetworkSettings.Networks}}{{$net}} {{end}}']
+                )
+                
+                if result and result.returncode == 0:
+                    db_networks = set(result.stdout.strip().split())
+                    shared_networks = nc_networks & db_networks
+                    
+                    if shared_networks:
+                        dbtype = 'mysql' if db_container['type'] in ['mysql', 'mariadb'] else db_container['type']
+                        print(f"✓ Found database container on shared network: {db_container['name']} ({db_container['type']})")
+                        
+                        env_vars = inspect_container_environment(db_container['name'])
+                        
+                        return dbtype, {
+                            'container': db_container['name'],
+                            'image': db_container['image'],
+                            'networks': list(shared_networks),
+                            'env': env_vars
+                        }
+    
+    return None, None
+
 def is_tool_installed(tool):
     try:
         subprocess.run([tool, '--version'], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -133,14 +309,9 @@ def is_docker_running():
     Returns: True if Docker is running, False otherwise
     """
     try:
-        result = subprocess.run(
-            ['docker', 'ps'],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=5
-        )
-        return result.returncode == 0
-    except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+        result = run_docker_command_silent(['docker', 'ps'], timeout=5)
+        return result is not None and result.returncode == 0
+    except Exception:
         return False
 
 def check_nextcloud_ready(port, timeout=120):
@@ -451,18 +622,14 @@ def detect_database_type_from_container(container_name):
     dbtype can be: 'sqlite', 'pgsql', 'mysql'
     """
     try:
-        # Try to read config.php from the running container
-        result = subprocess.run(
-            f'docker exec {container_name} cat /var/www/html/config/config.php',
-            shell=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            timeout=10
+        # Try to read config.php from the running container (silently)
+        result = run_docker_command_silent(
+            f'docker exec {container_name} cat /var/www/html/config/config.php'
         )
         
-        if result.returncode != 0:
-            print(f"Could not read config.php from container: {result.stderr}")
+        if not result or result.returncode != 0:
+            if result:
+                print(f"Could not read config.php from container: {result.stderr}")
             return None, None
         
         content = result.stdout
@@ -895,11 +1062,8 @@ def thread_safe_askinteger(parent, title, prompt, **kwargs):
 
 def get_nextcloud_container_name():
     try:
-        result = subprocess.run(
-            ['docker', 'ps', '--format', '{{.Names}} {{.Image}}'],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-        )
-        if result.returncode != 0:
+        result = run_docker_command_silent(['docker', 'ps', '--format', '{{.Names}} {{.Image}}'])
+        if not result or result.returncode != 0:
             return None
         for line in result.stdout.strip().split('\n'):
             parts = line.strip().split()
@@ -914,11 +1078,8 @@ def get_nextcloud_container_name():
 
 def get_postgres_container_name():
     try:
-        result = subprocess.run(
-            ['docker', 'ps', '--format', '{{.Names}} {{.Image}}'],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-        )
-        if result.returncode != 0:
+        result = run_docker_command_silent(['docker', 'ps', '--format', '{{.Names}} {{.Image}}'])
+        if not result or result.returncode != 0:
             return None
         for line in result.stdout.strip().split('\n'):
             parts = line.strip().split()
@@ -934,11 +1095,10 @@ def get_postgres_container_name():
 def check_container_network(container_name, network_name="bridge"):
     """Check if a container is connected to a specific network"""
     try:
-        result = subprocess.run(
-            ['docker', 'inspect', container_name, '--format', '{{range $net, $config := .NetworkSettings.Networks}}{{$net}} {{end}}'],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        result = run_docker_command_silent(
+            ['docker', 'inspect', container_name, '--format', '{{range $net, $config := .NetworkSettings.Networks}}{{$net}} {{end}}']
         )
-        if result.returncode == 0:
+        if result and result.returncode == 0:
             networks = result.stdout.strip().split()
             return network_name in networks
     except Exception as e:
@@ -954,9 +1114,8 @@ def attach_container_to_network(container_name, network_name="bridge"):
             return True
         
         # Try to connect the container to the network
-        result = subprocess.run(
-            ['docker', 'network', 'connect', network_name, container_name],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        result = run_docker_command_silent(
+            ['docker', 'network', 'connect', network_name, container_name]
         )
         
         if result.returncode == 0:
@@ -1247,14 +1406,50 @@ class NextcloudRestoreWizard(tk.Tk):
         else:
             chosen_container = container_names
 
-        # Detect database type from running container
+        # Enhanced database type detection with multiple strategies
         self.status_label.config(text="Detecting database type...")
         self.update_idletasks()
         
-        dbtype, db_config = detect_database_type_from_container(chosen_container)
+        # Strategy 1: List all database containers
+        print("Scanning for database containers...")
+        db_containers = list_running_database_containers()
         
+        # Strategy 2: Use comprehensive inspection method
+        dbtype = None
+        db_config = None
+        db_info = None
+        
+        if db_containers:
+            print(f"Found {len(db_containers)} database container(s)")
+            dbtype, db_info = detect_db_from_container_inspection(chosen_container, db_containers)
+            if db_info and 'config' in db_info:
+                db_config = db_info['config']
+        
+        # If comprehensive detection didn't work, try simple config.php reading
         if not dbtype:
-            # Could not detect - ask user or default to PostgreSQL
+            print("Trying direct config.php detection...")
+            dbtype, db_config = detect_database_type_from_container(chosen_container)
+        
+        if dbtype:
+            # Successfully detected - show info to user
+            db_type_display = {
+                'pgsql': 'PostgreSQL',
+                'mysql': 'MySQL/MariaDB',
+                'sqlite': 'SQLite'
+            }.get(dbtype, dbtype)
+            
+            info_msg = f"✓ Detected database: {db_type_display}"
+            if db_config and 'dbname' in db_config:
+                info_msg += f"\n  Database name: {db_config['dbname']}"
+            if db_info and 'container' in db_info:
+                info_msg += f"\n  Container: {db_info['container']}"
+            
+            print(info_msg)
+            self.status_label.config(text=f"Database detected: {db_type_display}")
+            self.update_idletasks()
+        else:
+            # Could not detect - ask user only as last resort
+            print("Could not auto-detect database type, asking user...")
             response = messagebox.askyesnocancel(
                 "Database Type Unknown",
                 "Could not automatically detect the database type from your Nextcloud container.\n\n"
