@@ -1601,14 +1601,62 @@ class NextcloudRestoreWizard(tk.Tk):
         self.configure(bg=self.theme_colors['bg'])
 
         self.header_frame = tk.Frame(self, bg=self.theme_colors['header_bg'])
+        
+        # Create container for header content with grid layout
+        header_content = tk.Frame(self.header_frame, bg=self.theme_colors['header_bg'])
+        header_content.pack(fill="x", expand=True, padx=10, pady=10)
+        
+        # Configure grid columns: left spacer, center title, right controls
+        header_content.grid_columnconfigure(0, weight=1)  # Left spacer
+        header_content.grid_columnconfigure(1, weight=0)  # Center title
+        header_content.grid_columnconfigure(2, weight=1)  # Right spacer
+        
+        # Left spacer (empty)
+        tk.Frame(header_content, bg=self.theme_colors['header_bg']).grid(row=0, column=0, sticky="ew")
+        
+        # Center title
         self.header_label = tk.Label(
-            self.header_frame, 
+            header_content, 
             text="Nextcloud Restore & Backup Utility", 
             font=("Arial", 22, "bold"),
             bg=self.theme_colors['header_bg'],
             fg=self.theme_colors['header_fg']
         )
-        self.header_label.pack(pady=10)
+        self.header_label.grid(row=0, column=1)
+        
+        # Right controls frame
+        right_controls = tk.Frame(header_content, bg=self.theme_colors['header_bg'])
+        right_controls.grid(row=0, column=2, sticky="e", padx=(10, 0))
+        
+        # Theme toggle icon button
+        theme_icon = "☀️" if self.current_theme == 'dark' else "🌙"
+        self.header_theme_btn = tk.Button(
+            right_controls, 
+            text=theme_icon, 
+            font=("Arial", 18),
+            width=2,
+            bg=self.theme_colors['button_bg'], 
+            fg=self.theme_colors['button_fg'],
+            command=self.toggle_theme,
+            relief=tk.FLAT,
+            cursor="hand2"
+        )
+        self.header_theme_btn.pack(side="left", padx=5)
+        
+        # Dropdown menu button
+        self.header_menu_btn = tk.Button(
+            right_controls, 
+            text="☰", 
+            font=("Arial", 20),
+            width=2,
+            bg=self.theme_colors['button_bg'], 
+            fg=self.theme_colors['button_fg'],
+            command=self.show_dropdown_menu,
+            relief=tk.FLAT,
+            cursor="hand2"
+        )
+        self.header_menu_btn.pack(side="left", padx=5)
+        
         self.header_frame.pack(fill="x")
 
         self.status_label = tk.Label(
@@ -1692,9 +1740,93 @@ class NextcloudRestoreWizard(tk.Tk):
         """Toggle between light and dark themes"""
         self.current_theme = 'dark' if self.current_theme == 'light' else 'light'
         self.theme_colors = THEMES[self.current_theme]
+        
+        # Update header theme icon
+        theme_icon = "☀️" if self.current_theme == 'dark' else "🌙"
+        self.header_theme_btn.config(text=theme_icon)
+        
         self.apply_theme()
         # Refresh the current screen
         self.show_landing()
+    
+    def show_dropdown_menu(self):
+        """Show dropdown menu with advanced features"""
+        # Create a toplevel menu window
+        menu_window = tk.Toplevel(self)
+        menu_window.title("Advanced Features")
+        menu_window.transient(self)
+        menu_window.resizable(False, False)
+        
+        # Position menu near the dropdown button
+        menu_btn_x = self.header_menu_btn.winfo_rootx()
+        menu_btn_y = self.header_menu_btn.winfo_rooty()
+        menu_btn_height = self.header_menu_btn.winfo_height()
+        
+        # Set position below the menu button
+        menu_window.geometry(f"+{menu_btn_x - 180}+{menu_btn_y + menu_btn_height + 5}")
+        
+        # Apply theme to menu window
+        menu_window.configure(bg=self.theme_colors['bg'])
+        
+        # Menu frame
+        menu_frame = tk.Frame(menu_window, bg=self.theme_colors['bg'], relief=tk.RAISED, borderwidth=2)
+        menu_frame.pack(fill="both", expand=True, padx=5, pady=5)
+        
+        # Menu title
+        tk.Label(
+            menu_frame,
+            text="Advanced Features",
+            font=("Arial", 12, "bold"),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg']
+        ).pack(pady=(10, 5), padx=10)
+        
+        # Separator
+        ttk.Separator(menu_frame, orient="horizontal").pack(fill="x", padx=10, pady=5)
+        
+        # Remote Access (Tailscale) option
+        tailscale_btn = tk.Button(
+            menu_frame,
+            text="🌐 Remote Access (Tailscale)",
+            font=("Arial", 11),
+            width=25,
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg'],
+            command=lambda: [menu_window.destroy(), self.show_tailscale_wizard()],
+            relief=tk.FLAT,
+            cursor="hand2",
+            anchor="w",
+            padx=10
+        )
+        tailscale_btn.pack(pady=5, padx=10, fill="x")
+        
+        # Add hover effects
+        def on_enter(e):
+            tailscale_btn.config(bg=self.theme_colors['button_active_bg'])
+        
+        def on_leave(e):
+            tailscale_btn.config(bg=self.theme_colors['button_bg'])
+        
+        tailscale_btn.bind("<Enter>", on_enter)
+        tailscale_btn.bind("<Leave>", on_leave)
+        
+        # Placeholder for future features (commented out)
+        # Add more options here in the future
+        
+        # Close button
+        close_btn = tk.Button(
+            menu_frame,
+            text="Close",
+            font=("Arial", 10),
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg'],
+            command=menu_window.destroy,
+            width=10
+        )
+        close_btn.pack(pady=(10, 10))
+        
+        # Make menu modal
+        menu_window.grab_set()
     
     def apply_theme(self):
         """Apply the current theme to all root-level widgets and recursively to children"""
@@ -1704,14 +1836,23 @@ class NextcloudRestoreWizard(tk.Tk):
             bg=self.theme_colors['header_bg'],
             fg=self.theme_colors['header_fg']
         )
+        self.header_theme_btn.config(
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg']
+        )
+        self.header_menu_btn.config(
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg']
+        )
         self.status_label.config(
             bg=self.theme_colors['bg'],
             fg=self.theme_colors['status_fg']
         )
         self.body_frame.config(bg=self.theme_colors['bg'])
         
-        # Apply theme recursively to all children in body_frame
+        # Apply theme recursively to all children in body_frame and header_frame
         self.apply_theme_recursive(self.body_frame)
+        self.apply_theme_recursive(self.header_frame)
     
     def apply_theme_recursive(self, parent):
         """
@@ -1879,16 +2020,7 @@ class NextcloudRestoreWizard(tk.Tk):
             height=2, width=button_width, bg=self.theme_colors['schedule_btn'], fg="white", 
             command=self.show_schedule_backup
         )
-        self.schedule_btn.pack(pady=(6,12))
-        
-        # Add theme toggle button
-        theme_text = "🌙 Dark Theme" if self.current_theme == 'light' else "☀️ Light Theme"
-        self.theme_toggle_btn = tk.Button(
-            landing_frame, text=theme_text, font=("Arial", 12),
-            width=20, bg=self.theme_colors['button_bg'], fg=self.theme_colors['button_fg'],
-            command=self.toggle_theme
-        )
-        self.theme_toggle_btn.pack(pady=(6,22))
+        self.schedule_btn.pack(pady=(6,22))
         
         # Show schedule status if exists
         self._update_schedule_status_label(landing_frame)
@@ -4838,6 +4970,770 @@ php /tmp/update_config.php"
             tb = traceback.format_exc()
             print(f"Backup failed: {e}")
             print(tb)
+    
+    # ----- Tailscale Setup Wizard -----
+    
+    def show_tailscale_wizard(self):
+        """Show the Tailscale setup wizard main page"""
+        for widget in self.body_frame.winfo_children():
+            widget.destroy()
+        
+        self.status_label.config(text="Remote Access Setup (Tailscale)")
+        
+        # Create scrollable frame
+        canvas = tk.Canvas(self.body_frame, bg=self.theme_colors['bg'], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(self.body_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg=self.theme_colors['bg'])
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((canvas.winfo_reqwidth() // 2, 0), window=scrollable_frame, anchor="n")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Wizard content frame (600px wide, centered)
+        content = tk.Frame(scrollable_frame, bg=self.theme_colors['bg'], width=600)
+        content.pack(pady=20, padx=40, fill="x", expand=True)
+        
+        # Title
+        tk.Label(
+            content,
+            text="🌐 Remote Access Setup",
+            font=("Arial", 18, "bold"),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg']
+        ).pack(pady=(10, 5))
+        
+        tk.Label(
+            content,
+            text="Securely access your Nextcloud from anywhere using Tailscale",
+            font=("Arial", 11),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['hint_fg']
+        ).pack(pady=(0, 20))
+        
+        # Info box
+        info_frame = tk.Frame(content, bg=self.theme_colors['info_bg'], relief="solid", borderwidth=1)
+        info_frame.pack(pady=10, fill="x", padx=20)
+        
+        tk.Label(
+            info_frame,
+            text="ℹ️ What is Tailscale?",
+            font=("Arial", 11, "bold"),
+            bg=self.theme_colors['info_bg'],
+            fg=self.theme_colors['info_fg']
+        ).pack(pady=(10, 5), padx=10, anchor="w")
+        
+        tk.Label(
+            info_frame,
+            text="Tailscale creates a secure, private network (VPN) between your devices.\n"
+                 "It allows you to access your Nextcloud server from anywhere without\n"
+                 "exposing it to the public internet.",
+            font=("Arial", 10),
+            bg=self.theme_colors['info_bg'],
+            fg=self.theme_colors['info_fg'],
+            justify=tk.LEFT,
+            wraplength=520
+        ).pack(pady=(0, 10), padx=10, anchor="w")
+        
+        # Return to main menu button
+        tk.Button(
+            content,
+            text="Return to Main Menu",
+            font=("Arial", 12),
+            command=self.show_landing,
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg']
+        ).pack(pady=(10, 20))
+        
+        # Check Tailscale status
+        self.status_label.config(text="Checking Tailscale installation...")
+        self.update_idletasks()
+        
+        ts_installed = self._check_tailscale_installed()
+        ts_running = self._check_tailscale_running() if ts_installed else False
+        
+        # Status display
+        status_frame = tk.Frame(content, bg=self.theme_colors['bg'])
+        status_frame.pack(pady=10, fill="x", padx=20)
+        
+        # Installation status
+        install_status = "✓ Installed" if ts_installed else "✗ Not Installed"
+        install_color = self.theme_colors['warning_fg'] if ts_installed else self.theme_colors['error_fg']
+        
+        tk.Label(
+            status_frame,
+            text=f"Tailscale Installation: {install_status}",
+            font=("Arial", 11, "bold"),
+            bg=self.theme_colors['bg'],
+            fg=install_color
+        ).pack(pady=5, anchor="w")
+        
+        # Running status
+        if ts_installed:
+            running_status = "✓ Running" if ts_running else "✗ Not Running"
+            running_color = self.theme_colors['warning_fg'] if ts_running else self.theme_colors['error_fg']
+            
+            tk.Label(
+                status_frame,
+                text=f"Tailscale Status: {running_status}",
+                font=("Arial", 11, "bold"),
+                bg=self.theme_colors['bg'],
+                fg=running_color
+            ).pack(pady=5, anchor="w")
+        
+        self.status_label.config(text="Remote Access Setup (Tailscale)")
+        
+        # Action buttons frame
+        actions_frame = tk.Frame(content, bg=self.theme_colors['bg'])
+        actions_frame.pack(pady=20, fill="x", padx=20)
+        
+        if not ts_installed:
+            # Install button
+            tk.Button(
+                actions_frame,
+                text="📦 Install Tailscale",
+                font=("Arial", 13, "bold"),
+                bg="#3daee9",
+                fg="white",
+                width=30,
+                height=2,
+                command=self._install_tailscale
+            ).pack(pady=5)
+            
+            tk.Label(
+                actions_frame,
+                text="Note: Installation requires administrator privileges",
+                font=("Arial", 9),
+                bg=self.theme_colors['bg'],
+                fg=self.theme_colors['hint_fg']
+            ).pack(pady=5)
+        
+        elif not ts_running:
+            # Start Tailscale button
+            tk.Button(
+                actions_frame,
+                text="▶️ Start Tailscale",
+                font=("Arial", 13, "bold"),
+                bg="#45bf55",
+                fg="white",
+                width=30,
+                height=2,
+                command=self._start_tailscale
+            ).pack(pady=5)
+        
+        else:
+            # Tailscale is running - show configuration options
+            tk.Button(
+                actions_frame,
+                text="⚙️ Configure Remote Access",
+                font=("Arial", 13, "bold"),
+                bg="#45bf55",
+                fg="white",
+                width=30,
+                height=2,
+                command=self._show_tailscale_config
+            ).pack(pady=5)
+            
+            # Show current status
+            self._display_tailscale_info(content)
+    
+    def _check_tailscale_installed(self):
+        """Check if Tailscale is installed"""
+        try:
+            if platform.system() == "Windows":
+                result = subprocess.run(
+                    ["where", "tailscale"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+            else:
+                result = subprocess.run(
+                    ["which", "tailscale"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+            return result.returncode == 0
+        except Exception as e:
+            print(f"Error checking Tailscale installation: {e}")
+            return False
+    
+    def _check_tailscale_running(self):
+        """Check if Tailscale is running"""
+        try:
+            result = subprocess.run(
+                ["tailscale", "status"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            return result.returncode == 0
+        except Exception as e:
+            print(f"Error checking Tailscale status: {e}")
+            return False
+    
+    def _install_tailscale(self):
+        """Guide user through Tailscale installation"""
+        system = platform.system()
+        
+        if system == "Windows":
+            message = (
+                "To install Tailscale on Windows:\n\n"
+                "1. Click 'Open Download Page' below\n"
+                "2. Download and run the Tailscale installer\n"
+                "3. Follow the installation wizard\n"
+                "4. Return here and click 'Check Installation' when done\n\n"
+                "The download page will open in your browser."
+            )
+            url = "https://tailscale.com/download/windows"
+        
+        elif system == "Linux":
+            message = (
+                "To install Tailscale on Linux:\n\n"
+                "1. Click 'Open Installation Guide' below\n"
+                "2. Follow the instructions for your Linux distribution\n"
+                "3. Return here and click 'Check Installation' when done\n\n"
+                "Common command (for Debian/Ubuntu):\n"
+                "curl -fsSL https://tailscale.com/install.sh | sh"
+            )
+            url = "https://tailscale.com/download/linux"
+        
+        elif system == "Darwin":  # macOS
+            message = (
+                "To install Tailscale on macOS:\n\n"
+                "1. Click 'Open Download Page' below\n"
+                "2. Download and install the Tailscale app\n"
+                "3. Return here and click 'Check Installation' when done"
+            )
+            url = "https://tailscale.com/download/mac"
+        
+        else:
+            messagebox.showerror(
+                "Unsupported Platform",
+                f"Automatic installation is not supported for {system}.\n"
+                "Please visit https://tailscale.com/download to install manually."
+            )
+            return
+        
+        # Show installation dialog
+        dialog = tk.Toplevel(self)
+        dialog.title("Install Tailscale")
+        dialog.geometry("500x350")
+        dialog.transient(self)
+        dialog.grab_set()
+        
+        dialog.configure(bg=self.theme_colors['bg'])
+        
+        # Message
+        tk.Label(
+            dialog,
+            text="Install Tailscale",
+            font=("Arial", 14, "bold"),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg']
+        ).pack(pady=(20, 10))
+        
+        tk.Label(
+            dialog,
+            text=message,
+            font=("Arial", 10),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg'],
+            justify=tk.LEFT,
+            wraplength=450
+        ).pack(pady=10, padx=20)
+        
+        # Buttons
+        button_frame = tk.Frame(dialog, bg=self.theme_colors['bg'])
+        button_frame.pack(pady=20)
+        
+        tk.Button(
+            button_frame,
+            text="Open Download Page",
+            font=("Arial", 11, "bold"),
+            bg="#3daee9",
+            fg="white",
+            command=lambda: webbrowser.open(url)
+        ).pack(side="left", padx=10)
+        
+        tk.Button(
+            button_frame,
+            text="Check Installation",
+            font=("Arial", 11, "bold"),
+            bg="#45bf55",
+            fg="white",
+            command=lambda: [dialog.destroy(), self.show_tailscale_wizard()]
+        ).pack(side="left", padx=10)
+        
+        tk.Button(
+            button_frame,
+            text="Cancel",
+            font=("Arial", 11),
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg'],
+            command=dialog.destroy
+        ).pack(side="left", padx=10)
+    
+    def _start_tailscale(self):
+        """Start Tailscale service"""
+        try:
+            system = platform.system()
+            
+            if system == "Windows":
+                # On Windows, Tailscale service should auto-start
+                # Just try to bring up the interface
+                result = subprocess.run(
+                    ["tailscale", "up"],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+            elif system == "Linux":
+                # Try to start the systemd service
+                result = subprocess.run(
+                    ["sudo", "systemctl", "start", "tailscaled"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode == 0:
+                    # Service started, now bring up interface
+                    result = subprocess.run(
+                        ["tailscale", "up"],
+                        capture_output=True,
+                        text=True,
+                        timeout=30
+                    )
+            else:
+                messagebox.showinfo(
+                    "Manual Start Required",
+                    "Please start Tailscale manually from your system tray or applications menu."
+                )
+                self.show_tailscale_wizard()
+                return
+            
+            if result.returncode == 0 or "logged in" in result.stdout.lower():
+                messagebox.showinfo("Success", "Tailscale started successfully!")
+                self.show_tailscale_wizard()
+            else:
+                # User might need to authenticate
+                messagebox.showinfo(
+                    "Authentication Required",
+                    "Tailscale needs authentication.\n\n"
+                    "A browser window should open for you to log in.\n"
+                    "If not, please run 'tailscale up' in your terminal."
+                )
+                self.show_tailscale_wizard()
+        
+        except Exception as e:
+            messagebox.showerror(
+                "Error",
+                f"Failed to start Tailscale: {e}\n\n"
+                "Please start Tailscale manually from your system."
+            )
+    
+    def _show_tailscale_config(self):
+        """Show Tailscale configuration wizard"""
+        for widget in self.body_frame.winfo_children():
+            widget.destroy()
+        
+        self.status_label.config(text="Configure Remote Access")
+        
+        # Create scrollable frame
+        canvas = tk.Canvas(self.body_frame, bg=self.theme_colors['bg'], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(self.body_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg=self.theme_colors['bg'])
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((canvas.winfo_reqwidth() // 2, 0), window=scrollable_frame, anchor="n")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Content frame
+        content = tk.Frame(scrollable_frame, bg=self.theme_colors['bg'], width=600)
+        content.pack(pady=20, padx=40, fill="x", expand=True)
+        
+        # Title
+        tk.Label(
+            content,
+            text="⚙️ Configure Remote Access",
+            font=("Arial", 18, "bold"),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg']
+        ).pack(pady=(10, 5))
+        
+        # Back button
+        tk.Button(
+            content,
+            text="← Back to Tailscale Setup",
+            font=("Arial", 11),
+            command=self.show_tailscale_wizard,
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg']
+        ).pack(pady=(0, 20))
+        
+        # Get Tailscale info
+        ts_ip, ts_hostname = self._get_tailscale_info()
+        
+        # Display Tailscale info
+        info_frame = tk.Frame(content, bg=self.theme_colors['info_bg'], relief="solid", borderwidth=1)
+        info_frame.pack(pady=10, fill="x", padx=20)
+        
+        tk.Label(
+            info_frame,
+            text="📡 Your Tailscale Network Information",
+            font=("Arial", 12, "bold"),
+            bg=self.theme_colors['info_bg'],
+            fg=self.theme_colors['info_fg']
+        ).pack(pady=(10, 5), padx=10, anchor="w")
+        
+        if ts_ip:
+            tk.Label(
+                info_frame,
+                text=f"Tailscale IP: {ts_ip}",
+                font=("Arial", 11, "bold"),
+                bg=self.theme_colors['info_bg'],
+                fg=self.theme_colors['info_fg']
+            ).pack(pady=5, padx=20, anchor="w")
+        
+        if ts_hostname:
+            tk.Label(
+                info_frame,
+                text=f"MagicDNS Name: {ts_hostname}",
+                font=("Arial", 11, "bold"),
+                bg=self.theme_colors['info_bg'],
+                fg=self.theme_colors['info_fg']
+            ).pack(pady=5, padx=20, anchor="w")
+        
+        if not ts_ip and not ts_hostname:
+            tk.Label(
+                info_frame,
+                text="⚠️ Could not retrieve Tailscale information",
+                font=("Arial", 11),
+                bg=self.theme_colors['info_bg'],
+                fg=self.theme_colors['error_fg']
+            ).pack(pady=10, padx=20, anchor="w")
+        
+        tk.Label(
+            info_frame,
+            text="Use these addresses to access Nextcloud from any device on your Tailscale network.",
+            font=("Arial", 10),
+            bg=self.theme_colors['info_bg'],
+            fg=self.theme_colors['info_fg'],
+            wraplength=520
+        ).pack(pady=(5, 10), padx=20, anchor="w")
+        
+        # Custom domains section
+        tk.Label(
+            content,
+            text="Custom Domains (Optional)",
+            font=("Arial", 13, "bold"),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg']
+        ).pack(pady=(20, 5), anchor="w", padx=20)
+        
+        tk.Label(
+            content,
+            text="Add any custom domains you want to use to access Nextcloud:",
+            font=("Arial", 10),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['hint_fg']
+        ).pack(pady=(0, 10), anchor="w", padx=20)
+        
+        # Custom domain entry
+        domain_frame = tk.Frame(content, bg=self.theme_colors['bg'])
+        domain_frame.pack(pady=5, fill="x", padx=20)
+        
+        tk.Label(
+            domain_frame,
+            text="Domain:",
+            font=("Arial", 11),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg']
+        ).pack(side="left", padx=(0, 10))
+        
+        custom_domain_var = tk.StringVar()
+        tk.Entry(
+            domain_frame,
+            textvariable=custom_domain_var,
+            font=("Arial", 11),
+            bg=self.theme_colors['entry_bg'],
+            fg=self.theme_colors['entry_fg'],
+            insertbackground=self.theme_colors['entry_fg']
+        ).pack(side="left", fill="x", expand=True)
+        
+        tk.Label(
+            content,
+            text="Example: mycloud.example.com",
+            font=("Arial", 9),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['hint_fg']
+        ).pack(pady=(0, 15), anchor="w", padx=20)
+        
+        # Action buttons
+        tk.Button(
+            content,
+            text="✓ Apply Configuration to Nextcloud",
+            font=("Arial", 13, "bold"),
+            bg="#45bf55",
+            fg="white",
+            width=35,
+            height=2,
+            command=lambda: self._apply_tailscale_config(ts_ip, ts_hostname, custom_domain_var.get())
+        ).pack(pady=20)
+        
+        # Info about what will be configured
+        info_box = tk.Frame(content, bg=self.theme_colors['warning_bg'], relief="solid", borderwidth=1)
+        info_box.pack(pady=10, fill="x", padx=20)
+        
+        tk.Label(
+            info_box,
+            text="ℹ️ What will be configured:",
+            font=("Arial", 11, "bold"),
+            bg=self.theme_colors['warning_bg'],
+            fg=self.theme_colors['warning_fg']
+        ).pack(pady=(10, 5), padx=10, anchor="w")
+        
+        config_items = []
+        if ts_ip:
+            config_items.append(f"• Tailscale IP: {ts_ip}")
+        if ts_hostname:
+            config_items.append(f"• MagicDNS name: {ts_hostname}")
+        if custom_domain_var.get():
+            config_items.append(f"• Custom domain: {custom_domain_var.get()}")
+        
+        if not config_items:
+            config_items = ["• No domains will be added (check your Tailscale setup)"]
+        
+        config_text = "These addresses will be added to Nextcloud's trusted_domains:\n" + "\n".join(config_items)
+        
+        tk.Label(
+            info_box,
+            text=config_text,
+            font=("Arial", 10),
+            bg=self.theme_colors['warning_bg'],
+            fg=self.theme_colors['warning_fg'],
+            justify=tk.LEFT
+        ).pack(pady=(0, 10), padx=10, anchor="w")
+    
+    def _get_tailscale_info(self):
+        """Get Tailscale IP and hostname"""
+        ts_ip = None
+        ts_hostname = None
+        
+        try:
+            # Get Tailscale status
+            result = subprocess.run(
+                ["tailscale", "status", "--json"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            if result.returncode == 0:
+                status_data = json.loads(result.stdout)
+                
+                # Get self info
+                if 'Self' in status_data:
+                    self_data = status_data['Self']
+                    
+                    # Get Tailscale IP
+                    if 'TailscaleIPs' in self_data and self_data['TailscaleIPs']:
+                        ts_ip = self_data['TailscaleIPs'][0]
+                    
+                    # Get hostname
+                    if 'DNSName' in self_data:
+                        ts_hostname = self_data['DNSName'].rstrip('.')
+        
+        except Exception as e:
+            print(f"Error getting Tailscale info: {e}")
+        
+        return ts_ip, ts_hostname
+    
+    def _display_tailscale_info(self, parent):
+        """Display current Tailscale network information"""
+        ts_ip, ts_hostname = self._get_tailscale_info()
+        
+        if ts_ip or ts_hostname:
+            info_frame = tk.Frame(parent, bg=self.theme_colors['info_bg'], relief="solid", borderwidth=1)
+            info_frame.pack(pady=15, fill="x", padx=20)
+            
+            tk.Label(
+                info_frame,
+                text="📡 Current Tailscale Network Info",
+                font=("Arial", 11, "bold"),
+                bg=self.theme_colors['info_bg'],
+                fg=self.theme_colors['info_fg']
+            ).pack(pady=(10, 5), padx=10, anchor="w")
+            
+            if ts_ip:
+                tk.Label(
+                    info_frame,
+                    text=f"IP Address: {ts_ip}",
+                    font=("Arial", 10),
+                    bg=self.theme_colors['info_bg'],
+                    fg=self.theme_colors['info_fg']
+                ).pack(pady=2, padx=20, anchor="w")
+            
+            if ts_hostname:
+                tk.Label(
+                    info_frame,
+                    text=f"Hostname: {ts_hostname}",
+                    font=("Arial", 10),
+                    bg=self.theme_colors['info_bg'],
+                    fg=self.theme_colors['info_fg']
+                ).pack(pady=2, padx=20, anchor="w")
+            
+            tk.Label(
+                info_frame,
+                text="",
+                bg=self.theme_colors['info_bg']
+            ).pack(pady=5)
+    
+    def _apply_tailscale_config(self, ts_ip, ts_hostname, custom_domain):
+        """Apply Tailscale configuration to Nextcloud"""
+        # Get Nextcloud container
+        container_names = get_nextcloud_container_name()
+        if not container_names:
+            messagebox.showerror(
+                "Error",
+                "No running Nextcloud container found.\n\n"
+                "Please ensure your Nextcloud instance is running."
+            )
+            return
+        
+        nextcloud_container = container_names
+        
+        # Collect domains to add
+        domains_to_add = []
+        if ts_ip:
+            domains_to_add.append(ts_ip)
+        if ts_hostname:
+            domains_to_add.append(ts_hostname)
+        if custom_domain and custom_domain.strip():
+            domains_to_add.append(custom_domain.strip())
+        
+        if not domains_to_add:
+            messagebox.showwarning(
+                "No Domains",
+                "No domains to add to Nextcloud configuration."
+            )
+            return
+        
+        # Update trusted_domains in config.php
+        try:
+            self.status_label.config(text="Updating Nextcloud configuration...")
+            self.update_idletasks()
+            
+            success = self._update_trusted_domains(nextcloud_container, domains_to_add)
+            
+            if success:
+                messagebox.showinfo(
+                    "Success",
+                    f"✓ Remote access configured successfully!\n\n"
+                    f"Added to trusted domains:\n" + "\n".join(f"  • {d}" for d in domains_to_add) + "\n\n"
+                    f"You can now access Nextcloud using these addresses from any device\n"
+                    f"connected to your Tailscale network."
+                )
+                self.show_landing()
+            else:
+                messagebox.showerror(
+                    "Error",
+                    "Failed to update Nextcloud configuration.\n\n"
+                    "Please check that the Nextcloud container is running\n"
+                    "and you have the necessary permissions."
+                )
+        
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to apply configuration: {e}")
+    
+    def _update_trusted_domains(self, container_name, new_domains):
+        """Update trusted_domains in Nextcloud config.php"""
+        try:
+            # Read current config.php
+            result = subprocess.run(
+                ["docker", "exec", container_name, "cat", "/var/www/html/config/config.php"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode != 0:
+                print(f"Failed to read config.php: {result.stderr}")
+                return False
+            
+            config_content = result.stdout
+            
+            # Parse trusted_domains array
+            trusted_domains_pattern = r"'trusted_domains'\s*=>\s*array\s*\((.*?)\),"
+            match = re.search(trusted_domains_pattern, config_content, re.DOTALL)
+            
+            if not match:
+                print("Could not find trusted_domains in config.php")
+                return False
+            
+            # Extract existing domains
+            existing_domains_str = match.group(1)
+            existing_domains = []
+            
+            # Parse existing domain entries
+            domain_pattern = r"\d+\s*=>\s*'([^']+)'"
+            for domain_match in re.finditer(domain_pattern, existing_domains_str):
+                existing_domains.append(domain_match.group(1))
+            
+            # Add new domains (avoid duplicates)
+            for domain in new_domains:
+                if domain not in existing_domains:
+                    existing_domains.append(domain)
+            
+            # Build new trusted_domains array
+            new_domains_array = "array(\n"
+            for i, domain in enumerate(existing_domains):
+                new_domains_array += f"    {i} => '{domain}',\n"
+            new_domains_array += "  )"
+            
+            # Replace in config
+            new_config = re.sub(
+                trusted_domains_pattern,
+                f"'trusted_domains' => {new_domains_array},",
+                config_content,
+                count=1,
+                flags=re.DOTALL
+            )
+            
+            # Write back to container
+            write_cmd = f"cat > /var/www/html/config/config.php << 'EOFCONFIG'\n{new_config}\nEOFCONFIG"
+            
+            result = subprocess.run(
+                ["docker", "exec", container_name, "sh", "-c", write_cmd],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode != 0:
+                print(f"Failed to write config.php: {result.stderr}")
+                return False
+            
+            print(f"✓ Updated trusted_domains with: {', '.join(new_domains)}")
+            return True
+        
+        except Exception as e:
+            print(f"Error updating trusted_domains: {e}")
+            return False
     
     def check_dependencies(self):
         pass # handled stepwise
