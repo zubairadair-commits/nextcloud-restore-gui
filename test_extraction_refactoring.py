@@ -75,7 +75,7 @@ def test_extract_config_php_only():
         # Check for important implementation details
         checks = [
             ('for member in tar:', 'Iterates through tar members'),
-            ('member.name.endswith(\'config.php\')', 'Checks for config.php filename'),
+            ('os.path.basename(member.name) == \'config.php\'', 'Checks for exact config.php filename'),
             ('tar.extract(member', 'Extracts single file'),
             ('return extracted_path', 'Returns extracted file path'),
         ]

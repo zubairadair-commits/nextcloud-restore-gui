@@ -286,27 +286,50 @@ def extract_config_php_only(archive_path, extract_to):
     
     try:
         with tarfile.open(archive_path, 'r:gz') as tar:
+            # Track all potential config.php files found for better logging
+            potential_configs = []
+            
             # Iterate through archive members to find config.php
             # This is efficient as it doesn't extract anything until we find the target
             for member in tar:
-                # Check if this is a config.php file
-                if member.isfile() and member.name.endswith('config.php'):
-                    # Quick validation: check if path contains 'config' directory
-                    # This helps ensure we get the Nextcloud config.php, not some other file
+                # Check if this is a config.php file by exact basename match
+                # This prevents matching files like "apache-pretty-urls.config.php"
+                if member.isfile() and os.path.basename(member.name) == 'config.php':
+                    potential_configs.append(member.name)
+                    print(f"Found potential config.php: {member.name}")
+                    
+                    # Validate: check if path contains 'config' directory
+                    # This helps ensure we get the Nextcloud config.php in config/ folder
                     path_parts = member.name.split('/')
-                    if 'config' in path_parts or '.config' in path_parts:
-                        print(f"✓ Found config.php in archive: {member.name}")
+                    if 'config' in path_parts:
+                        print(f"✓ Path contains 'config' directory: {member.name}")
                         
-                        # Extract only this single file
+                        # Extract only this single file to validate its content
                         tar.extract(member, path=extract_to)
-                        
-                        # Return the full path to the extracted file
                         extracted_path = os.path.join(extract_to, member.name)
-                        print(f"✓ Extracted config.php to: {extracted_path}")
-                        return extracted_path
+                        
+                        # Validate the file content before accepting it
+                        # Check for $CONFIG and dbtype to confirm it's a real Nextcloud config
+                        try:
+                            with open(extracted_path, 'r', encoding='utf-8') as f:
+                                content = f.read(200)  # Read first 200 chars for validation
+                                if '$CONFIG' in content or 'dbtype' in content:
+                                    print(f"✓ Validated config.php contains Nextcloud config markers")
+                                    print(f"✓ Using config.php from: {member.name}")
+                                    return extracted_path
+                                else:
+                                    print(f"⚠️ File {member.name} doesn't contain $CONFIG or dbtype, skipping")
+                        except Exception as e:
+                            print(f"⚠️ Could not validate {member.name}: {e}")
+                            continue
             
             # If we get here, config.php was not found in the archive
-            print("⚠️ config.php not found in archive")
+            if potential_configs:
+                print(f"⚠️ Found {len(potential_configs)} config.php file(s) but none in 'config' directory or valid:")
+                for config in potential_configs:
+                    print(f"   - {config}")
+            else:
+                print("⚠️ config.php not found in archive")
             return None
             
     except tarfile.ReadError as e:
