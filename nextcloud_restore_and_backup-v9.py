@@ -743,8 +743,8 @@ class NextcloudRestoreWizard(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Nextcloud Restore & Backup Utility")
-        self.geometry("700x900")  # Increased height for more input fields
-        self.minsize(600, 700)  # Set minimum window size to prevent excessive collapsing
+        self.geometry("900x900")  # Wider window for better content display
+        self.minsize(700, 700)  # Set minimum window size to prevent excessive collapsing
 
         self.header_frame = tk.Frame(self)
         tk.Label(self.header_frame, text="Nextcloud Restore & Backup Utility", font=("Arial", 22, "bold")).pack(pady=10)
@@ -1010,7 +1010,8 @@ class NextcloudRestoreWizard(tk.Tk):
         # Create the main content frame with a fixed max width for proper centering
         # This frame will be centered within the canvas, ensuring all content
         # appears centered regardless of window size
-        scrollable_frame = tk.Frame(canvas, width=700)  # Set max-width for content block
+        # Increased width from 700px to 850px for better space utilization on wider screens
+        scrollable_frame = tk.Frame(canvas, width=850)  # Set max-width for content block
         
         def on_configure(e):
             canvas.configure(scrollregion=canvas.bbox("all"))
@@ -1064,7 +1065,7 @@ class NextcloudRestoreWizard(tk.Tk):
         tk.Label(frame, text=page_title, font=("Arial", 14)).pack(pady=(10, 10), anchor="center")
         
         # Return to Main Menu button - centered
-        btn_back = tk.Button(frame, text="Return to Main Menu", font=("Arial", 12), command=self.show_landing)
+        btn_back = tk.Button(frame, text="Return to Main Menu", font=("Arial", 12), width=22, command=self.show_landing)
         btn_back.pack(pady=8, anchor="center")
         
         if page_num == 1:
@@ -1076,14 +1077,14 @@ class NextcloudRestoreWizard(tk.Tk):
         
         # Navigation buttons - centered
         nav_frame = tk.Frame(frame)
-        nav_frame.pack(pady=20, anchor="center")
+        nav_frame.pack(pady=(30, 20), anchor="center")
         
         if page_num > 1:
             tk.Button(
                 nav_frame, 
                 text="← Back", 
                 font=("Arial", 12, "bold"),
-                width=12,
+                width=15,
                 command=lambda: self.wizard_navigate(-1)
             ).pack(side="left", padx=10)
         
@@ -1094,7 +1095,7 @@ class NextcloudRestoreWizard(tk.Tk):
                 font=("Arial", 12, "bold"),
                 bg="#3daee9",
                 fg="white",
-                width=12,
+                width=15,
                 command=lambda: self.wizard_navigate(1)
             ).pack(side="left", padx=10)
         else:
@@ -1105,7 +1106,7 @@ class NextcloudRestoreWizard(tk.Tk):
                 font=("Arial", 14, "bold"),
                 bg="#45bf55",
                 fg="white",
-                width=15,
+                width=18,
                 command=self.validate_and_start_restore
             )
             self.restore_now_btn.pack(side="left", padx=10)
@@ -1130,15 +1131,15 @@ class NextcloudRestoreWizard(tk.Tk):
     def create_wizard_page1(self, parent):
         """Page 1: Backup Archive Selection and Decryption Password"""
         # Section 1: Backup file selection - all centered
-        tk.Label(parent, text="Step 1: Select Backup Archive", font=("Arial", 14, "bold")).pack(pady=(10, 5), anchor="center")
+        tk.Label(parent, text="Step 1: Select Backup Archive", font=("Arial", 14, "bold")).pack(pady=(20, 5), anchor="center")
         tk.Label(parent, text="Choose the backup file to restore (.tar.gz.gpg or .tar.gz)", font=("Arial", 10), fg="gray").pack(pady=(0, 5), anchor="center")
         
         # Create a container frame for the entry to control its width responsively
         # Using anchor="center" ensures the frame itself is centered horizontally
         entry_container = tk.Frame(parent)
-        entry_container.pack(pady=5, anchor="center")
+        entry_container.pack(pady=5, anchor="center", padx=30)
         
-        self.backup_entry = tk.Entry(entry_container, font=("Arial", 11), justify="center", width=60)
+        self.backup_entry = tk.Entry(entry_container, font=("Arial", 11), justify="center", width=80)
         self.backup_entry.pack()
         
         # Restore saved value if exists
@@ -1146,18 +1147,18 @@ class NextcloudRestoreWizard(tk.Tk):
             self.backup_entry.delete(0, tk.END)
             self.backup_entry.insert(0, self.wizard_data['backup_path'])
         
-        tk.Button(parent, text="Browse...", font=("Arial", 11), command=self.browse_backup).pack(pady=5, anchor="center")
+        tk.Button(parent, text="Browse...", font=("Arial", 11), width=20, command=self.browse_backup).pack(pady=5, anchor="center")
         
         # Section 2: Decryption password - all centered
-        tk.Label(parent, text="Step 2: Decryption Password", font=("Arial", 14, "bold")).pack(pady=(25, 5), anchor="center")
+        tk.Label(parent, text="Step 2: Decryption Password", font=("Arial", 14, "bold")).pack(pady=(30, 5), anchor="center")
         tk.Label(parent, text="Enter password if backup is encrypted (.gpg)", font=("Arial", 10), fg="gray").pack(pady=(0, 5), anchor="center")
         
         # Create a container frame for the password entry to control its width responsively
         # Using anchor="center" ensures the frame itself is centered horizontally
         password_container = tk.Frame(parent)
-        password_container.pack(pady=5, anchor="center")
+        password_container.pack(pady=5, anchor="center", padx=30)
         
-        self.password_entry = tk.Entry(password_container, show="*", font=("Arial", 12), justify="center", width=50)
+        self.password_entry = tk.Entry(password_container, show="*", font=("Arial", 12), justify="center", width=70)
         self.password_entry.pack()
         
         # Restore saved value if exists
@@ -1168,11 +1169,11 @@ class NextcloudRestoreWizard(tk.Tk):
     def create_wizard_page2(self, parent):
         """Page 2: Database Configuration and Admin Credentials"""
         # Section 3: Database credentials - all centered
-        tk.Label(parent, text="Step 3: Database Configuration", font=("Arial", 14, "bold")).pack(pady=(10, 5), anchor="center")
+        tk.Label(parent, text="Step 3: Database Configuration", font=("Arial", 14, "bold")).pack(pady=(20, 5), anchor="center")
         
         # Info about auto-detection - centered
         info_frame = tk.Frame(parent, bg="#e3f2fd", relief="solid", borderwidth=1)
-        info_frame.pack(pady=(5, 10), anchor="center")
+        info_frame.pack(pady=(5, 10), anchor="center", padx=50)
         tk.Label(info_frame, text="ℹ️ Database Type Auto-Detection", font=("Arial", 10, "bold"), bg="#e3f2fd").pack(pady=(5, 2), anchor="center")
         tk.Label(info_frame, text="The restore process will automatically detect your database type (SQLite, PostgreSQL, MySQL)", 
                  font=("Arial", 9), bg="#e3f2fd", wraplength=600, justify="center").pack(pady=2, anchor="center")
@@ -1208,11 +1209,11 @@ class NextcloudRestoreWizard(tk.Tk):
         instruction_label2.pack(anchor="center", pady=(0, 10))
         
         db_frame = tk.Frame(parent)
-        db_frame.pack(pady=10, anchor="center")
+        db_frame.pack(pady=10, anchor="center", padx=40)
         
         # Configure column weights for responsive layout
         db_frame.grid_columnconfigure(0, weight=0)  # Label column - fixed width
-        db_frame.grid_columnconfigure(1, weight=1)  # Entry column - expandable
+        db_frame.grid_columnconfigure(1, weight=1, minsize=400)  # Entry column - expandable with minimum width
         db_frame.grid_columnconfigure(2, weight=0)  # Hint column - fixed width
         
         # Database Name field
@@ -1265,15 +1266,15 @@ class NextcloudRestoreWizard(tk.Tk):
             self.update_database_credential_ui(self.detected_dbtype)
         
         # Section 4: Nextcloud admin credentials - all centered
-        tk.Label(parent, text="Step 4: Nextcloud Admin Credentials", font=("Arial", 14, "bold")).pack(pady=(25, 5), anchor="center")
+        tk.Label(parent, text="Step 4: Nextcloud Admin Credentials", font=("Arial", 14, "bold")).pack(pady=(30, 5), anchor="center")
         tk.Label(parent, text="Admin credentials for Nextcloud instance", font=("Arial", 10), fg="gray").pack(pady=(0, 5), anchor="center")
         
         admin_frame = tk.Frame(parent)
-        admin_frame.pack(pady=10, anchor="center")
+        admin_frame.pack(pady=10, anchor="center", padx=40)
         
         # Configure column weights for responsive layout
         admin_frame.grid_columnconfigure(0, weight=0)  # Label column - fixed width
-        admin_frame.grid_columnconfigure(1, weight=1)  # Entry column - expandable
+        admin_frame.grid_columnconfigure(1, weight=1, minsize=400)  # Entry column - expandable with minimum width
         
         tk.Label(admin_frame, text="Admin Username:", font=("Arial", 11)).grid(row=0, column=0, sticky="e", padx=5, pady=5)
         self.admin_user_entry = tk.Entry(admin_frame, font=("Arial", 11))
@@ -1288,15 +1289,15 @@ class NextcloudRestoreWizard(tk.Tk):
     def create_wizard_page3(self, parent):
         """Page 3: Container Configuration"""
         # Section 5: Container configuration - all centered
-        tk.Label(parent, text="Step 5: Container Configuration", font=("Arial", 14, "bold")).pack(pady=(10, 5), anchor="center")
+        tk.Label(parent, text="Step 5: Container Configuration", font=("Arial", 14, "bold")).pack(pady=(20, 5), anchor="center")
         tk.Label(parent, text="Configure Nextcloud container settings", font=("Arial", 10), fg="gray").pack(pady=(0, 5), anchor="center")
         
         container_frame = tk.Frame(parent)
-        container_frame.pack(pady=10, anchor="center")
+        container_frame.pack(pady=10, anchor="center", padx=40)
         
         # Configure column weights for responsive layout
         container_frame.grid_columnconfigure(0, weight=0)  # Label column - fixed width
-        container_frame.grid_columnconfigure(1, weight=1)  # Entry column - expandable
+        container_frame.grid_columnconfigure(1, weight=1, minsize=400)  # Entry column - expandable with minimum width
         
         tk.Label(container_frame, text="Container Name:", font=("Arial", 11)).grid(row=0, column=0, sticky="e", padx=5, pady=5)
         self.container_name_entry = tk.Entry(container_frame, font=("Arial", 11))
@@ -1319,7 +1320,7 @@ class NextcloudRestoreWizard(tk.Tk):
         
         # Add informative text about what will happen during restore - centered
         info_frame = tk.Frame(parent, bg="#e8f4f8", relief="ridge", borderwidth=2)
-        info_frame.pack(pady=20, anchor="center")
+        info_frame.pack(pady=20, anchor="center", padx=50)
         
         tk.Label(info_frame, text="ℹ️ The restore process will automatically:", font=("Arial", 11, "bold"), bg="#e8f4f8").pack(pady=(10, 5), anchor="center")
         restore_info = [
