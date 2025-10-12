@@ -29,6 +29,58 @@ POSTGRES_USER = "nextcloud"
 POSTGRES_PASSWORD = "example"
 POSTGRES_PORT = 5432
 
+# --- Theme Color Definitions ---
+THEMES = {
+    'light': {
+        'bg': '#f0f0f0',
+        'fg': '#000000',
+        'button_bg': '#e0e0e0',
+        'button_fg': '#000000',
+        'button_active_bg': '#d0d0d0',
+        'entry_bg': '#ffffff',
+        'entry_fg': '#000000',
+        'frame_bg': '#f0f0f0',
+        'header_bg': '#f0f0f0',
+        'header_fg': '#000000',
+        'status_fg': '#000000',
+        'info_bg': '#e3f2fd',
+        'info_fg': '#000000',
+        'warning_bg': '#e8f5e9',
+        'warning_fg': '#2e7d32',
+        'error_fg': '#d32f2f',
+        'hint_fg': '#666666',
+        # Button-specific colors (maintain original button colors but adjust for theme)
+        'backup_btn': '#3daee9',
+        'restore_btn': '#45bf55',
+        'new_instance_btn': '#f7b32b',
+        'schedule_btn': '#9b59b6',
+    },
+    'dark': {
+        'bg': '#1e1e1e',
+        'fg': '#e0e0e0',
+        'button_bg': '#2d2d2d',
+        'button_fg': '#e0e0e0',
+        'button_active_bg': '#3d3d3d',
+        'entry_bg': '#2d2d2d',
+        'entry_fg': '#e0e0e0',
+        'frame_bg': '#1e1e1e',
+        'header_bg': '#252525',
+        'header_fg': '#e0e0e0',
+        'status_fg': '#b0b0b0',
+        'info_bg': '#1a3a4a',
+        'info_fg': '#e0e0e0',
+        'warning_bg': '#2a3a2a',
+        'warning_fg': '#7cb342',
+        'error_fg': '#ef5350',
+        'hint_fg': '#999999',
+        # Button-specific colors (darker versions for dark theme)
+        'backup_btn': '#2c8ab8',
+        'restore_btn': '#378d44',
+        'new_instance_btn': '#c89020',
+        'schedule_btn': '#7b4a85',
+    }
+}
+
 # --- Silent subprocess execution utilities ---
 def get_subprocess_creation_flags():
     """
@@ -1541,14 +1593,34 @@ class NextcloudRestoreWizard(tk.Tk):
         self.geometry("900x900")  # Wider window for better content display
         self.minsize(700, 700)  # Set minimum window size to prevent excessive collapsing
 
-        self.header_frame = tk.Frame(self)
-        tk.Label(self.header_frame, text="Nextcloud Restore & Backup Utility", font=("Arial", 22, "bold")).pack(pady=10)
+        # Initialize theme
+        self.current_theme = 'light'
+        self.theme_colors = THEMES[self.current_theme]
+        
+        # Configure root window
+        self.configure(bg=self.theme_colors['bg'])
+
+        self.header_frame = tk.Frame(self, bg=self.theme_colors['header_bg'])
+        self.header_label = tk.Label(
+            self.header_frame, 
+            text="Nextcloud Restore & Backup Utility", 
+            font=("Arial", 22, "bold"),
+            bg=self.theme_colors['header_bg'],
+            fg=self.theme_colors['header_fg']
+        )
+        self.header_label.pack(pady=10)
         self.header_frame.pack(fill="x")
 
-        self.status_label = tk.Label(self, text="", font=("Arial", 14))
+        self.status_label = tk.Label(
+            self, 
+            text="", 
+            font=("Arial", 14),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['status_fg']
+        )
         self.status_label.pack(pady=(0,10))
 
-        self.body_frame = tk.Frame(self)
+        self.body_frame = tk.Frame(self, bg=self.theme_colors['bg'])
         self.body_frame.pack(fill="both", expand=True)
 
         self.restore_password = None  # store password for restore workflow
@@ -1616,34 +1688,125 @@ class NextcloudRestoreWizard(tk.Tk):
         )
         return False
 
+    def toggle_theme(self):
+        """Toggle between light and dark themes"""
+        self.current_theme = 'dark' if self.current_theme == 'light' else 'light'
+        self.theme_colors = THEMES[self.current_theme]
+        self.apply_theme()
+        # Refresh the current screen
+        self.show_landing()
+    
+    def apply_theme(self):
+        """Apply the current theme to all root-level widgets"""
+        self.configure(bg=self.theme_colors['bg'])
+        self.header_frame.config(bg=self.theme_colors['header_bg'])
+        self.header_label.config(
+            bg=self.theme_colors['header_bg'],
+            fg=self.theme_colors['header_fg']
+        )
+        self.status_label.config(
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['status_fg']
+        )
+        self.body_frame.config(bg=self.theme_colors['bg'])
+    
+    def apply_theme_to_widget(self, widget, widget_type='frame', **kwargs):
+        """
+        Apply theme colors to a specific widget
+        Args:
+            widget: The widget to apply theme to
+            widget_type: Type of widget ('frame', 'label', 'button', 'entry', etc.)
+            **kwargs: Additional color overrides (e.g., bg='#custom')
+        """
+        try:
+            if widget_type == 'frame':
+                widget.config(bg=kwargs.get('bg', self.theme_colors['bg']))
+            elif widget_type == 'label':
+                widget.config(
+                    bg=kwargs.get('bg', self.theme_colors['bg']),
+                    fg=kwargs.get('fg', self.theme_colors['fg'])
+                )
+            elif widget_type == 'button':
+                # Check if it's a themed button (with custom color)
+                if 'bg' in kwargs and kwargs['bg'] in [
+                    THEMES['light']['backup_btn'], 
+                    THEMES['light']['restore_btn'],
+                    THEMES['light']['new_instance_btn'],
+                    THEMES['light']['schedule_btn']
+                ]:
+                    # Map light theme button color to dark theme equivalent
+                    color_map = {
+                        THEMES['light']['backup_btn']: self.theme_colors['backup_btn'],
+                        THEMES['light']['restore_btn']: self.theme_colors['restore_btn'],
+                        THEMES['light']['new_instance_btn']: self.theme_colors['new_instance_btn'],
+                        THEMES['light']['schedule_btn']: self.theme_colors['schedule_btn'],
+                    }
+                    bg_color = color_map.get(kwargs.get('bg'), self.theme_colors['button_bg'])
+                else:
+                    bg_color = kwargs.get('bg', self.theme_colors['button_bg'])
+                
+                widget.config(
+                    bg=bg_color,
+                    fg=kwargs.get('fg', 'white' if 'bg' in kwargs else self.theme_colors['button_fg']),
+                    activebackground=kwargs.get('activebackground', self.theme_colors['button_active_bg'])
+                )
+            elif widget_type == 'entry':
+                widget.config(
+                    bg=kwargs.get('bg', self.theme_colors['entry_bg']),
+                    fg=kwargs.get('fg', self.theme_colors['entry_fg']),
+                    insertbackground=kwargs.get('insertbackground', self.theme_colors['entry_fg'])
+                )
+        except tk.TclError:
+            # Widget doesn't support these options
+            pass
+
     def show_landing(self):
         for widget in self.body_frame.winfo_children():
             widget.destroy()
         self.status_label.config(text="")
-        landing_frame = tk.Frame(self.body_frame)
+        landing_frame = tk.Frame(self.body_frame, bg=self.theme_colors['bg'])
         landing_frame.pack(fill="both", expand=True)
+        
+        # Create buttons with increased width for better label visibility
+        button_width = 30  # Increased from 24 to 30 for better text visibility
+        
         self.backup_btn = tk.Button(
             landing_frame, text="🔄 Backup Now", font=("Arial", 16, "bold"),
-            height=2, width=24, bg="#3daee9", fg="white", command=self.start_backup
+            height=2, width=button_width, bg=self.theme_colors['backup_btn'], fg="white", 
+            command=self.start_backup
         )
         self.backup_btn.pack(pady=(18,6))
+        
         self.restore_btn = tk.Button(
             landing_frame, text="🛠 Restore from Backup", font=("Arial", 16, "bold"),
-            height=2, width=24, bg="#45bf55", fg="white", command=self.start_restore
+            height=2, width=button_width, bg=self.theme_colors['restore_btn'], fg="white", 
+            command=self.start_restore
         )
         self.restore_btn.pack(pady=6)
+        
         self.new_btn = tk.Button(
             landing_frame, text="✨ Start New Nextcloud Instance", font=("Arial", 16, "bold"),
-            height=2, width=24, bg="#f7b32b", fg="white", command=self.start_new_instance_workflow
+            height=2, width=button_width, bg=self.theme_colors['new_instance_btn'], fg="white", 
+            command=self.start_new_instance_workflow
         )
         self.new_btn.pack(pady=(6,12))
         
         # Add scheduled backup button
         self.schedule_btn = tk.Button(
             landing_frame, text="📅 Schedule Backup", font=("Arial", 16, "bold"),
-            height=2, width=24, bg="#9b59b6", fg="white", command=self.show_schedule_backup
+            height=2, width=button_width, bg=self.theme_colors['schedule_btn'], fg="white", 
+            command=self.show_schedule_backup
         )
-        self.schedule_btn.pack(pady=(6,22))
+        self.schedule_btn.pack(pady=(6,12))
+        
+        # Add theme toggle button
+        theme_text = "🌙 Dark Theme" if self.current_theme == 'light' else "☀️ Light Theme"
+        self.theme_toggle_btn = tk.Button(
+            landing_frame, text=theme_text, font=("Arial", 12),
+            width=20, bg=self.theme_colors['button_bg'], fg=self.theme_colors['button_fg'],
+            command=self.toggle_theme
+        )
+        self.theme_toggle_btn.pack(pady=(6,22))
         
         # Show schedule status if exists
         self._update_schedule_status_label(landing_frame)
@@ -4141,8 +4304,9 @@ php /tmp/update_config.php"
                 status_label = tk.Label(
                     parent, 
                     text=status_text, 
-                    font=("Arial", 11), 
-                    fg="#27ae60"
+                    font=("Arial", 11),
+                    bg=self.theme_colors['bg'],
+                    fg=self.theme_colors['warning_fg']
                 )
                 status_label.pack(pady=(0, 10))
     
