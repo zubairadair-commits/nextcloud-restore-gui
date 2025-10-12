@@ -382,6 +382,122 @@ services:
     
     return header + compose_content
 
+def detect_required_host_folders(config_php_path=None, compose_file_path=None, extract_dir=None):
+    """
+    Detect required host folders based on config.php and docker-compose.yml.
+    
+    Args:
+        config_php_path: Path to config.php file (optional)
+        compose_file_path: Path to docker-compose.yml file (optional)
+        extract_dir: Path to extracted backup directory (optional)
+    
+    Returns:
+        dict: Dictionary with folder information
+            {
+                'nextcloud_data': './nextcloud-data',  # Main volume mount
+                'db_data': './db-data',  # Database volume mount (if applicable)
+                'extracted_folders': ['config', 'data', 'apps', 'custom_apps']  # Folders in backup
+            }
+    """
+    folders = {
+        'nextcloud_data': './nextcloud-data',
+        'db_data': None,
+        'extracted_folders': []
+    }
+    
+    # Detect database type from config.php to determine if db_data is needed
+    dbtype = None
+    if config_php_path and os.path.exists(config_php_path):
+        config = parse_config_php_full(config_php_path)
+        if config:
+            dbtype = config.get('dbtype', '').lower()
+            
+            # If not SQLite, we need a database data folder
+            if dbtype and dbtype not in ['sqlite', 'sqlite3']:
+                folders['db_data'] = './db-data'
+    
+    # Check for folders that exist in the extracted backup
+    if extract_dir and os.path.exists(extract_dir):
+        standard_folders = ['config', 'data', 'apps', 'custom_apps']
+        for folder in standard_folders:
+            folder_path = os.path.join(extract_dir, folder)
+            if os.path.isdir(folder_path):
+                folders['extracted_folders'].append(folder)
+    
+    # Parse docker-compose.yml if it exists to detect custom volume mappings
+    if compose_file_path and os.path.exists(compose_file_path):
+        try:
+            with open(compose_file_path, 'r') as f:
+                content = f.read()
+                
+            # Look for volume mappings like ./nextcloud-data:/var/www/html
+            volume_pattern = r'\s+-\s+\./([\w\-]+):/var/www/html'
+            match = re.search(volume_pattern, content)
+            if match:
+                folders['nextcloud_data'] = f'./{match.group(1)}'
+            
+            # Look for database volume mappings
+            db_volume_patterns = [
+                r'\s+-\s+\./([\w\-]+):/var/lib/postgresql/data',  # PostgreSQL
+                r'\s+-\s+\./([\w\-]+):/var/lib/mysql'  # MySQL/MariaDB
+            ]
+            for pattern in db_volume_patterns:
+                match = re.search(pattern, content)
+                if match:
+                    folders['db_data'] = f'./{match.group(1)}'
+                    break
+        except Exception as e:
+            print(f"Warning: Could not parse docker-compose.yml: {e}")
+    
+    return folders
+
+def create_required_host_folders(folders_dict):
+    """
+    Create required host folders with proper error handling.
+    
+    Args:
+        folders_dict: Dictionary from detect_required_host_folders()
+    
+    Returns:
+        tuple: (success: bool, created: list, existing: list, errors: list)
+    """
+    created = []
+    existing = []
+    errors = []
+    
+    # Create main nextcloud data folder
+    nextcloud_data = folders_dict.get('nextcloud_data')
+    if nextcloud_data:
+        try:
+            if os.path.exists(nextcloud_data):
+                existing.append(nextcloud_data)
+            else:
+                os.makedirs(nextcloud_data, mode=0o755, exist_ok=True)
+                created.append(nextcloud_data)
+                print(f"✓ Created folder: {nextcloud_data}")
+        except Exception as e:
+            error_msg = f"Failed to create {nextcloud_data}: {e}"
+            errors.append(error_msg)
+            print(f"✗ {error_msg}")
+    
+    # Create database data folder if needed
+    db_data = folders_dict.get('db_data')
+    if db_data:
+        try:
+            if os.path.exists(db_data):
+                existing.append(db_data)
+            else:
+                os.makedirs(db_data, mode=0o755, exist_ok=True)
+                created.append(db_data)
+                print(f"✓ Created folder: {db_data}")
+        except Exception as e:
+            error_msg = f"Failed to create {db_data}: {e}"
+            errors.append(error_msg)
+            print(f"✗ {error_msg}")
+    
+    success = len(errors) == 0
+    return success, created, existing, errors
+
 def thread_safe_askinteger(parent, title, prompt, **kwargs):
     """
     Thread-safe wrapper for simpledialog.askinteger.
@@ -2514,6 +2630,57 @@ php /tmp/update_config.php"
                 time.sleep(3)  # Give user more time to see the warning
 
             self.set_restore_progress(20, self.restore_steps[1])
+            
+            # Auto-create required host folders before starting containers
+            self.process_label.config(text="Checking and creating required host folders...")
+            self.update_idletasks()
+            
+            try:
+                # Detect required folders from config.php and docker-compose.yml
+                config_php_path = os.path.join(extract_dir, 'config', 'config.php')
+                compose_files = ['docker-compose.yml', 'docker-compose.yaml', 'compose.yml', 'compose.yaml']
+                compose_file_path = None
+                for cf in compose_files:
+                    if os.path.exists(cf):
+                        compose_file_path = cf
+                        break
+                
+                folders_dict = detect_required_host_folders(
+                    config_php_path=config_php_path if os.path.exists(config_php_path) else None,
+                    compose_file_path=compose_file_path,
+                    extract_dir=extract_dir
+                )
+                
+                # Create the folders
+                success, created, existing, errors = create_required_host_folders(folders_dict)
+                
+                # Inform user about created folders
+                if created or existing:
+                    msg_parts = []
+                    if created:
+                        msg_parts.append(f"Created: {', '.join(created)}")
+                    if existing:
+                        msg_parts.append(f"Already exist: {', '.join(existing)}")
+                    
+                    folder_msg = "Host folders prepared: " + " | ".join(msg_parts)
+                    self.process_label.config(text=folder_msg)
+                    print(f"✓ {folder_msg}")
+                    time.sleep(1)  # Give user time to see the message
+                
+                # Show errors if any, but continue with warning
+                if errors:
+                    error_text = "\n".join(errors)
+                    warning_msg = f"⚠️ Warning: Some folders could not be created:\n{error_text}\n\nContinuing with restore..."
+                    self.error_label.config(text=warning_msg, fg="orange")
+                    print(f"⚠️ {warning_msg}")
+                    time.sleep(2)
+                
+            except Exception as folder_err:
+                # Log error but continue - folder creation failure shouldn't stop the restore
+                warning_msg = f"⚠️ Warning: Could not auto-create folders: {folder_err}\n\nContinuing with restore..."
+                self.error_label.config(text=warning_msg, fg="orange")
+                print(f"⚠️ {warning_msg}")
+                time.sleep(2)
             
             # For SQLite, we don't need a separate database container
             db_container = None
