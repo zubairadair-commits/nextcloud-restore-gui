@@ -10,6 +10,8 @@ import shutil
 import webbrowser
 import traceback
 import re
+import platform
+import sys
 
 DOCKER_INSTALLER_URL = "https://www.docker.com/products/docker-desktop/"
 GPG_DOWNLOAD_URL = "https://files.gpg4win.org/gpg4win-latest.exe"
@@ -30,6 +32,193 @@ def is_tool_installed(tool):
         return True
     except Exception:
         return False
+
+def is_docker_running():
+    """
+    Check if Docker daemon is running by attempting a simple Docker command.
+    Returns: True if Docker is running, False otherwise
+    """
+    try:
+        result = subprocess.run(
+            ['docker', 'ps'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=5
+        )
+        return result.returncode == 0
+    except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+        return False
+
+def get_docker_desktop_path():
+    """
+    Get the path to Docker Desktop executable based on the platform.
+    Returns: Path to Docker Desktop or None if not found
+    """
+    system = platform.system()
+    
+    if system == "Windows":
+        # Common Docker Desktop locations on Windows
+        paths = [
+            r"C:\Program Files\Docker\Docker\Docker Desktop.exe",
+            os.path.expandvars(r"%ProgramFiles%\Docker\Docker\Docker Desktop.exe"),
+        ]
+        for path in paths:
+            if os.path.exists(path):
+                return path
+    elif system == "Darwin":  # macOS
+        path = "/Applications/Docker.app"
+        if os.path.exists(path):
+            return path
+    # Linux typically uses docker daemon, not Desktop
+    return None
+
+def start_docker_desktop():
+    """
+    Attempt to start Docker Desktop based on the platform.
+    Returns: True if launch was attempted, False otherwise
+    """
+    docker_path = get_docker_desktop_path()
+    if not docker_path:
+        return False
+    
+    try:
+        system = platform.system()
+        if system == "Windows":
+            subprocess.Popen([docker_path], shell=False)
+        elif system == "Darwin":  # macOS
+            subprocess.Popen(['open', '-a', 'Docker'])
+        return True
+    except Exception as e:
+        print(f"Failed to start Docker Desktop: {e}")
+        return False
+
+def prompt_start_docker(parent):
+    """
+    Show a dialog prompting the user to start Docker.
+    On Windows/Mac, offer to start Docker Desktop automatically.
+    Returns: True if user wants to retry, False to cancel
+    """
+    system = platform.system()
+    docker_path = get_docker_desktop_path()
+    
+    dialog = tk.Toplevel(parent)
+    dialog.title("Docker Not Running")
+    dialog.geometry("600x350")
+    dialog.transient(parent)
+    dialog.grab_set()
+    
+    # Center the dialog
+    dialog.update_idletasks()
+    x = (dialog.winfo_screenwidth() // 2) - (600 // 2)
+    y = (dialog.winfo_screenheight() // 2) - (350 // 2)
+    dialog.geometry(f"600x350+{x}+{y}")
+    
+    # Header
+    header_frame = tk.Frame(dialog, bg="#e74c3c", height=60)
+    header_frame.pack(fill="x")
+    header_frame.pack_propagate(False)
+    tk.Label(
+        header_frame,
+        text="⚠ Docker Not Running",
+        font=("Arial", 16, "bold"),
+        bg="#e74c3c",
+        fg="white"
+    ).pack(pady=15)
+    
+    # Content
+    content_frame = tk.Frame(dialog)
+    content_frame.pack(fill="both", expand=True, padx=30, pady=20)
+    
+    message = (
+        "Docker is not currently running on your system.\n\n"
+        "This utility requires Docker to manage Nextcloud containers.\n\n"
+    )
+    
+    if docker_path:
+        if system == "Windows":
+            message += "Would you like to start Docker Desktop now?"
+        elif system == "Darwin":
+            message += "Would you like to start Docker Desktop now?"
+    else:
+        if system == "Linux":
+            message += (
+                "Please start the Docker daemon using:\n"
+                "  sudo systemctl start docker\n\n"
+                "Then click 'Retry' to continue."
+            )
+        else:
+            message += "Please start Docker Desktop manually and click 'Retry'."
+    
+    tk.Label(
+        content_frame,
+        text=message,
+        font=("Arial", 12),
+        wraplength=540,
+        justify="left"
+    ).pack(pady=10)
+    
+    result = {"retry": False}
+    
+    def on_start_docker():
+        if start_docker_desktop():
+            tk.Label(
+                content_frame,
+                text="\n✓ Docker Desktop is starting...\nPlease wait 10-20 seconds, then click 'Retry'.",
+                font=("Arial", 11),
+                fg="#27ae60"
+            ).pack(pady=5)
+            # Wait a bit for Docker to start
+            dialog.after(2000, lambda: None)
+        else:
+            messagebox.showerror(
+                "Error",
+                "Could not start Docker Desktop automatically.\nPlease start it manually.",
+                parent=dialog
+            )
+    
+    def on_retry():
+        result["retry"] = True
+        dialog.destroy()
+    
+    def on_cancel():
+        result["retry"] = False
+        dialog.destroy()
+    
+    # Buttons
+    button_frame = tk.Frame(content_frame)
+    button_frame.pack(pady=20)
+    
+    if docker_path:
+        tk.Button(
+            button_frame,
+            text="Start Docker Desktop",
+            font=("Arial", 12),
+            command=on_start_docker,
+            bg="#3daee9",
+            fg="white",
+            width=20
+        ).pack(side="left", padx=5)
+    
+    tk.Button(
+        button_frame,
+        text="Retry",
+        font=("Arial", 12),
+        command=on_retry,
+        bg="#27ae60",
+        fg="white",
+        width=15
+    ).pack(side="left", padx=5)
+    
+    tk.Button(
+        button_frame,
+        text="Cancel",
+        font=("Arial", 12),
+        command=on_cancel,
+        width=15
+    ).pack(side="left", padx=5)
+    
+    parent.wait_window(dialog)
+    return result["retry"]
 
 def prompt_install_docker_link(parent, status_label, install_callback):
     for widget in parent.body_frame.winfo_children():
@@ -789,6 +978,38 @@ class NextcloudRestoreWizard(tk.Tk):
 
         self.show_landing()
 
+    def check_docker_running(self):
+        """
+        Check if Docker is running and prompt user if not.
+        Returns: True if Docker is running, False if user cancels
+        """
+        max_retries = 3
+        retry_count = 0
+        
+        while retry_count < max_retries:
+            if is_docker_running():
+                return True
+            
+            # Docker is not running, prompt user
+            should_retry = prompt_start_docker(self)
+            
+            if not should_retry:
+                # User cancelled
+                return False
+            
+            retry_count += 1
+            # Give Docker some time to start before checking again
+            time.sleep(2)
+        
+        # Max retries reached
+        messagebox.showerror(
+            "Docker Not Running",
+            "Docker is still not running after multiple attempts.\n\n"
+            "Please start Docker manually and try again.",
+            parent=self
+        )
+        return False
+
     def show_landing(self):
         for widget in self.body_frame.winfo_children():
             widget.destroy()
@@ -813,6 +1034,11 @@ class NextcloudRestoreWizard(tk.Tk):
 
     # ----- Backup logic -----
     def start_backup(self):
+        # Check if Docker is running before proceeding
+        if not self.check_docker_running():
+            self.show_landing()
+            return
+        
         for widget in self.body_frame.winfo_children():
             widget.destroy()
         self.status_label.config(text="Backup Wizard: Select backup destination folder.")
@@ -987,6 +1213,11 @@ class NextcloudRestoreWizard(tk.Tk):
 
     # --- Restore logic with in-GUI password, progress bar, live file output, and error label ---
     def start_restore(self):
+        # Check if Docker is running before proceeding
+        if not self.check_docker_running():
+            self.show_landing()
+            return
+        
         for widget in self.body_frame.winfo_children():
             widget.destroy()
         self.status_label.config(text="Restore Wizard: Select backup archive to restore.")
@@ -2832,15 +3063,29 @@ php /tmp/update_config.php"
 
     # --- New instance logic ---
     def start_new_instance_workflow(self):
+        # Check if Docker is installed first
+        if not is_tool_installed('docker'):
+            for widget in self.body_frame.winfo_children():
+                widget.destroy()
+            self.status_label.config(text="Start New Nextcloud Instance")
+            def proceed_to_port():
+                # Check if Docker is running before proceeding
+                if not self.check_docker_running():
+                    self.show_landing()
+                    return
+                self.show_port_entry()
+            prompt_install_docker_link(self, self.status_label, proceed_to_port)
+            return
+        
+        # Check if Docker is running before proceeding
+        if not self.check_docker_running():
+            self.show_landing()
+            return
+        
         for widget in self.body_frame.winfo_children():
             widget.destroy()
         self.status_label.config(text="Start New Nextcloud Instance")
-        def proceed_to_port():
-            self.show_port_entry()
-        if not is_tool_installed('docker'):
-            prompt_install_docker_link(self, self.status_label, proceed_to_port)
-        else:
-            self.show_port_entry()
+        self.show_port_entry()
 
     def show_port_entry(self):
         for widget in self.body_frame.winfo_children():
