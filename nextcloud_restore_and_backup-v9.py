@@ -111,13 +111,62 @@ def prompt_install_database_utility(parent, dbtype, utility_name):
             )
         }
     else:
+        # Unknown or unsupported database type
         instructions = {
-            'Windows': f"Database utility '{utility_name}' is required but installation instructions are not available.",
-            'Darwin': f"Database utility '{utility_name}' is required but installation instructions are not available.",
-            'Linux': f"Database utility '{utility_name}' is required but installation instructions are not available."
+            'Windows': (
+                "❌ DATABASE TYPE DETECTION FAILED\n\n"
+                f"The database type '{dbtype}' is not recognized or not supported.\n\n"
+                "Possible reasons:\n"
+                "• config.php file is missing or corrupted\n"
+                "• Database type is not supported (only MySQL/MariaDB, PostgreSQL, and SQLite are supported)\n"
+                "• Container is not accessible or not running\n\n"
+                "What to do:\n"
+                "1. Check your Nextcloud configuration file (config/config.php)\n"
+                "2. Verify the 'dbtype' field contains one of: 'mysql', 'pgsql', or 'sqlite'\n"
+                "3. Ensure your Nextcloud container is running: docker ps\n"
+                "4. For help, see: https://docs.nextcloud.com/server/latest/admin_manual/configuration_database/\n\n"
+                "⚠️ Backup cannot proceed until the database type is correctly detected."
+            ),
+            'Darwin': (
+                "❌ DATABASE TYPE DETECTION FAILED\n\n"
+                f"The database type '{dbtype}' is not recognized or not supported.\n\n"
+                "Possible reasons:\n"
+                "• config.php file is missing or corrupted\n"
+                "• Database type is not supported (only MySQL/MariaDB, PostgreSQL, and SQLite are supported)\n"
+                "• Container is not accessible or not running\n\n"
+                "What to do:\n"
+                "1. Check your Nextcloud configuration file (config/config.php)\n"
+                "2. Verify the 'dbtype' field contains one of: 'mysql', 'pgsql', or 'sqlite'\n"
+                "3. Ensure your Nextcloud container is running: docker ps\n"
+                "4. For help, see: https://docs.nextcloud.com/server/latest/admin_manual/configuration_database/\n\n"
+                "⚠️ Backup cannot proceed until the database type is correctly detected."
+            ),
+            'Linux': (
+                "❌ DATABASE TYPE DETECTION FAILED\n\n"
+                f"The database type '{dbtype}' is not recognized or not supported.\n\n"
+                "Possible reasons:\n"
+                "• config.php file is missing or corrupted\n"
+                "• Database type is not supported (only MySQL/MariaDB, PostgreSQL, and SQLite are supported)\n"
+                "• Container is not accessible or not running\n\n"
+                "What to do:\n"
+                "1. Check your Nextcloud configuration file (config/config.php)\n"
+                "2. Verify the 'dbtype' field contains one of: 'mysql', 'pgsql', or 'sqlite'\n"
+                "3. Ensure your Nextcloud container is running: docker ps\n"
+                "4. For help, see: https://docs.nextcloud.com/server/latest/admin_manual/configuration_database/\n\n"
+                "⚠️ Backup cannot proceed until the database type is correctly detected."
+            )
         }
     
     instruction_text = instructions.get(system, instructions.get('Linux', ''))
+    
+    # For unknown database type, don't offer retry - just show error and cancel
+    if dbtype not in ['mysql', 'mariadb', 'pgsql', 'sqlite']:
+        messagebox.showerror(
+            "Database Type Detection Failed",
+            instruction_text,
+            parent=parent
+        )
+        return False
     
     result = messagebox.askokcancel(
         "Database Utility Required",
@@ -462,7 +511,12 @@ def detect_database_type_from_container(container_name):
         )
         
         if result.returncode != 0:
-            print(f"Could not read config.php from container: {result.stderr}")
+            print(f"❌ Could not read config.php from container '{container_name}'")
+            print(f"   Error: {result.stderr.strip()}")
+            print(f"   Possible causes:")
+            print(f"   • config.php file does not exist at /var/www/html/config/config.php")
+            print(f"   • Insufficient permissions to read the file")
+            print(f"   • Container is not running or not accessible")
             return None, None
         
         content = result.stdout
@@ -470,10 +524,21 @@ def detect_database_type_from_container(container_name):
         # Look for 'dbtype' => 'value' pattern (with single or double quotes)
         dbtype_match = re.search(r"['\"]dbtype['\"] => ['\"]([^'\"]+)['\"]", content)
         if not dbtype_match:
-            print("Could not find dbtype in config.php")
+            print("❌ Could not find 'dbtype' field in config.php")
+            print("   The configuration file may be corrupted or incomplete.")
+            print("   Please verify the config.php file in your Nextcloud installation.")
             return None, None
         
         dbtype = dbtype_match.group(1).lower()
+        
+        # Validate the detected database type
+        supported_dbtypes = ['sqlite', 'sqlite3', 'pgsql', 'mysql', 'mariadb']
+        if dbtype not in supported_dbtypes:
+            print(f"⚠️ Detected unsupported database type: '{dbtype}'")
+            print(f"   Supported types: {', '.join(supported_dbtypes)}")
+            print(f"   Please check your Nextcloud configuration.")
+            # Return the detected type anyway so it can be properly reported
+            return dbtype, {'dbtype': dbtype}
         
         # Also extract other DB config for reference
         db_config = {'dbtype': dbtype}
@@ -494,13 +559,21 @@ def detect_database_type_from_container(container_name):
             db_config['dbhost'] = dbhost_match.group(1)
         
         print(f"✓ Detected database type from container: {dbtype}")
+        if db_config:
+            print(f"  Database configuration: {db_config}")
         return dbtype, db_config
         
     except subprocess.TimeoutExpired:
-        print("Timeout reading config.php from container")
+        print("❌ Timeout reading config.php from container")
+        print("   The container may be unresponsive or experiencing issues.")
+        print("   Please check container status: docker ps")
         return None, None
     except Exception as e:
-        print(f"Error detecting database type from container: {e}")
+        print(f"❌ Error detecting database type from container: {e}")
+        print(f"   This is an unexpected error. Please check:")
+        print(f"   • Container is running: docker ps")
+        print(f"   • Container name is correct: {container_name}")
+        print(f"   • Docker daemon is running and accessible")
         return None, None
 
 def parse_config_php_dbtype(config_php_path):
@@ -1254,33 +1327,62 @@ class NextcloudRestoreWizard(tk.Tk):
         dbtype, db_config = detect_database_type_from_container(chosen_container)
         
         if not dbtype:
-            # Could not detect - ask user or default to PostgreSQL
+            # Could not detect - provide detailed error message and manual selection
             response = messagebox.askyesnocancel(
-                "Database Type Unknown",
-                "Could not automatically detect the database type from your Nextcloud container.\n\n"
-                "Is your Nextcloud using PostgreSQL?\n"
+                "Database Type Detection Failed",
+                "❌ Could not automatically detect the database type from your Nextcloud container.\n\n"
+                "Possible reasons:\n"
+                "• config.php file is missing or inaccessible\n"
+                "• Container does not have the expected file structure\n"
+                "• Permission issues reading the container filesystem\n"
+                "• Network connectivity issues\n\n"
+                "📋 MANUAL SELECTION:\n"
+                "Please select your database type:\n"
                 "• Yes = PostgreSQL (default)\n"
                 "• No = MySQL/MariaDB\n"
-                "• Cancel = Abort backup\n\n"
-                "Note: SQLite databases are backed up automatically with the data folder."
+                "• Cancel = Abort backup and check configuration\n\n"
+                "ℹ️ Note: SQLite databases are backed up automatically with the data folder.\n\n"
+                "⚠️ If you're unsure, click Cancel and check your Nextcloud config/config.php file\n"
+                "to verify the 'dbtype' setting.\n\n"
+                "For help: https://docs.nextcloud.com/server/latest/admin_manual/configuration_database/"
             )
             if response is None:  # Cancel
                 self.show_landing()
                 return
             elif response:  # Yes = PostgreSQL
                 dbtype = 'pgsql'
+                print("User manually selected database type: PostgreSQL")
             else:  # No = MySQL
                 dbtype = 'mysql'
+                print("User manually selected database type: MySQL/MariaDB")
+        
+        # Validate database type before proceeding
+        if dbtype and dbtype not in ['sqlite', 'sqlite3', 'pgsql', 'mysql', 'mariadb']:
+            # Unsupported database type detected
+            messagebox.showerror(
+                "Unsupported Database Type",
+                f"❌ Database type '{dbtype}' is not supported.\n\n"
+                "Supported database types:\n"
+                "• MySQL / MariaDB\n"
+                "• PostgreSQL\n"
+                "• SQLite\n\n"
+                "Please check your Nextcloud configuration file (config/config.php)\n"
+                "and verify the 'dbtype' setting.\n\n"
+                "For help: https://docs.nextcloud.com/server/latest/admin_manual/configuration_database/\n\n"
+                "⚠️ Backup cannot proceed with an unsupported database type."
+            )
+            self.show_landing()
+            return
         
         # Check if required database dump utility is available
-        if dbtype != 'sqlite':
+        if dbtype not in ['sqlite', 'sqlite3']:
             utility_installed, utility_name = check_database_dump_utility(dbtype)
             
             while not utility_installed:
                 # Prompt user to install the utility
                 retry = prompt_install_database_utility(self, dbtype, utility_name)
                 if not retry:
-                    # User cancelled
+                    # User cancelled or error occurred
                     self.show_landing()
                     return
                 # Check again after user says they installed it
