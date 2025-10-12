@@ -33,6 +33,100 @@ def is_tool_installed(tool):
     except Exception:
         return False
 
+def check_database_dump_utility(dbtype):
+    """
+    Check if the required database dump utility is available.
+    Returns: (is_installed, utility_name) tuple
+    """
+    if dbtype in ['mysql', 'mariadb']:
+        utility = 'mysqldump'
+        installed = is_tool_installed(utility)
+        return installed, utility
+    elif dbtype == 'pgsql':
+        utility = 'pg_dump'
+        installed = is_tool_installed(utility)
+        return installed, utility
+    elif dbtype == 'sqlite':
+        # SQLite doesn't need external tools, database is in the data folder
+        return True, 'sqlite'
+    else:
+        return False, 'unknown'
+
+def prompt_install_database_utility(parent, dbtype, utility_name):
+    """
+    Prompt user to install the required database dump utility.
+    Returns: True if user wants to retry, False to cancel
+    """
+    system = platform.system()
+    
+    if dbtype in ['mysql', 'mariadb']:
+        instructions = {
+            'Windows': (
+                f"MySQL Client Tools (including {utility_name}) are required for backup.\n\n"
+                "Installation options:\n"
+                "1. Download MySQL Installer from: https://dev.mysql.com/downloads/installer/\n"
+                "2. Or install via Chocolatey: choco install mysql\n"
+                "3. Or use Docker: The utility is available inside MySQL/MariaDB containers\n\n"
+                "After installation, restart the application."
+            ),
+            'Darwin': (
+                f"MySQL Client Tools (including {utility_name}) are required for backup.\n\n"
+                "Installation:\n"
+                "• Install via Homebrew: brew install mysql-client\n"
+                "• Or: brew install mysql\n\n"
+                "After installation, restart the application."
+            ),
+            'Linux': (
+                f"MySQL Client Tools (including {utility_name}) are required for backup.\n\n"
+                "Installation:\n"
+                "• Ubuntu/Debian: sudo apt-get install mysql-client\n"
+                "• Fedora/RHEL: sudo dnf install mysql\n"
+                "• Arch: sudo pacman -S mysql-clients\n\n"
+                "After installation, restart the application."
+            )
+        }
+    elif dbtype == 'pgsql':
+        instructions = {
+            'Windows': (
+                f"PostgreSQL Client Tools (including {utility_name}) are required for backup.\n\n"
+                "Installation options:\n"
+                "1. Download PostgreSQL from: https://www.postgresql.org/download/windows/\n"
+                "2. Or install via Chocolatey: choco install postgresql\n"
+                "3. Or use Docker: The utility is available inside PostgreSQL containers\n\n"
+                "After installation, restart the application."
+            ),
+            'Darwin': (
+                f"PostgreSQL Client Tools (including {utility_name}) are required for backup.\n\n"
+                "Installation:\n"
+                "• Install via Homebrew: brew install postgresql\n\n"
+                "After installation, restart the application."
+            ),
+            'Linux': (
+                f"PostgreSQL Client Tools (including {utility_name}) are required for backup.\n\n"
+                "Installation:\n"
+                "• Ubuntu/Debian: sudo apt-get install postgresql-client\n"
+                "• Fedora/RHEL: sudo dnf install postgresql\n"
+                "• Arch: sudo pacman -S postgresql\n\n"
+                "After installation, restart the application."
+            )
+        }
+    else:
+        instructions = {
+            'Windows': f"Database utility '{utility_name}' is required but installation instructions are not available.",
+            'Darwin': f"Database utility '{utility_name}' is required but installation instructions are not available.",
+            'Linux': f"Database utility '{utility_name}' is required but installation instructions are not available."
+        }
+    
+    instruction_text = instructions.get(system, instructions.get('Linux', ''))
+    
+    result = messagebox.askokcancel(
+        "Database Utility Required",
+        instruction_text + "\n\nClick OK after installing to retry, or Cancel to abort.",
+        parent=parent
+    )
+    
+    return result
+
 def is_docker_running():
     """
     Check if Docker daemon is running by attempting a simple Docker command.
@@ -48,6 +142,43 @@ def is_docker_running():
         return result.returncode == 0
     except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
         return False
+
+def check_nextcloud_ready(port, timeout=120):
+    """
+    Check if Nextcloud is ready by polling the HTTP endpoint.
+    Returns: True if ready, False if timeout
+    """
+    import urllib.request
+    import urllib.error
+    import socket
+    
+    url = f"http://localhost:{port}"
+    start_time = time.time()
+    
+    print(f"Checking if Nextcloud is ready at {url}...")
+    
+    while time.time() - start_time < timeout:
+        try:
+            # Try to connect to the Nextcloud service
+            response = urllib.request.urlopen(url, timeout=5)
+            # If we get any response, Nextcloud is at least responding
+            print(f"✓ Nextcloud is responding (HTTP {response.getcode()})")
+            return True
+        except urllib.error.HTTPError as e:
+            # HTTP errors (like 404, 500) still mean the server is up
+            if e.code in [200, 302, 404, 500, 503]:
+                print(f"✓ Nextcloud is responding (HTTP {e.code})")
+                return True
+        except (urllib.error.URLError, socket.timeout, ConnectionRefusedError, socket.error):
+            # Connection refused or timeout - service not ready yet
+            pass
+        except Exception as e:
+            print(f"Check error: {e}")
+        
+        time.sleep(2)
+    
+    print(f"✗ Nextcloud did not become ready within {timeout} seconds")
+    return False
 
 def get_docker_desktop_path():
     """
@@ -312,6 +443,65 @@ def find_config_php_recursive(directory):
     except Exception as e:
         print(f"Error searching for config.php: {e}")
         return None
+
+def detect_database_type_from_container(container_name):
+    """
+    Detect database type from a running Nextcloud container by reading its config.php.
+    Returns: (dbtype, db_config_dict) or (None, None) if detection fails
+    dbtype can be: 'sqlite', 'pgsql', 'mysql'
+    """
+    try:
+        # Try to read config.php from the running container
+        result = subprocess.run(
+            f'docker exec {container_name} cat /var/www/html/config/config.php',
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=10
+        )
+        
+        if result.returncode != 0:
+            print(f"Could not read config.php from container: {result.stderr}")
+            return None, None
+        
+        content = result.stdout
+        
+        # Look for 'dbtype' => 'value' pattern (with single or double quotes)
+        dbtype_match = re.search(r"['\"]dbtype['\"] => ['\"]([^'\"]+)['\"]", content)
+        if not dbtype_match:
+            print("Could not find dbtype in config.php")
+            return None, None
+        
+        dbtype = dbtype_match.group(1).lower()
+        
+        # Also extract other DB config for reference
+        db_config = {'dbtype': dbtype}
+        
+        # Extract dbname
+        dbname_match = re.search(r"['\"]dbname['\"] => ['\"]([^'\"]+)['\"]", content)
+        if dbname_match:
+            db_config['dbname'] = dbname_match.group(1)
+        
+        # Extract dbuser
+        dbuser_match = re.search(r"['\"]dbuser['\"] => ['\"]([^'\"]+)['\"]", content)
+        if dbuser_match:
+            db_config['dbuser'] = dbuser_match.group(1)
+        
+        # Extract dbhost
+        dbhost_match = re.search(r"['\"]dbhost['\"] => ['\"]([^'\"]+)['\"]", content)
+        if dbhost_match:
+            db_config['dbhost'] = dbhost_match.group(1)
+        
+        print(f"✓ Detected database type from container: {dbtype}")
+        return dbtype, db_config
+        
+    except subprocess.TimeoutExpired:
+        print("Timeout reading config.php from container")
+        return None, None
+    except Exception as e:
+        print(f"Error detecting database type from container: {e}")
+        return None, None
 
 def parse_config_php_dbtype(config_php_path):
     """
@@ -1057,6 +1247,55 @@ class NextcloudRestoreWizard(tk.Tk):
         else:
             chosen_container = container_names
 
+        # Detect database type from running container
+        self.status_label.config(text="Detecting database type...")
+        self.update_idletasks()
+        
+        dbtype, db_config = detect_database_type_from_container(chosen_container)
+        
+        if not dbtype:
+            # Could not detect - ask user or default to PostgreSQL
+            response = messagebox.askyesnocancel(
+                "Database Type Unknown",
+                "Could not automatically detect the database type from your Nextcloud container.\n\n"
+                "Is your Nextcloud using PostgreSQL?\n"
+                "• Yes = PostgreSQL (default)\n"
+                "• No = MySQL/MariaDB\n"
+                "• Cancel = Abort backup\n\n"
+                "Note: SQLite databases are backed up automatically with the data folder."
+            )
+            if response is None:  # Cancel
+                self.show_landing()
+                return
+            elif response:  # Yes = PostgreSQL
+                dbtype = 'pgsql'
+            else:  # No = MySQL
+                dbtype = 'mysql'
+        
+        # Check if required database dump utility is available
+        if dbtype != 'sqlite':
+            utility_installed, utility_name = check_database_dump_utility(dbtype)
+            
+            while not utility_installed:
+                # Prompt user to install the utility
+                retry = prompt_install_database_utility(self, dbtype, utility_name)
+                if not retry:
+                    # User cancelled
+                    self.show_landing()
+                    return
+                # Check again after user says they installed it
+                utility_installed, utility_name = check_database_dump_utility(dbtype)
+                if not utility_installed:
+                    messagebox.showwarning(
+                        "Utility Not Found",
+                        f"The utility '{utility_name}' is still not found.\n"
+                        "Please ensure it's installed and in your system PATH."
+                    )
+        
+        # Store detected database type for backup process
+        self.backup_dbtype = dbtype
+        self.backup_db_config = db_config
+        
         self.ask_encryption_password_inline(backup_dir, chosen_container)
 
     def ask_encryption_password_inline(self, backup_dir, container_name):
@@ -1142,29 +1381,63 @@ class NextcloudRestoreWizard(tk.Tk):
                         skipped_folders.append(folder)
                         self.set_progress(idx, f"Skipping '{folder}' (not found; not critical)")
 
-            self.set_progress(6, "Dumping PostgreSQL database ...")
-            dump_file = os.path.join(backup_temp, "nextcloud-db.sql")
-            db_dump_cmd = f'docker exec {POSTGRES_CONTAINER_NAME} bash -c "PGPASSWORD=\'{POSTGRES_PASSWORD}\' pg_dump -U {POSTGRES_USER} {POSTGRES_DB}"'
-            db_dump_result = None
-            try:
-                with open(dump_file, "w", encoding="utf8") as f:
-                    proc = subprocess.Popen(db_dump_cmd, shell=True, stdout=f)
-                    proc.wait()
-                    db_dump_result = proc.returncode
-            except Exception as e:
-                db_dump_result = 1
-            if db_dump_result != 0:
-                self.set_progress(0, f"CRITICAL: Database backup failed! Backup aborted.")
-                messagebox.showerror("Backup failed", "Could not dump Nextcloud database. Backup cannot continue.")
-                shutil.rmtree(backup_temp, ignore_errors=True)
-                if hasattr(self, "progressbar") and self.progressbar:
-                    self.progressbar.destroy()
-                    self.progressbar = None
-                if hasattr(self, "progress_message") and self.progress_message:
-                    self.progress_message.destroy()
-                    self.progress_message = None
-                self.show_landing()
-                return
+            # Database backup - handle different database types
+            dbtype = getattr(self, 'backup_dbtype', 'pgsql')  # Default to PostgreSQL if not set
+            db_config = getattr(self, 'backup_db_config', {})
+            
+            if dbtype == 'sqlite':
+                # SQLite database is already backed up with the data folder
+                self.set_progress(6, "SQLite database backed up with data folder")
+                print("✓ SQLite database backup: included in data folder")
+            else:
+                # MySQL or PostgreSQL - need to dump
+                db_name = dbtype.upper() if dbtype == 'pgsql' else 'MySQL/MariaDB'
+                self.set_progress(6, f"Dumping {db_name} database ...")
+                dump_file = os.path.join(backup_temp, "nextcloud-db.sql")
+                db_dump_result = None
+                
+                try:
+                    if dbtype == 'pgsql':
+                        # PostgreSQL dump
+                        db_container = get_postgres_container_name() or POSTGRES_CONTAINER_NAME
+                        db_name_actual = db_config.get('dbname', POSTGRES_DB)
+                        db_user = db_config.get('dbuser', POSTGRES_USER)
+                        db_password = POSTGRES_PASSWORD  # We don't have the actual password from config
+                        
+                        db_dump_cmd = f'docker exec {db_container} bash -c "PGPASSWORD=\'{db_password}\' pg_dump -U {db_user} {db_name_actual}"'
+                    elif dbtype in ['mysql', 'mariadb']:
+                        # MySQL/MariaDB dump
+                        # Try to find MySQL container or use the database host from config
+                        db_host = db_config.get('dbhost', 'db')
+                        db_name_actual = db_config.get('dbname', 'nextcloud')
+                        db_user = db_config.get('dbuser', 'nextcloud')
+                        
+                        # Try dumping from Nextcloud container if it has mysql client
+                        db_dump_cmd = f'docker exec {container_name} bash -c "mysqldump -h {db_host} -u {db_user} -p{POSTGRES_PASSWORD} {db_name_actual}"'
+                    else:
+                        raise Exception(f"Unsupported database type: {dbtype}")
+                    
+                    with open(dump_file, "w", encoding="utf8") as f:
+                        proc = subprocess.Popen(db_dump_cmd, shell=True, stdout=f, stderr=subprocess.PIPE)
+                        proc.wait()
+                        db_dump_result = proc.returncode
+                        
+                except Exception as e:
+                    print(f"Database dump error: {e}")
+                    db_dump_result = 1
+                
+                if db_dump_result != 0:
+                    self.set_progress(0, f"CRITICAL: Database backup failed! Backup aborted.")
+                    messagebox.showerror("Backup failed", f"Could not dump {db_name} database. Backup cannot continue.\n\nPlease ensure:\n- Database container is running\n- Database credentials are correct\n- Database dump utility is available")
+                    shutil.rmtree(backup_temp, ignore_errors=True)
+                    if hasattr(self, "progressbar") and self.progressbar:
+                        self.progressbar.destroy()
+                        self.progressbar = None
+                    if hasattr(self, "progress_message") and self.progress_message:
+                        self.progress_message.destroy()
+                        self.progress_message = None
+                    self.show_landing()
+                    return
 
             self.set_progress(7, "Creating archive ...")
             shutil.make_archive(backup_file.replace('.tar.gz',''), 'gztar', backup_temp)
@@ -2019,8 +2292,44 @@ class NextcloudRestoreWizard(tk.Tk):
         new_container_name = self.restore_container_name
         port = self.restore_container_port
         
-        self.set_restore_progress(30, f"Starting a new Nextcloud container on port {port} ...")
-        self.process_label.config(text=f"Starting container: {new_container_name}")
+        self.set_restore_progress(28, "Checking for Nextcloud image...")
+        self.process_label.config(text="Checking if Nextcloud image is available...")
+        self.update_idletasks()
+        
+        # Check if image exists locally
+        check_image = subprocess.run(
+            f'docker images -q {NEXTCLOUD_IMAGE}',
+            shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        )
+        
+        if not check_image.stdout.strip():
+            # Need to pull image
+            self.set_restore_progress(29, "Pulling Nextcloud image (first-time setup)...")
+            self.process_label.config(text="Downloading Nextcloud image from Docker Hub...")
+            self.update_idletasks()
+            
+            pull_result = subprocess.run(
+                f'docker pull {NEXTCLOUD_IMAGE}',
+                shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            )
+            
+            if pull_result.returncode != 0:
+                error_msg = f"Failed to pull Nextcloud image: {pull_result.stderr}"
+                self.set_restore_progress(0, "Restore failed!")
+                self.error_label.config(text=error_msg)
+                return None
+            
+            self.set_restore_progress(30, "Image downloaded successfully")
+            self.process_label.config(text="✓ Nextcloud image ready")
+        else:
+            self.set_restore_progress(30, "Using cached Nextcloud image")
+            self.process_label.config(text="✓ Nextcloud image found")
+        
+        self.update_idletasks()
+        time.sleep(0.5)
+        
+        self.set_restore_progress(31, f"Creating Nextcloud container on port {port}...")
+        self.process_label.config(text=f"Creating container: {new_container_name}")
         self.update_idletasks()
         
         # Try to link to database container for proper Docker networking
@@ -2055,10 +2364,15 @@ class NextcloudRestoreWizard(tk.Tk):
             return None
         
         container_id = new_container_name
-        self.set_restore_progress(35, f"Started Nextcloud container: {container_id} on port {port}")
-        self.process_label.config(text=f"Started container: {container_id} on port {port}")
+        self.set_restore_progress(33, f"Container created: {container_id}")
+        self.process_label.config(text=f"✓ Container created on port {port}")
+        self.update_idletasks()
+        
+        self.set_restore_progress(35, "Waiting for Nextcloud to initialize...")
+        self.process_label.config(text="Waiting for container to be ready...")
         self.update_idletasks()
         time.sleep(5)
+        
         return container_id
 
     def ensure_db_container(self):
@@ -2089,7 +2403,33 @@ class NextcloudRestoreWizard(tk.Tk):
             
             return db_container
         
-        self.set_restore_progress(40, "No database container found. Starting a new PostgreSQL container ...")
+        self.set_restore_progress(38, "Checking for database image...")
+        self.process_label.config(text="Checking if database image is available...")
+        self.update_idletasks()
+        
+        # Check if PostgreSQL image exists locally
+        check_db_image = subprocess.run(
+            f'docker images -q {POSTGRES_IMAGE}',
+            shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        )
+        
+        if not check_db_image.stdout.strip():
+            self.set_restore_progress(39, "Pulling PostgreSQL image...")
+            self.process_label.config(text="Downloading PostgreSQL image...")
+            self.update_idletasks()
+            
+            pull_db_result = subprocess.run(
+                f'docker pull {POSTGRES_IMAGE}',
+                shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            )
+            
+            if pull_db_result.returncode != 0:
+                error_msg = f"Failed to pull PostgreSQL image: {pull_db_result.stderr}"
+                self.set_restore_progress(0, "Restore failed!")
+                self.error_label.config(text=error_msg)
+                return None
+        
+        self.set_restore_progress(40, "Creating database container...")
         self.process_label.config(text=f"Starting DB container: {POSTGRES_CONTAINER_NAME}")
         self.update_idletasks()
         
@@ -3130,11 +3470,88 @@ php /tmp/update_config.php"
 
     def launch_nextcloud_instance(self, port):
         try:
-            self.status_label.config(text=f"Pulling nextcloud image and starting container on port {port}...")
+            # Clear body and show progress UI
+            for widget in self.body_frame.winfo_children():
+                widget.destroy()
+            
+            progress_frame = tk.Frame(self.body_frame)
+            progress_frame.pack(pady=30, expand=True)
+            
+            # Status label with spinner
+            status_label = tk.Label(progress_frame, text="", font=("Arial", 13), fg="blue")
+            status_label.pack(pady=10)
+            
+            # Detailed message label
+            detail_label = tk.Label(progress_frame, text="", font=("Arial", 11), fg="gray")
+            detail_label.pack(pady=5)
+            
+            # Track if we should continue (for cancellation)
+            should_continue = [True]
+            
+            def update_status(spinner_char, main_text, detail_text=""):
+                """Update status with spinner"""
+                if should_continue[0]:
+                    status_label.config(text=f"{spinner_char} {main_text}")
+                    detail_label.config(text=detail_text)
+                    self.status_label.config(text=main_text)
+                    self.update_idletasks()
+            
+            # Spinner animation characters
+            spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+            spinner_idx = [0]
+            
+            def spin():
+                """Get next spinner character"""
+                char = spinner_chars[spinner_idx[0]]
+                spinner_idx[0] = (spinner_idx[0] + 1) % len(spinner_chars)
+                return char
+            
+            # Phase 1: Check if image exists locally
+            update_status(spin(), "Checking for Nextcloud image...", "This will only take a moment")
+            
+            check_image = subprocess.run(
+                f'docker images -q {NEXTCLOUD_IMAGE}',
+                shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            )
+            
+            image_exists = bool(check_image.stdout.strip())
+            
+            if not image_exists:
+                # Phase 2: Pull image (this can take a while)
+                update_status(spin(), "Pulling Nextcloud image from Docker Hub...", 
+                             "First-time setup: This may take 2-5 minutes depending on your internet speed")
+                
+                # Start pull in background and animate spinner
+                pull_process = subprocess.Popen(
+                    f'docker pull {NEXTCLOUD_IMAGE}',
+                    shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+                )
+                
+                # Animate spinner while pulling
+                while pull_process.poll() is None:
+                    update_status(spin(), "Pulling Nextcloud image from Docker Hub...",
+                                 "This may take a few minutes on first run...")
+                    time.sleep(0.15)
+                
+                if pull_process.returncode != 0:
+                    error_msg = pull_process.stderr.read() if pull_process.stderr else "Unknown error"
+                    raise Exception(f"Failed to pull Nextcloud image: {error_msg}")
+                
+                update_status("✓", "Nextcloud image downloaded successfully", "")
+                time.sleep(0.5)
+            else:
+                update_status("✓", "Nextcloud image found", "Using cached image")
+                time.sleep(0.3)
+            
+            # Phase 3: Create container
+            update_status(spin(), "Creating Nextcloud container...", 
+                         f"Starting container on port {port}")
+            
             result = subprocess.run(
                 f'docker run -d --name {NEXTCLOUD_CONTAINER_NAME} --network bridge -p {port}:80 {NEXTCLOUD_IMAGE}',
                 shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
             )
+            
             if result.returncode != 0:
                 tb = traceback.format_exc()
                 error_msg = (
@@ -3150,27 +3567,98 @@ php /tmp/update_config.php"
                 print(f"Container start failed: {result.stderr}\n{tb}")
                 self.show_landing()
                 return
+            
             container_id = NEXTCLOUD_CONTAINER_NAME
             url = f"http://localhost:{port}"
-            self.status_label.config(text=f"Nextcloud started! Access it at {url}\nContainer ID: {container_id}")
+            
+            update_status("✓", "Container created successfully", f"Container ID: {container_id}")
+            time.sleep(0.5)
+            
+            # Phase 4: Wait for Nextcloud to be ready
+            update_status(spin(), "Waiting for Nextcloud to start...", 
+                         "The service is initializing. This may take 1-2 minutes.")
+            
+            # Check readiness in background thread
+            ready = [False]
+            check_thread = threading.Thread(
+                target=lambda: ready.__setitem__(0, check_nextcloud_ready(port, timeout=120)),
+                daemon=True
+            )
+            check_thread.start()
+            
+            # Animate spinner while checking
+            while check_thread.is_alive():
+                update_status(spin(), "Waiting for Nextcloud to start...",
+                             "Nextcloud is initializing. Please wait...")
+                time.sleep(0.15)
+            
+            # Show final UI
             for widget in self.body_frame.winfo_children():
                 widget.destroy()
+            
             info_frame = tk.Frame(self.body_frame)
             info_frame.pack(pady=30)
-            tk.Label(info_frame, text=f"Nextcloud is running!\nAccess it at:", font=("Arial", 14)).pack(pady=8)
-            def open_localhost(event=None, link=url):
-                webbrowser.open(link)
-            link_label = tk.Label(
-                info_frame,
-                text=url,
-                font=("Arial", 16, "bold"),
-                fg="#3daee9",
-                cursor="hand2"
-            )
-            link_label.pack(pady=8)
-            link_label.bind("<Button-1>", lambda e: open_localhost(link=url))
-            tk.Label(info_frame, text=f"Container ID: {container_id}", font=("Arial", 11), fg="gray").pack()
-            tk.Button(info_frame, text="Return to Main Menu", font=("Arial", 13), command=self.show_landing).pack(pady=18)
+            
+            if ready[0]:
+                tk.Label(info_frame, text="✓ Nextcloud is ready!", font=("Arial", 16, "bold"), fg="green").pack(pady=8)
+                tk.Label(info_frame, text="Access it at:", font=("Arial", 14)).pack(pady=(10, 5))
+                
+                def open_localhost(event=None, link=url):
+                    webbrowser.open(link)
+                
+                link_label = tk.Label(
+                    info_frame,
+                    text=url,
+                    font=("Arial", 16, "bold"),
+                    fg="#3daee9",
+                    cursor="hand2"
+                )
+                link_label.pack(pady=8)
+                link_label.bind("<Button-1>", lambda e: open_localhost(link=url))
+                
+                tk.Label(info_frame, text=f"Container ID: {container_id}", font=("Arial", 11), fg="gray").pack(pady=5)
+                self.status_label.config(text=f"Nextcloud is ready at {url}")
+            else:
+                # Nextcloud started but not ready yet
+                tk.Label(info_frame, text="⚠ Nextcloud container is starting", font=("Arial", 16, "bold"), fg="orange").pack(pady=8)
+                tk.Label(info_frame, text="The service is still initializing.\nThe link will become available when ready.", 
+                        font=("Arial", 12), fg="gray").pack(pady=10)
+                tk.Label(info_frame, text="Access it at:", font=("Arial", 14)).pack(pady=(10, 5))
+                
+                # Disabled link initially
+                link_label = tk.Label(
+                    info_frame,
+                    text=url,
+                    font=("Arial", 16, "bold"),
+                    fg="#aaaaaa"  # Gray color for disabled
+                )
+                link_label.pack(pady=8)
+                
+                tk.Label(info_frame, text=f"Container ID: {container_id}", font=("Arial", 11), fg="gray").pack(pady=5)
+                tk.Label(info_frame, text="⏳ Waiting for Nextcloud to become ready...", 
+                        font=("Arial", 11), fg="blue").pack(pady=10)
+                
+                self.status_label.config(text="Nextcloud container started, initializing...")
+                
+                # Continue checking in background and enable link when ready
+                def check_and_enable():
+                    if check_nextcloud_ready(port, timeout=180):
+                        # Update UI to show link is ready
+                        link_label.config(fg="#3daee9", cursor="hand2")
+                        link_label.bind("<Button-1>", lambda e: webbrowser.open(url))
+                        
+                        # Find and update the waiting message
+                        for child in info_frame.winfo_children():
+                            if isinstance(child, tk.Label) and "Waiting for Nextcloud" in child.cget("text"):
+                                child.config(text="✓ Nextcloud is now ready! Click the link above.", fg="green")
+                        
+                        self.status_label.config(text=f"Nextcloud is ready at {url}")
+                
+                threading.Thread(target=check_and_enable, daemon=True).start()
+            
+            tk.Button(info_frame, text="Return to Main Menu", font=("Arial", 13), 
+                     command=self.show_landing).pack(pady=18)
+            
         except Exception as e:
             tb = traceback.format_exc()
             messagebox.showerror("Error", f"Failed to start Nextcloud: {e}\n{tb}")
