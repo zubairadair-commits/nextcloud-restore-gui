@@ -997,59 +997,23 @@ class NextcloudRestoreWizard(tk.Tk):
         # Reset wizard state
         self.wizard_page = 1
         
-        # Create a container frame to hold the scrollable content with max-width constraint
+        # Create a centered content frame with fixed width using place() for true horizontal centering
         # This ensures the content block is centered as a unit, not just individual widgets
-        container = tk.Frame(self.body_frame)
-        container.pack(fill="both", expand=True)
+        # Using place(relx=0.5, anchor="n") centers the frame horizontally regardless of window size
+        # Fixed width of 600px provides a consistent centered block
+        self.wizard_scrollable_frame = tk.Frame(self.body_frame, width=600)
         
-        # Create scrollable frame for wizard content
-        # Set a maximum width for the scrollable content to ensure true centering
-        canvas = tk.Canvas(container)
-        scrollbar = tk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        # Bind to configure event to maintain centering and fixed width
+        def maintain_width(event):
+            # Ensure frame maintains fixed width
+            if event.width != 600:
+                self.wizard_scrollable_frame.config(width=600)
         
-        # Create the main content frame with a fixed max width for proper centering
-        # This frame will be centered within the canvas, ensuring all content
-        # appears centered regardless of window size
-        # Increased width from 700px to 850px for better space utilization on wider screens
-        scrollable_frame = tk.Frame(canvas, width=850)  # Set max-width for content block
-        
-        def on_configure(e):
-            canvas.configure(scrollregion=canvas.bbox("all"))
-            # Center the window horizontally by calculating canvas center
-            canvas_width = canvas.winfo_width()
-            if canvas_width > 1:  # Only update if canvas has been rendered
-                # Position the frame's top-center at the canvas horizontal center
-                canvas.coords(self.canvas_window, canvas_width // 2, 0)
-        
-        scrollable_frame.bind("<Configure>", on_configure)
-        
-        # Create window with north (top-center) anchor for horizontal centering
-        # Using anchor="n" positions the frame so its top-center point is at the specified coordinates
-        # Combined with the fixed width, this ensures the entire content block is truly centered
-        self.canvas_window = canvas.create_window((0, 0), window=scrollable_frame, anchor="n")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        # Also bind canvas resize to re-center content when window is resized
-        canvas.bind("<Configure>", on_configure)
-        
-        # Store references
-        self.wizard_canvas = canvas
-        self.wizard_scrollbar = scrollbar
-        self.wizard_scrollable_frame = scrollable_frame
-        
-        # Pack canvas and scrollbar
-        # Canvas expands to fill available space, providing centering context
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
+        self.wizard_scrollable_frame.bind('<Configure>', maintain_width)
+        self.wizard_scrollable_frame.place(relx=0.5, anchor="n", y=10)
         
         # Show first page
         self.show_wizard_page(1)
-        
-        # Force an immediate update to center the content on initial display
-        canvas.update_idletasks()
-        canvas_width = canvas.winfo_width()
-        if canvas_width > 1:
-            canvas.coords(self.canvas_window, canvas_width // 2, 0)
     
     def show_wizard_page(self, page_num):
         """Display a specific page of the wizard"""
@@ -1060,13 +1024,13 @@ class NextcloudRestoreWizard(tk.Tk):
         frame = self.wizard_scrollable_frame
         self.wizard_page = page_num
         
-        # Page title (subheader) - centered
+        # Page title (subheader) - full width with padding
         page_title = f"Restore Wizard: Page {page_num} of 3"
-        tk.Label(frame, text=page_title, font=("Arial", 14)).pack(pady=(10, 10), anchor="center")
+        tk.Label(frame, text=page_title, font=("Arial", 14)).pack(pady=(10, 10), fill="x", padx=40)
         
-        # Return to Main Menu button - centered
-        btn_back = tk.Button(frame, text="Return to Main Menu", font=("Arial", 12), width=22, command=self.show_landing)
-        btn_back.pack(pady=8, anchor="center")
+        # Return to Main Menu button - full width with padding
+        btn_back = tk.Button(frame, text="Return to Main Menu", font=("Arial", 12), command=self.show_landing)
+        btn_back.pack(pady=8, fill="x", padx=40)
         
         if page_num == 1:
             self.create_wizard_page1(frame)
@@ -1075,9 +1039,9 @@ class NextcloudRestoreWizard(tk.Tk):
         elif page_num == 3:
             self.create_wizard_page3(frame)
         
-        # Navigation buttons - centered
+        # Navigation buttons - full width with padding
         nav_frame = tk.Frame(frame)
-        nav_frame.pack(pady=(30, 20), anchor="center")
+        nav_frame.pack(pady=(30, 20), fill="x", padx=40)
         
         if page_num > 1:
             tk.Button(
@@ -1111,55 +1075,47 @@ class NextcloudRestoreWizard(tk.Tk):
             )
             self.restore_now_btn.pack(side="left", padx=10)
         
-        # Error label - centered
-        self.error_label = tk.Label(frame, text="", font=("Arial", 12), fg="red", wraplength=600)
-        self.error_label.pack(pady=10, anchor="center")
+        # Error label - full width with padding
+        self.error_label = tk.Label(frame, text="", font=("Arial", 12), fg="red", wraplength=500)
+        self.error_label.pack(pady=10, fill="x", padx=40)
         
-        # Progress section (shown after restore starts) - centered
+        # Progress section (shown after restore starts) - full width with padding
         self.progressbar = ttk.Progressbar(frame, length=520, mode='determinate', maximum=100)
-        self.progressbar.pack(pady=(30, 3), anchor="center")
+        self.progressbar.pack(pady=(30, 3), fill="x", padx=40)
         self.progressbar.pack_forget()  # Hide initially
         
         self.progress_label = tk.Label(frame, text="0%", font=("Arial", 13))
-        self.progress_label.pack(anchor="center")
+        self.progress_label.pack(fill="x", padx=40)
         self.progress_label.pack_forget()  # Hide initially
         
         self.process_label = tk.Label(frame, text="", font=("Arial", 11), fg="gray", anchor="center", justify="center")
-        self.process_label.pack(padx=10, pady=4, anchor="center")
+        self.process_label.pack(padx=40, pady=4, fill="x")
         self.process_label.pack_forget()  # Hide initially
         
     def create_wizard_page1(self, parent):
         """Page 1: Backup Archive Selection and Decryption Password"""
-        # Section 1: Backup file selection - all centered
-        tk.Label(parent, text="Step 1: Select Backup Archive", font=("Arial", 14, "bold")).pack(pady=(20, 5), anchor="center")
-        tk.Label(parent, text="Choose the backup file to restore (.tar.gz.gpg or .tar.gz)", font=("Arial", 10), fg="gray").pack(pady=(0, 5), anchor="center")
+        # Section 1: Backup file selection - full width with padding
+        tk.Label(parent, text="Step 1: Select Backup Archive", font=("Arial", 14, "bold")).pack(pady=(20, 5), fill="x", padx=40)
+        tk.Label(parent, text="Choose the backup file to restore (.tar.gz.gpg or .tar.gz)", font=("Arial", 10), fg="gray").pack(pady=(0, 5), fill="x", padx=40)
         
-        # Create a container frame for the entry to control its width responsively
-        # Using anchor="center" ensures the frame itself is centered horizontally
-        entry_container = tk.Frame(parent)
-        entry_container.pack(pady=5, anchor="center", padx=30)
-        
-        self.backup_entry = tk.Entry(entry_container, font=("Arial", 11), justify="center", width=80)
-        self.backup_entry.pack()
+        # Entry field - full width with padding
+        self.backup_entry = tk.Entry(parent, font=("Arial", 11))
+        self.backup_entry.pack(pady=5, fill="x", padx=40)
         
         # Restore saved value if exists
         if 'backup_path' in self.wizard_data:
             self.backup_entry.delete(0, tk.END)
             self.backup_entry.insert(0, self.wizard_data['backup_path'])
         
-        tk.Button(parent, text="Browse...", font=("Arial", 11), width=20, command=self.browse_backup).pack(pady=5, anchor="center")
+        tk.Button(parent, text="Browse...", font=("Arial", 11), width=20, command=self.browse_backup).pack(pady=5, fill="x", padx=40)
         
-        # Section 2: Decryption password - all centered
-        tk.Label(parent, text="Step 2: Decryption Password", font=("Arial", 14, "bold")).pack(pady=(30, 5), anchor="center")
-        tk.Label(parent, text="Enter password if backup is encrypted (.gpg)", font=("Arial", 10), fg="gray").pack(pady=(0, 5), anchor="center")
+        # Section 2: Decryption password - full width with padding
+        tk.Label(parent, text="Step 2: Decryption Password", font=("Arial", 14, "bold")).pack(pady=(30, 5), fill="x", padx=40)
+        tk.Label(parent, text="Enter password if backup is encrypted (.gpg)", font=("Arial", 10), fg="gray").pack(pady=(0, 5), fill="x", padx=40)
         
-        # Create a container frame for the password entry to control its width responsively
-        # Using anchor="center" ensures the frame itself is centered horizontally
-        password_container = tk.Frame(parent)
-        password_container.pack(pady=5, anchor="center", padx=30)
-        
-        self.password_entry = tk.Entry(password_container, show="*", font=("Arial", 12), justify="center", width=70)
-        self.password_entry.pack()
+        # Password entry - full width with padding
+        self.password_entry = tk.Entry(parent, show="*", font=("Arial", 12))
+        self.password_entry.pack(pady=5, fill="x", padx=40)
         
         # Restore saved value if exists
         if 'password' in self.wizard_data:
@@ -1168,17 +1124,17 @@ class NextcloudRestoreWizard(tk.Tk):
     
     def create_wizard_page2(self, parent):
         """Page 2: Database Configuration and Admin Credentials"""
-        # Section 3: Database credentials - all centered
-        tk.Label(parent, text="Step 3: Database Configuration", font=("Arial", 14, "bold")).pack(pady=(20, 5), anchor="center")
+        # Section 3: Database credentials - full width with padding
+        tk.Label(parent, text="Step 3: Database Configuration", font=("Arial", 14, "bold")).pack(pady=(20, 5), fill="x", padx=40)
         
-        # Info about auto-detection - centered
+        # Info about auto-detection - full width with padding
         info_frame = tk.Frame(parent, bg="#e3f2fd", relief="solid", borderwidth=1)
-        info_frame.pack(pady=(5, 10), anchor="center", padx=50)
-        tk.Label(info_frame, text="ℹ️ Database Type Auto-Detection", font=("Arial", 10, "bold"), bg="#e3f2fd").pack(pady=(5, 2), anchor="center")
+        info_frame.pack(pady=(5, 10), fill="x", padx=40)
+        tk.Label(info_frame, text="ℹ️ Database Type Auto-Detection", font=("Arial", 10, "bold"), bg="#e3f2fd").pack(pady=(5, 2), fill="x", padx=10)
         tk.Label(info_frame, text="The restore process will automatically detect your database type (SQLite, PostgreSQL, MySQL)", 
-                 font=("Arial", 9), bg="#e3f2fd", wraplength=600, justify="center").pack(pady=2, anchor="center")
+                 font=("Arial", 9), bg="#e3f2fd", wraplength=500, justify="center").pack(pady=2, fill="x", padx=10)
         tk.Label(info_frame, text="from the config.php file in your backup and restore accordingly.", 
-                 font=("Arial", 9), bg="#e3f2fd", wraplength=600, justify="center").pack(pady=(0, 5), anchor="center")
+                 font=("Arial", 9), bg="#e3f2fd", wraplength=500, justify="center").pack(pady=(0, 5), fill="x", padx=10)
         
         # SQLite-specific message (hidden by default, shown when SQLite is detected)
         # This message informs users that SQLite doesn't require separate database credentials
@@ -1200,16 +1156,16 @@ class NextcloudRestoreWizard(tk.Tk):
         # Warning and instructions for non-SQLite databases
         # These will be hidden when SQLite is detected
         warning_label = tk.Label(parent, text="⚠️ Enter the database credentials from your ORIGINAL Nextcloud setup", font=("Arial", 10, "bold"), fg="red")
-        warning_label.pack(anchor="center", pady=(5, 0))
+        warning_label.pack(pady=(5, 0), fill="x", padx=40)
         
         instruction_label1 = tk.Label(parent, text="These credentials are stored in your backup and must match exactly", font=("Arial", 9), fg="gray")
-        instruction_label1.pack(anchor="center")
+        instruction_label1.pack(fill="x", padx=40)
         
         instruction_label2 = tk.Label(parent, text="The database will be automatically imported using these credentials", font=("Arial", 9), fg="gray")
-        instruction_label2.pack(anchor="center", pady=(0, 10))
+        instruction_label2.pack(pady=(0, 10), fill="x", padx=40)
         
         db_frame = tk.Frame(parent)
-        db_frame.pack(pady=10, anchor="center", padx=40)
+        db_frame.pack(pady=10, fill="x", padx=40)
         
         # Configure column weights for responsive layout
         db_frame.grid_columnconfigure(0, weight=0)  # Label column - fixed width
@@ -1265,12 +1221,12 @@ class NextcloudRestoreWizard(tk.Tk):
         if self.detected_dbtype:
             self.update_database_credential_ui(self.detected_dbtype)
         
-        # Section 4: Nextcloud admin credentials - all centered
-        tk.Label(parent, text="Step 4: Nextcloud Admin Credentials", font=("Arial", 14, "bold")).pack(pady=(30, 5), anchor="center")
-        tk.Label(parent, text="Admin credentials for Nextcloud instance", font=("Arial", 10), fg="gray").pack(pady=(0, 5), anchor="center")
+        # Section 4: Nextcloud admin credentials - full width with padding
+        tk.Label(parent, text="Step 4: Nextcloud Admin Credentials", font=("Arial", 14, "bold")).pack(pady=(30, 5), fill="x", padx=40)
+        tk.Label(parent, text="Admin credentials for Nextcloud instance", font=("Arial", 10), fg="gray").pack(pady=(0, 5), fill="x", padx=40)
         
         admin_frame = tk.Frame(parent)
-        admin_frame.pack(pady=10, anchor="center", padx=40)
+        admin_frame.pack(pady=10, fill="x", padx=40)
         
         # Configure column weights for responsive layout
         admin_frame.grid_columnconfigure(0, weight=0)  # Label column - fixed width
@@ -1288,12 +1244,12 @@ class NextcloudRestoreWizard(tk.Tk):
     
     def create_wizard_page3(self, parent):
         """Page 3: Container Configuration"""
-        # Section 5: Container configuration - all centered
-        tk.Label(parent, text="Step 5: Container Configuration", font=("Arial", 14, "bold")).pack(pady=(20, 5), anchor="center")
-        tk.Label(parent, text="Configure Nextcloud container settings", font=("Arial", 10), fg="gray").pack(pady=(0, 5), anchor="center")
+        # Section 5: Container configuration - full width with padding
+        tk.Label(parent, text="Step 5: Container Configuration", font=("Arial", 14, "bold")).pack(pady=(20, 5), fill="x", padx=40)
+        tk.Label(parent, text="Configure Nextcloud container settings", font=("Arial", 10), fg="gray").pack(pady=(0, 5), fill="x", padx=40)
         
         container_frame = tk.Frame(parent)
-        container_frame.pack(pady=10, anchor="center", padx=40)
+        container_frame.pack(pady=10, fill="x", padx=40)
         
         # Configure column weights for responsive layout
         container_frame.grid_columnconfigure(0, weight=0)  # Label column - fixed width
@@ -1309,18 +1265,18 @@ class NextcloudRestoreWizard(tk.Tk):
         self.container_port_entry.insert(0, self.wizard_data.get('container_port', '9000'))
         self.container_port_entry.grid(row=1, column=1, sticky="ew", padx=5, pady=5)
         
-        # Option to use existing container - centered
+        # Option to use existing container - full width with padding
         self.use_existing_var = tk.BooleanVar(value=self.wizard_data.get('use_existing', False))
         tk.Checkbutton(
             parent, 
             text="Use existing Nextcloud container if found", 
             variable=self.use_existing_var,
             font=("Arial", 11)
-        ).pack(pady=15, anchor="center")
+        ).pack(pady=15, fill="x", padx=40)
         
-        # Add informative text about what will happen during restore - centered
+        # Add informative text about what will happen during restore - full width with padding
         info_frame = tk.Frame(parent, bg="#e8f4f8", relief="ridge", borderwidth=2)
-        info_frame.pack(pady=20, anchor="center", padx=50)
+        info_frame.pack(pady=20, fill="x", padx=40)
         
         tk.Label(info_frame, text="ℹ️ The restore process will automatically:", font=("Arial", 11, "bold"), bg="#e8f4f8").pack(pady=(10, 5), anchor="center")
         restore_info = [
@@ -2548,18 +2504,18 @@ class NextcloudRestoreWizard(tk.Tk):
             
             # Show SQLite informational message
             if hasattr(self, 'db_sqlite_message_label') and self.db_sqlite_message_label:
-                self.db_sqlite_message_label.pack(pady=(10, 10), anchor="center")
+                self.db_sqlite_message_label.pack(pady=(10, 10), fill="x", padx=40)
         else:
             # Show packed warning/instruction labels
             if hasattr(self, 'db_credential_packed_widgets'):
                 # Re-pack in the correct order with original settings
-                self.db_credential_packed_widgets[0].pack(anchor="center", pady=(5, 0))  # warning_label
-                self.db_credential_packed_widgets[1].pack(anchor="center")  # instruction_label1
-                self.db_credential_packed_widgets[2].pack(anchor="center", pady=(0, 10))  # instruction_label2
+                self.db_credential_packed_widgets[0].pack(pady=(5, 0), fill="x", padx=40)  # warning_label
+                self.db_credential_packed_widgets[1].pack(fill="x", padx=40)  # instruction_label1
+                self.db_credential_packed_widgets[2].pack(pady=(0, 10), fill="x", padx=40)  # instruction_label2
             
             # Show the database credential frame
             if hasattr(self, 'db_credential_frame'):
-                self.db_credential_frame.pack(pady=10, anchor="center")
+                self.db_credential_frame.pack(pady=10, fill="x", padx=40)
             
             # Hide SQLite message
             if hasattr(self, 'db_sqlite_message_label') and self.db_sqlite_message_label:
