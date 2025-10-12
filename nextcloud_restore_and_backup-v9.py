@@ -167,6 +167,221 @@ def parse_config_php_dbtype(config_php_path):
         print(f"Error parsing config.php: {e}")
         return None, None
 
+def parse_config_php_full(config_php_path):
+    """
+    Parse config.php file and extract all relevant settings for Docker Compose generation.
+    Returns: dict with config settings or None if parsing fails
+    """
+    try:
+        if not os.path.exists(config_php_path):
+            return None
+        
+        with open(config_php_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        config = {}
+        
+        # Extract database settings
+        dbtype_match = re.search(r"['\"]dbtype['\"] => ['\"]([^'\"]+)['\"]", content)
+        if dbtype_match:
+            config['dbtype'] = dbtype_match.group(1).lower()
+        
+        dbname_match = re.search(r"['\"]dbname['\"] => ['\"]([^'\"]+)['\"]", content)
+        if dbname_match:
+            config['dbname'] = dbname_match.group(1)
+        
+        dbuser_match = re.search(r"['\"]dbuser['\"] => ['\"]([^'\"]+)['\"]", content)
+        if dbuser_match:
+            config['dbuser'] = dbuser_match.group(1)
+        
+        dbpassword_match = re.search(r"['\"]dbpassword['\"] => ['\"]([^'\"]+)['\"]", content)
+        if dbpassword_match:
+            config['dbpassword'] = dbpassword_match.group(1)
+        
+        dbhost_match = re.search(r"['\"]dbhost['\"] => ['\"]([^'\"]+)['\"]", content)
+        if dbhost_match:
+            config['dbhost'] = dbhost_match.group(1)
+        
+        dbport_match = re.search(r"['\"]dbport['\"] => ['\"]?([^'\"]+)['\"]?", content)
+        if dbport_match:
+            config['dbport'] = dbport_match.group(1)
+        
+        # Extract data directory
+        datadirectory_match = re.search(r"['\"]datadirectory['\"] => ['\"]([^'\"]+)['\"]", content)
+        if datadirectory_match:
+            config['datadirectory'] = datadirectory_match.group(1)
+        
+        # Extract trusted domains (array format)
+        trusted_domains = []
+        trusted_domains_pattern = r"['\"]trusted_domains['\"]\s*=>\s*array\s*\((.*?)\)"
+        td_match = re.search(trusted_domains_pattern, content, re.DOTALL)
+        if td_match:
+            domains_str = td_match.group(1)
+            # Extract individual domain entries
+            domain_entries = re.findall(r"['\"]([^'\"]+)['\"]", domains_str)
+            trusted_domains = domain_entries
+        config['trusted_domains'] = trusted_domains
+        
+        return config
+    except Exception as e:
+        print(f"Error parsing full config.php: {e}")
+        return None
+
+def detect_docker_compose_usage():
+    """
+    Detect if Docker Compose was used to start the current containers.
+    Returns: (is_compose, compose_file_path) tuple
+    """
+    try:
+        # Check if docker-compose.yml exists in current directory
+        compose_files = ['docker-compose.yml', 'docker-compose.yaml', 'compose.yml', 'compose.yaml']
+        for filename in compose_files:
+            if os.path.exists(filename):
+                print(f"✓ Found Docker Compose file: {filename}")
+                return True, filename
+        
+        # Check running containers for Docker Compose labels
+        result = subprocess.run(
+            ['docker', 'ps', '--format', '{{.Labels}}'],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        )
+        if result.returncode == 0:
+            for line in result.stdout.strip().split('\n'):
+                if 'com.docker.compose' in line:
+                    print("✓ Detected Docker Compose labels on running containers")
+                    return True, None
+        
+        return False, None
+    except Exception as e:
+        print(f"Error detecting Docker Compose usage: {e}")
+        return False, None
+
+def generate_docker_compose_yml(config, nextcloud_port=8080, db_port=5432):
+    """
+    Generate docker-compose.yml content based on config.php settings.
+    
+    Args:
+        config: dict with config.php settings
+        nextcloud_port: port to expose Nextcloud on
+        db_port: port to expose database on (if applicable)
+    
+    Returns:
+        str: docker-compose.yml content
+    """
+    dbtype = config.get('dbtype', 'pgsql')
+    dbname = config.get('dbname', 'nextcloud')
+    dbuser = config.get('dbuser', 'nextcloud')
+    dbpassword = config.get('dbpassword', 'changeme')
+    datadirectory = config.get('datadirectory', '/var/www/html/data')
+    trusted_domains = config.get('trusted_domains', ['localhost'])
+    
+    # Determine database service configuration
+    if dbtype == 'sqlite':
+        # SQLite - no separate database service needed
+        compose_content = f"""version: '3.8'
+
+services:
+  nextcloud:
+    image: nextcloud
+    container_name: nextcloud-app
+    ports:
+      - "{nextcloud_port}:80"
+    volumes:
+      - ./nextcloud-data:/var/www/html
+    restart: unless-stopped
+    environment:
+      - SQLITE_DATABASE={dbname}
+"""
+    elif dbtype in ['mysql', 'mariadb']:
+        # MySQL/MariaDB
+        compose_content = f"""version: '3.8'
+
+services:
+  db:
+    image: mariadb:10.11
+    container_name: nextcloud-db
+    restart: unless-stopped
+    command: --transaction-isolation=READ-COMMITTED --log-bin=binlog --binlog-format=ROW
+    volumes:
+      - ./db-data:/var/lib/mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD={dbpassword}
+      - MYSQL_PASSWORD={dbpassword}
+      - MYSQL_DATABASE={dbname}
+      - MYSQL_USER={dbuser}
+    ports:
+      - "{db_port}:3306"
+
+  nextcloud:
+    image: nextcloud
+    container_name: nextcloud-app
+    restart: unless-stopped
+    ports:
+      - "{nextcloud_port}:80"
+    volumes:
+      - ./nextcloud-data:/var/www/html
+    environment:
+      - MYSQL_PASSWORD={dbpassword}
+      - MYSQL_DATABASE={dbname}
+      - MYSQL_USER={dbuser}
+      - MYSQL_HOST=db
+    depends_on:
+      - db
+"""
+    else:  # PostgreSQL
+        compose_content = f"""version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    container_name: nextcloud-db
+    restart: unless-stopped
+    volumes:
+      - ./db-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_PASSWORD={dbpassword}
+      - POSTGRES_DB={dbname}
+      - POSTGRES_USER={dbuser}
+    ports:
+      - "{db_port}:5432"
+
+  nextcloud:
+    image: nextcloud
+    container_name: nextcloud-app
+    restart: unless-stopped
+    ports:
+      - "{nextcloud_port}:80"
+    volumes:
+      - ./nextcloud-data:/var/www/html
+    environment:
+      - POSTGRES_PASSWORD={dbpassword}
+      - POSTGRES_DB={dbname}
+      - POSTGRES_USER={dbuser}
+      - POSTGRES_HOST=db
+    depends_on:
+      - db
+"""
+    
+    # Add comments about configuration
+    header = f"""# Docker Compose configuration for Nextcloud
+# Generated based on config.php settings from backup
+#
+# Detected configuration:
+#   - Database type: {dbtype}
+#   - Database name: {dbname}
+#   - Data directory: {datadirectory}
+#   - Trusted domains: {', '.join(trusted_domains)}
+#
+# IMPORTANT: Ensure the following directories exist before starting:
+#   - ./nextcloud-data (will contain Nextcloud files)
+"""
+    if dbtype not in ['sqlite', 'sqlite3']:
+        header += "#   - ./db-data (will contain database files)\n"
+    
+    header += "#\n# To start: docker-compose up -d\n# To stop: docker-compose down\n\n"
+    
+    return header + compose_content
+
 def thread_safe_askinteger(parent, title, prompt, **kwargs):
     """
     Thread-safe wrapper for simpledialog.askinteger.
@@ -444,6 +659,11 @@ class NextcloudRestoreWizard(tk.Tk):
         self.detected_dbtype = None
         self.detected_db_config = None
         self.db_auto_detected = False
+        
+        # Docker Compose detection
+        self.detected_full_config = None
+        self.detected_compose_usage = False
+        self.detected_compose_file = None
         
         # Store references to database credential UI elements for conditional display
         # These will be set in create_wizard_page2()
@@ -1137,8 +1357,19 @@ class NextcloudRestoreWizard(tk.Tk):
                 self.db_auto_detected = True
                 print(f"✓ Database type detected before Page 2: {dbtype}")
                 self.error_label.config(text="✓ Database type detected successfully!", fg="green")
-                # Clear success message after a brief moment
-                self.after(1500, lambda: self.error_label.config(text=""))
+                
+                # Show Docker Compose suggestion dialog if full config was detected
+                # This happens immediately after config.php extraction and database detection
+                if self.detected_full_config:
+                    # Schedule the dialog to show after the success message clears
+                    self.after(1500, lambda: [
+                        self.error_label.config(text=""),
+                        self.show_docker_compose_suggestion()
+                    ])
+                else:
+                    # Clear success message after a brief moment
+                    self.after(1500, lambda: self.error_label.config(text=""))
+                
                 return True
             else:
                 # Detection failed - allow navigation but show clear warning
@@ -1852,6 +2083,30 @@ class NextcloudRestoreWizard(tk.Tk):
                 if db_config:
                     db_config['dbtype'] = 'sqlite'
             
+            # Step 3.5: Parse full config.php for Docker Compose detection
+            # This happens immediately after database detection as per requirements
+            full_config = None
+            if config_path and os.path.exists(config_path):
+                print(f"📖 Parsing full config.php for Docker Compose detection...")
+                full_config = parse_config_php_full(config_path)
+                
+                if full_config:
+                    # Store full config for later use in showing Docker Compose suggestion
+                    self.detected_full_config = full_config
+                    
+                    # Detect Docker Compose usage
+                    print(f"🔍 Detecting Docker Compose usage...")
+                    is_compose, compose_file = detect_docker_compose_usage()
+                    self.detected_compose_usage = is_compose
+                    self.detected_compose_file = compose_file
+                    
+                    if is_compose:
+                        print(f"✓ Docker Compose usage detected")
+                        if compose_file:
+                            print(f"  Found compose file: {compose_file}")
+                    else:
+                        print(f"ℹ️ No Docker Compose usage detected - can generate new compose file")
+            
             # Report results
             print(f"=" * 70)
             print(f"📊 Database Detection Results")
@@ -1947,6 +2202,197 @@ class NextcloudRestoreWizard(tk.Tk):
         
         self.process_label.config(text=msg)
         print(f"Detected database info shown to user: {dbtype}")
+    
+    def show_docker_compose_suggestion(self):
+        """
+        Show a dialog suggesting Docker Compose file generation based on config.php.
+        Called after database detection if full config was parsed successfully.
+        """
+        if not self.detected_full_config:
+            return
+        
+        # Create modal dialog
+        dialog = tk.Toplevel(self)
+        dialog.title("Docker Compose Detection")
+        dialog.geometry("700x600")
+        dialog.transient(self)
+        dialog.grab_set()
+        
+        # Header
+        header_frame = tk.Frame(dialog, bg="#3daee9", height=60)
+        header_frame.pack(fill="x")
+        header_frame.pack_propagate(False)
+        tk.Label(
+            header_frame, 
+            text="🐋 Docker Compose Configuration",
+            font=("Arial", 16, "bold"),
+            bg="#3daee9",
+            fg="white"
+        ).pack(pady=15)
+        
+        # Main content frame with scrollbar
+        content_frame = tk.Frame(dialog)
+        content_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Environment detection info
+        info_text = tk.Text(content_frame, height=15, wrap="word", font=("Arial", 10))
+        info_text.pack(fill="both", expand=True)
+        
+        # Build detection message
+        message = "=" * 60 + "\n"
+        message += "DETECTED ENVIRONMENT CONFIGURATION\n"
+        message += "=" * 60 + "\n\n"
+        
+        config = self.detected_full_config
+        message += f"📊 Database Type: {config.get('dbtype', 'Unknown').upper()}\n"
+        message += f"📦 Database Name: {config.get('dbname', 'Not specified')}\n"
+        message += f"👤 Database User: {config.get('dbuser', 'Not specified')}\n"
+        message += f"🗄️  Database Host: {config.get('dbhost', 'Not specified')}\n"
+        
+        if config.get('datadirectory'):
+            message += f"📁 Data Directory: {config.get('datadirectory')}\n"
+        
+        if config.get('trusted_domains'):
+            message += f"🌐 Trusted Domains: {', '.join(config.get('trusted_domains', []))}\n"
+        
+        message += "\n" + "=" * 60 + "\n"
+        message += "DOCKER COMPOSE STATUS\n"
+        message += "=" * 60 + "\n\n"
+        
+        if self.detected_compose_usage:
+            message += "✓ Docker Compose usage detected!\n"
+            if self.detected_compose_file:
+                message += f"  Found: {self.detected_compose_file}\n\n"
+            message += "⚠️  WARNING: If your existing docker-compose.yml doesn't match\n"
+            message += "the detected config.php settings, you may experience issues.\n\n"
+            message += "We recommend reviewing your docker-compose.yml to ensure:\n"
+            message += "  • Volume mappings match the detected data directory\n"
+            message += "  • Database credentials match config.php\n"
+            message += "  • Port mappings are correct\n"
+        else:
+            message += "ℹ️  No Docker Compose usage detected.\n\n"
+            message += "We can generate a docker-compose.yml file for you based on\n"
+            message += "the detected configuration. This will make your restore:\n"
+            message += "  ✓ Safer and more reproducible\n"
+            message += "  ✓ Easier to migrate or restore again\n"
+            message += "  ✓ Better documented and portable\n"
+        
+        message += "\n" + "=" * 60 + "\n"
+        message += "HOST FOLDER REQUIREMENTS\n"
+        message += "=" * 60 + "\n\n"
+        message += "Before starting containers, ensure these folders exist:\n"
+        message += "  • ./nextcloud-data (for Nextcloud files)\n"
+        if config.get('dbtype') not in ['sqlite', 'sqlite3']:
+            message += "  • ./db-data (for database files)\n"
+        message += "\nThese folders will be created if they don't exist.\n"
+        
+        info_text.insert("1.0", message)
+        info_text.config(state="disabled")
+        
+        # Button frame
+        button_frame = tk.Frame(dialog)
+        button_frame.pack(fill="x", padx=20, pady=(0, 20))
+        
+        def generate_compose():
+            """Generate and save docker-compose.yml"""
+            try:
+                # Ask user where to save
+                save_path = filedialog.asksaveasfilename(
+                    title="Save docker-compose.yml",
+                    defaultextension=".yml",
+                    initialfile="docker-compose.yml",
+                    filetypes=[("YAML files", "*.yml"), ("YAML files", "*.yaml"), ("All files", "*.*")]
+                )
+                
+                if not save_path:
+                    return
+                
+                # Generate compose file
+                compose_content = generate_docker_compose_yml(
+                    config,
+                    nextcloud_port=self.wizard_data.get('container_port', 8080),
+                    db_port=5432
+                )
+                
+                # Write to file
+                with open(save_path, 'w') as f:
+                    f.write(compose_content)
+                
+                messagebox.showinfo(
+                    "Success",
+                    f"docker-compose.yml saved to:\n{save_path}\n\n"
+                    "You can now use 'docker-compose up -d' to start your containers."
+                )
+                
+                print(f"✓ Generated docker-compose.yml at: {save_path}")
+                dialog.destroy()
+                
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to generate docker-compose.yml:\n{e}")
+                print(f"Error generating compose file: {e}")
+        
+        def check_folders():
+            """Check and create required host folders"""
+            try:
+                folders = ['./nextcloud-data']
+                if config.get('dbtype') not in ['sqlite', 'sqlite3']:
+                    folders.append('./db-data')
+                
+                created = []
+                existing = []
+                
+                for folder in folders:
+                    if os.path.exists(folder):
+                        existing.append(folder)
+                    else:
+                        os.makedirs(folder, exist_ok=True)
+                        created.append(folder)
+                
+                msg = "Folder Check Complete\n\n"
+                if created:
+                    msg += "Created:\n" + "\n".join(f"  ✓ {f}" for f in created) + "\n\n"
+                if existing:
+                    msg += "Already exist:\n" + "\n".join(f"  ✓ {f}" for f in existing)
+                
+                messagebox.showinfo("Folder Check", msg)
+                
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to create folders:\n{e}")
+        
+        # Buttons
+        tk.Button(
+            button_frame,
+            text="Generate docker-compose.yml",
+            font=("Arial", 11, "bold"),
+            bg="#45bf55",
+            fg="white",
+            command=generate_compose,
+            width=25
+        ).pack(side="left", padx=5)
+        
+        tk.Button(
+            button_frame,
+            text="Check/Create Folders",
+            font=("Arial", 11),
+            bg="#f7b32b",
+            fg="white",
+            command=check_folders,
+            width=20
+        ).pack(side="left", padx=5)
+        
+        tk.Button(
+            button_frame,
+            text="Continue",
+            font=("Arial", 11),
+            command=dialog.destroy,
+            width=15
+        ).pack(side="right", padx=5)
+        
+        # Center the dialog
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2)
+        y = (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
+        dialog.geometry(f"+{x}+{y}")
     
     def update_database_credential_ui(self, dbtype):
         """
