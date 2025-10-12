@@ -997,25 +997,38 @@ class NextcloudRestoreWizard(tk.Tk):
         # Reset wizard state
         self.wizard_page = 1
         
+        # Create a container frame to hold the scrollable content with max-width constraint
+        # This ensures the content block is centered as a unit, not just individual widgets
+        container = tk.Frame(self.body_frame)
+        container.pack(fill="both", expand=True)
+        
         # Create scrollable frame for wizard content
-        canvas = tk.Canvas(self.body_frame)
-        scrollbar = tk.Scrollbar(self.body_frame, orient="vertical", command=canvas.yview)
-        scrollable_frame = tk.Frame(canvas)
+        # Set a maximum width for the scrollable content to ensure true centering
+        canvas = tk.Canvas(container)
+        scrollbar = tk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        
+        # Create the main content frame with a fixed max width for proper centering
+        # This frame will be centered within the canvas, ensuring all content
+        # appears centered regardless of window size
+        scrollable_frame = tk.Frame(canvas, width=700)  # Set max-width for content block
         
         def on_configure(e):
             canvas.configure(scrollregion=canvas.bbox("all"))
-            # Center the window horizontally
+            # Center the window horizontally by calculating canvas center
             canvas_width = canvas.winfo_width()
             if canvas_width > 1:  # Only update if canvas has been rendered
+                # Position the frame's top-center at the canvas horizontal center
                 canvas.coords(self.canvas_window, canvas_width // 2, 0)
         
         scrollable_frame.bind("<Configure>", on_configure)
         
         # Create window with north (top-center) anchor for horizontal centering
+        # Using anchor="n" positions the frame so its top-center point is at the specified coordinates
+        # Combined with the fixed width, this ensures the entire content block is truly centered
         self.canvas_window = canvas.create_window((0, 0), window=scrollable_frame, anchor="n")
         canvas.configure(yscrollcommand=scrollbar.set)
         
-        # Also bind canvas resize to re-center content
+        # Also bind canvas resize to re-center content when window is resized
         canvas.bind("<Configure>", on_configure)
         
         # Store references
@@ -1023,7 +1036,8 @@ class NextcloudRestoreWizard(tk.Tk):
         self.wizard_scrollbar = scrollbar
         self.wizard_scrollable_frame = scrollable_frame
         
-        # Pack canvas and scrollbar first
+        # Pack canvas and scrollbar
+        # Canvas expands to fill available space, providing centering context
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
         
