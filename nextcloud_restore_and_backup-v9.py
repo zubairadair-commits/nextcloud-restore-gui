@@ -225,7 +225,7 @@ def check_database_dump_utility(dbtype):
         utility = 'pg_dump'
         installed = is_tool_installed(utility)
         return installed, utility
-    elif dbtype == 'sqlite':
+    elif dbtype in ['sqlite', 'sqlite3']:
         # SQLite doesn't need external tools, database is in the data folder
         return True, 'sqlite'
     else:
@@ -645,6 +645,10 @@ def detect_database_type_from_container(container_name):
         
         dbtype = dbtype_match.group(1).lower()
         
+        # Normalize sqlite3 to sqlite for consistent handling
+        if dbtype == 'sqlite3':
+            dbtype = 'sqlite'
+        
         # Also extract other DB config for reference
         db_config = {'dbtype': dbtype}
         
@@ -692,6 +696,10 @@ def parse_config_php_dbtype(config_php_path):
             return None, None
         
         dbtype = dbtype_match.group(1).lower()
+        
+        # Normalize sqlite3 to sqlite for consistent handling
+        if dbtype == 'sqlite3':
+            dbtype = 'sqlite'
         
         # Also extract other DB config for reference
         db_config = {'dbtype': dbtype}
@@ -1727,7 +1735,7 @@ class NextcloudRestoreWizard(tk.Tk):
                 dbtype = 'mysql'
         
         # Check if required database dump utility is available
-        if dbtype != 'sqlite':
+        if dbtype not in ['sqlite', 'sqlite3']:
             utility_installed, utility_name = check_database_dump_utility(dbtype)
             
             while not utility_installed:
@@ -1839,7 +1847,7 @@ class NextcloudRestoreWizard(tk.Tk):
             dbtype = getattr(self, 'backup_dbtype', 'pgsql')  # Default to PostgreSQL if not set
             db_config = getattr(self, 'backup_db_config', {})
             
-            if dbtype == 'sqlite':
+            if dbtype in ['sqlite', 'sqlite3']:
                 # SQLite database is already backed up with the data folder
                 self.set_progress(6, "SQLite database backed up with data folder")
                 print("✓ SQLite database backup: included in data folder")
@@ -4524,7 +4532,7 @@ php /tmp/update_config.php"
             dbtype = getattr(self, 'backup_dbtype', 'pgsql')
             db_config = getattr(self, 'backup_db_config', {})
             
-            if dbtype == 'sqlite':
+            if dbtype in ['sqlite', 'sqlite3']:
                 print("Step 6/10: SQLite database backed up with data folder")
             else:
                 db_name = dbtype.upper() if dbtype == 'pgsql' else 'MySQL/MariaDB'
