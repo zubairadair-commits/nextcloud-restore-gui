@@ -264,6 +264,7 @@ def fast_extract_tar_gz(archive_path, extract_to):
     """
     Extract tar.gz archive using Python's tarfile module.
     This is more robust and platform-independent than using subprocess.
+    Provides detailed error messages for common failure cases.
     """
     os.makedirs(extract_to, exist_ok=True)
     try:
@@ -271,6 +272,15 @@ def fast_extract_tar_gz(archive_path, extract_to):
             # Extract all members
             tar.extractall(path=extract_to)
         print(f"✓ Successfully extracted archive to {extract_to}")
+    except tarfile.ReadError as e:
+        raise Exception(f"Invalid or corrupted archive: {e}")
+    except OSError as e:
+        if e.errno == 28:  # ENOSPC - No space left on device
+            raise Exception(f"No space left on device: {e}")
+        elif e.errno == 13:  # EACCES - Permission denied
+            raise Exception(f"Permission denied: {e}")
+        else:
+            raise Exception(f"File system error during extraction: {e}")
     except Exception as e:
         raise Exception(f"Extraction failed: {e}")
 # ---------------------------------------------------------------
@@ -911,6 +921,8 @@ class NextcloudRestoreWizard(tk.Tk):
         Perform backup extraction and database type detection before showing Page 2.
         This is called when navigating from Page 1 to Page 2.
         Returns True if successful (or already detected), False if validation fails.
+        
+        This method runs the detection in a background thread to keep the GUI responsive.
         """
         # Get backup path and password from wizard data
         backup_path = self.wizard_data.get('backup_path', '').strip()
@@ -931,20 +943,61 @@ class NextcloudRestoreWizard(tk.Tk):
             print(f"Database type already detected: {self.detected_dbtype}")
             return True
         
-        # Show progress message
-        self.error_label.config(text="Extracting and detecting database type...", fg="blue")
+        # Show progress spinner with message
+        self.error_label.config(text="⏳ Extracting and detecting database type...\nPlease wait, this may take a moment...", fg="blue")
         self.update_idletasks()
         
-        try:
-            # Perform detection with password support
-            dbtype, db_config = self.early_detect_database_type_from_backup(backup_path, password)
+        # Use a list to store results from background thread (mutable)
+        detection_result = [None]  # Will store (dbtype, db_config, error)
+        detection_complete = [False]
+        
+        def do_detection():
+            """Background thread function for detection"""
+            try:
+                dbtype, db_config = self.early_detect_database_type_from_backup(backup_path, password)
+                detection_result[0] = (dbtype, db_config, None)
+            except Exception as e:
+                detection_result[0] = (None, None, e)
+            finally:
+                detection_complete[0] = True
+        
+        # Start detection in background thread
+        detection_thread = threading.Thread(target=do_detection, daemon=True)
+        detection_thread.start()
+        
+        # Update progress spinner while detection is running
+        spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+        spinner_idx = 0
+        
+        while detection_thread.is_alive():
+            spinner_idx = (spinner_idx + 1) % len(spinner_chars)
+            self.error_label.config(
+                text=f"{spinner_chars[spinner_idx]} Extracting and detecting database type...\nPlease wait, this may take a moment...", 
+                fg="blue"
+            )
+            self.update_idletasks()
+            time.sleep(0.1)  # Update spinner every 100ms
+        
+        # Wait for thread to complete
+        detection_thread.join()
+        
+        # Process results
+        if detection_result[0]:
+            dbtype, db_config, error = detection_result[0]
+            
+            if error:
+                print(f"Error during extraction and detection: {error}")
+                self.error_label.config(text=f"⚠️ Error: {str(error)}", fg="red")
+                return False
             
             if dbtype:
                 self.detected_dbtype = dbtype
                 self.detected_db_config = db_config
                 self.db_auto_detected = True
                 print(f"✓ Database type detected before Page 2: {dbtype}")
-                self.error_label.config(text="")
+                self.error_label.config(text="✓ Database type detected successfully!", fg="green")
+                # Clear success message after a brief moment
+                self.after(1500, lambda: self.error_label.config(text=""))
                 return True
             else:
                 # Detection failed - allow navigation but show clear warning
@@ -959,10 +1012,9 @@ class NextcloudRestoreWizard(tk.Tk):
                 self.detected_db_config = None
                 self.db_auto_detected = False
                 return True  # Still allow navigation - don't break workflow
-                
-        except Exception as e:
-            print(f"Error during extraction and detection: {e}")
-            self.error_label.config(text=f"Error: {str(e)}", fg="red")
+        else:
+            # Should not happen, but handle gracefully
+            self.error_label.config(text="⚠️ Detection process failed unexpectedly", fg="red")
             return False
 
     def browse_backup(self):
@@ -1133,8 +1185,16 @@ class NextcloudRestoreWizard(tk.Tk):
             except Exception as e:
                 tb = traceback.format_exc()
                 self.set_restore_progress(0, "Restore failed!")
-                self.error_label.config(text=f"Decryption failed: {e}\n{tb}")
-                print(tb)
+                error_msg = str(e)
+                # Provide user-friendly error messages
+                if "Bad session key" in error_msg or "decryption failed" in error_msg:
+                    user_msg = "Decryption failed: Incorrect password provided"
+                elif "gpg: command not found" in error_msg or "No such file or directory: 'gpg'" in error_msg:
+                    user_msg = "Decryption failed: GPG is not installed on your system"
+                else:
+                    user_msg = f"Decryption failed: {e}"
+                self.error_label.config(text=user_msg)
+                print(f"Error details:\n{tb}")
                 shutil.rmtree(extract_temp, ignore_errors=True)
                 return None
 
@@ -1179,8 +1239,18 @@ class NextcloudRestoreWizard(tk.Tk):
         except Exception as e:
             tb = traceback.format_exc()
             self.set_restore_progress(0, "Restore failed!")
-            self.error_label.config(text=f"Extraction failed: {e}\n{tb}")
-            print(tb)
+            error_msg = str(e)
+            # Provide user-friendly error messages
+            if "Invalid or corrupted archive" in error_msg or "ReadError" in error_msg:
+                user_msg = "Extraction failed: The backup archive appears to be corrupted or invalid"
+            elif "No space left on device" in error_msg:
+                user_msg = "Extraction failed: Not enough disk space to extract the backup"
+            elif "Permission denied" in error_msg:
+                user_msg = "Extraction failed: Permission denied - please check file permissions"
+            else:
+                user_msg = f"Extraction failed: {e}"
+            self.error_label.config(text=user_msg)
+            print(f"Error details:\n{tb}")
             shutil.rmtree(extract_temp, ignore_errors=True)
             return None
 
@@ -1543,7 +1613,13 @@ class NextcloudRestoreWizard(tk.Tk):
                     # Use the decrypted file for extraction
                     backup_to_extract = temp_decrypted_path
                 except Exception as decrypt_err:
-                    print(f"✗ Failed to decrypt backup: {decrypt_err}")
+                    error_msg = str(decrypt_err)
+                    if "Bad session key" in error_msg or "decryption failed" in error_msg:
+                        print(f"✗ Failed to decrypt backup: Incorrect password")
+                    elif "gpg: command not found" in error_msg:
+                        print(f"✗ Failed to decrypt backup: GPG is not installed")
+                    else:
+                        print(f"✗ Failed to decrypt backup: {decrypt_err}")
                     return None, None
             else:
                 # Unencrypted backup - use directly
@@ -1559,6 +1635,10 @@ class NextcloudRestoreWizard(tk.Tk):
                     # Extract all files - this ensures we can find config.php wherever it is
                     tar.extractall(path=temp_extract_dir)
                     print(f"✓ Successfully extracted backup archive")
+            except tarfile.ReadError as extract_err:
+                print(f"✗ Failed to extract backup: Invalid or corrupted archive")
+                print(f"  Error details: {extract_err}")
+                return None, None
             except Exception as extract_err:
                 print(f"✗ Failed to extract backup: {extract_err}")
                 return None, None
