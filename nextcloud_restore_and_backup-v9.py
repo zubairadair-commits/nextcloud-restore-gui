@@ -270,7 +270,52 @@ def check_service_health():
     
     # Check Tailscale
     try:
-        if platform.system() != "Windows":
+        if platform.system() == "Windows":
+            # Try Windows service check first
+            try:
+                result = subprocess.run(
+                    ['sc', 'query', 'Tailscale'],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0 and 'RUNNING' in result.stdout:
+                    health_status['tailscale'] = {
+                        'status': 'healthy',
+                        'message': 'Tailscale service is running',
+                        'checked_at': datetime.now()
+                    }
+                elif result.returncode == 0 and 'STOPPED' in result.stdout:
+                    health_status['tailscale'] = {
+                        'status': 'warning',
+                        'message': 'Tailscale service is stopped',
+                        'checked_at': datetime.now()
+                    }
+                else:
+                    # Service not found, try CLI as fallback
+                    raise subprocess.SubprocessError("Service check inconclusive")
+            except (subprocess.SubprocessError, subprocess.TimeoutExpired):
+                # Fallback to CLI check
+                result = subprocess.run(
+                    ['tailscale', 'status'],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0:
+                    health_status['tailscale'] = {
+                        'status': 'healthy',
+                        'message': 'Tailscale is running',
+                        'checked_at': datetime.now()
+                    }
+                else:
+                    health_status['tailscale'] = {
+                        'status': 'warning',
+                        'message': 'Tailscale not running or not installed',
+                        'checked_at': datetime.now()
+                    }
+        else:
+            # Unix/Linux/Mac - use CLI directly
             result = subprocess.run(
                 ['tailscale', 'status'],
                 capture_output=True,
@@ -289,12 +334,6 @@ def check_service_health():
                     'message': 'Tailscale not running or not installed',
                     'checked_at': datetime.now()
                 }
-        else:
-            health_status['tailscale'] = {
-                'status': 'unknown',
-                'message': 'Tailscale check not available on Windows',
-                'checked_at': datetime.now()
-            }
     except Exception:
         health_status['tailscale'] = {
             'status': 'warning',
@@ -2049,11 +2088,14 @@ class NextcloudRestoreWizard(tk.Tk):
             text=theme_icon, 
             font=("Arial", 18),
             width=2,
+            height=1,
             bg=self.theme_colors['button_bg'], 
             fg=self.theme_colors['button_fg'],
             command=self.toggle_theme,
             relief=tk.FLAT,
-            cursor="hand2"
+            cursor="hand2",
+            padx=2,
+            pady=2
         )
         self.header_theme_btn.pack(side="left", padx=5)
         
@@ -3010,7 +3052,7 @@ class NextcloudRestoreWizard(tk.Tk):
         # This ensures the content block is centered as a unit, not just individual widgets
         # Using place(relx=0.5, anchor="n") centers the frame horizontally regardless of window size
         # Fixed width of 600px provides a consistent centered block
-        self.wizard_scrollable_frame = tk.Frame(self.body_frame, width=600)
+        self.wizard_scrollable_frame = tk.Frame(self.body_frame, width=600, bg=self.theme_colors['bg'])
         
         # Bind to configure event to maintain centering and fixed width
         def maintain_width(event):
@@ -3035,10 +3077,13 @@ class NextcloudRestoreWizard(tk.Tk):
         
         # Page title (subheader) - full width with padding
         page_title = f"Restore Wizard: Page {page_num} of 3"
-        tk.Label(frame, text=page_title, font=("Arial", 14)).pack(pady=(10, 10), fill="x", padx=40)
+        tk.Label(frame, text=page_title, font=("Arial", 14), 
+                 bg=self.theme_colors['bg'], fg=self.theme_colors['fg']).pack(pady=(10, 10), fill="x", padx=40)
         
         # Return to Main Menu button - full width with padding
-        btn_back = tk.Button(frame, text="Return to Main Menu", font=("Arial", 12), command=self.show_landing)
+        btn_back = tk.Button(frame, text="Return to Main Menu", font=("Arial", 12), 
+                            bg=self.theme_colors['button_bg'], fg=self.theme_colors['button_fg'],
+                            command=self.show_landing)
         btn_back.pack(pady=8, fill="x", padx=40)
         
         if page_num == 1:
@@ -3048,8 +3093,11 @@ class NextcloudRestoreWizard(tk.Tk):
         elif page_num == 3:
             self.create_wizard_page3(frame)
         
+        # Apply theme recursively to all wizard page widgets
+        self.apply_theme_recursive(frame)
+        
         # Navigation buttons - full width with padding
-        nav_frame = tk.Frame(frame)
+        nav_frame = tk.Frame(frame, bg=self.theme_colors['bg'])
         nav_frame.pack(pady=(30, 20), fill="x", padx=40)
         
         if page_num > 1:
@@ -3058,6 +3106,8 @@ class NextcloudRestoreWizard(tk.Tk):
                 text="← Back", 
                 font=("Arial", 12, "bold"),
                 width=15,
+                bg=self.theme_colors['button_bg'],
+                fg=self.theme_colors['button_fg'],
                 command=lambda: self.wizard_navigate(-1)
             ).pack(side="left", padx=10)
         
@@ -3085,7 +3135,8 @@ class NextcloudRestoreWizard(tk.Tk):
             self.restore_now_btn.pack(side="left", padx=10)
         
         # Error label - full width with padding
-        self.error_label = tk.Label(frame, text="", font=("Arial", 12), fg="red", wraplength=500)
+        self.error_label = tk.Label(frame, text="", font=("Arial", 12), 
+                                    bg=self.theme_colors['bg'], fg="red", wraplength=500)
         self.error_label.pack(pady=10, fill="x", padx=40)
         
         # Progress section (shown after restore starts) - full width with padding
@@ -3093,22 +3144,29 @@ class NextcloudRestoreWizard(tk.Tk):
         self.progressbar.pack(pady=(30, 3), fill="x", padx=40)
         self.progressbar.pack_forget()  # Hide initially
         
-        self.progress_label = tk.Label(frame, text="0%", font=("Arial", 13))
+        self.progress_label = tk.Label(frame, text="0%", font=("Arial", 13),
+                                       bg=self.theme_colors['bg'], fg=self.theme_colors['fg'])
         self.progress_label.pack(fill="x", padx=40)
         self.progress_label.pack_forget()  # Hide initially
         
-        self.process_label = tk.Label(frame, text="", font=("Arial", 11), fg="gray", anchor="center", justify="center")
+        self.process_label = tk.Label(frame, text="", font=("Arial", 11), 
+                                      bg=self.theme_colors['bg'], fg="gray", 
+                                      anchor="center", justify="center")
         self.process_label.pack(padx=40, pady=4, fill="x")
         self.process_label.pack_forget()  # Hide initially
         
     def create_wizard_page1(self, parent):
         """Page 1: Backup Archive Selection and Decryption Password"""
         # Section 1: Backup file selection - full width with padding
-        tk.Label(parent, text="Step 1: Select Backup Archive", font=("Arial", 14, "bold")).pack(pady=(20, 5), fill="x", padx=40)
-        tk.Label(parent, text="Choose the backup file to restore (.tar.gz.gpg or .tar.gz)", font=("Arial", 10), fg="gray").pack(pady=(0, 5), fill="x", padx=40)
+        tk.Label(parent, text="Step 1: Select Backup Archive", font=("Arial", 14, "bold"),
+                 bg=self.theme_colors['bg'], fg=self.theme_colors['fg']).pack(pady=(20, 5), fill="x", padx=40)
+        tk.Label(parent, text="Choose the backup file to restore (.tar.gz.gpg or .tar.gz)", font=("Arial", 10), 
+                 bg=self.theme_colors['bg'], fg="gray").pack(pady=(0, 5), fill="x", padx=40)
         
         # Entry field - full width with padding
-        self.backup_entry = tk.Entry(parent, font=("Arial", 11))
+        self.backup_entry = tk.Entry(parent, font=("Arial", 11),
+                                     bg=self.theme_colors['entry_bg'], fg=self.theme_colors['entry_fg'],
+                                     insertbackground=self.theme_colors['entry_fg'])
         self.backup_entry.pack(pady=5, fill="x", padx=40)
         
         # Restore saved value if exists
@@ -3116,14 +3174,20 @@ class NextcloudRestoreWizard(tk.Tk):
             self.backup_entry.delete(0, tk.END)
             self.backup_entry.insert(0, self.wizard_data['backup_path'])
         
-        tk.Button(parent, text="Browse...", font=("Arial", 11), width=20, command=self.browse_backup).pack(pady=5, fill="x", padx=40)
+        tk.Button(parent, text="Browse...", font=("Arial", 11), width=20, 
+                 bg=self.theme_colors['button_bg'], fg=self.theme_colors['button_fg'],
+                 command=self.browse_backup).pack(pady=5, fill="x", padx=40)
         
         # Section 2: Decryption password - full width with padding
-        tk.Label(parent, text="Step 2: Decryption Password", font=("Arial", 14, "bold")).pack(pady=(30, 5), fill="x", padx=40)
-        tk.Label(parent, text="Enter password if backup is encrypted (.gpg)", font=("Arial", 10), fg="gray").pack(pady=(0, 5), fill="x", padx=40)
+        tk.Label(parent, text="Step 2: Decryption Password", font=("Arial", 14, "bold"),
+                 bg=self.theme_colors['bg'], fg=self.theme_colors['fg']).pack(pady=(30, 5), fill="x", padx=40)
+        tk.Label(parent, text="Enter password if backup is encrypted (.gpg)", font=("Arial", 10), 
+                 bg=self.theme_colors['bg'], fg="gray").pack(pady=(0, 5), fill="x", padx=40)
         
         # Password entry - full width with padding
-        self.password_entry = tk.Entry(parent, show="*", font=("Arial", 12))
+        self.password_entry = tk.Entry(parent, show="*", font=("Arial", 12),
+                                       bg=self.theme_colors['entry_bg'], fg=self.theme_colors['entry_fg'],
+                                       insertbackground=self.theme_colors['entry_fg'])
         self.password_entry.pack(pady=5, fill="x", padx=40)
         
         # Restore saved value if exists
@@ -3137,13 +3201,16 @@ class NextcloudRestoreWizard(tk.Tk):
         tk.Label(parent, text="Step 3: Database Configuration", font=("Arial", 14, "bold")).pack(pady=(20, 5), fill="x", padx=40)
         
         # Info about auto-detection - full width with padding
-        info_frame = tk.Frame(parent, bg="#e3f2fd", relief="solid", borderwidth=1)
+        info_frame = tk.Frame(parent, bg=self.theme_colors['info_bg'], relief="solid", borderwidth=1)
         info_frame.pack(pady=(5, 10), fill="x", padx=40)
-        tk.Label(info_frame, text="ℹ️ Database Type Auto-Detection", font=("Arial", 10, "bold"), bg="#e3f2fd").pack(pady=(5, 2), fill="x", padx=10)
+        tk.Label(info_frame, text="ℹ️ Database Type Auto-Detection", font=("Arial", 10, "bold"), 
+                 bg=self.theme_colors['info_bg'], fg=self.theme_colors['info_fg']).pack(pady=(5, 2), fill="x", padx=10)
         tk.Label(info_frame, text="The restore process will automatically detect your database type (SQLite, PostgreSQL, MySQL)", 
-                 font=("Arial", 9), bg="#e3f2fd", wraplength=500, justify="center").pack(pady=2, fill="x", padx=10)
+                 font=("Arial", 9), bg=self.theme_colors['info_bg'], fg=self.theme_colors['info_fg'],
+                 wraplength=500, justify="center").pack(pady=2, fill="x", padx=10)
         tk.Label(info_frame, text="from the config.php file in your backup and restore accordingly.", 
-                 font=("Arial", 9), bg="#e3f2fd", wraplength=500, justify="center").pack(pady=(0, 5), fill="x", padx=10)
+                 font=("Arial", 9), bg=self.theme_colors['info_bg'], fg=self.theme_colors['info_fg'],
+                 wraplength=500, justify="center").pack(pady=(0, 5), fill="x", padx=10)
         
         # SQLite-specific message (hidden by default, shown when SQLite is detected)
         # This message informs users that SQLite doesn't require separate database credentials
