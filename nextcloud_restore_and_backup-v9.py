@@ -5539,7 +5539,22 @@ php /tmp/update_config.php"
         
         content.bind("<Configure>", configure_canvas)
         canvas.bind("<Configure>", configure_canvas)
-        logger.info("TAILSCALE CONFIG: Content frame configured with responsive layout")
+        
+        # Add mouse wheel scrolling support for the main canvas
+        def on_mouse_wheel(event):
+            """Handle mouse wheel scrolling for the canvas"""
+            # Windows and MacOS
+            if event.num == 5 or event.delta < 0:
+                canvas.yview_scroll(1, "units")
+            if event.num == 4 or event.delta > 0:
+                canvas.yview_scroll(-1, "units")
+        
+        # Bind mouse wheel events (both Windows/Mac and Linux)
+        canvas.bind_all("<MouseWheel>", on_mouse_wheel)  # Windows and MacOS
+        canvas.bind_all("<Button-4>", on_mouse_wheel)    # Linux scroll up
+        canvas.bind_all("<Button-5>", on_mouse_wheel)    # Linux scroll down
+        
+        logger.info("TAILSCALE CONFIG: Content frame configured with responsive layout and mouse wheel scrolling")
         
         # Add visible debug label at top (big, colored) to confirm frame is rendered
         logger.info("TAILSCALE CONFIG: Adding debug label")
@@ -5878,6 +5893,20 @@ php /tmp/update_config.php"
             domains_frame.bind("<Configure>", configure_scroll_region)
             canvas.bind("<Configure>", configure_scroll_region)
             
+            # Add mouse wheel scrolling support for the domain list canvas
+            def on_domain_mouse_wheel(event):
+                """Handle mouse wheel scrolling for the domain list canvas"""
+                # Windows and MacOS
+                if event.num == 5 or event.delta < 0:
+                    canvas.yview_scroll(1, "units")
+                if event.num == 4 or event.delta > 0:
+                    canvas.yview_scroll(-1, "units")
+            
+            # Bind mouse wheel events for domain list
+            canvas.bind("<MouseWheel>", on_domain_mouse_wheel)  # Windows and MacOS
+            canvas.bind("<Button-4>", on_domain_mouse_wheel)    # Linux scroll up
+            canvas.bind("<Button-5>", on_domain_mouse_wheel)    # Linux scroll down
+            
             # Display each domain with status icon and remove button
             for domain in current_domains:
                 domain_row = tk.Frame(domains_frame, bg=self.theme_colors['entry_bg'], relief="solid", borderwidth=1)
@@ -5937,69 +5966,6 @@ php /tmp/update_config.php"
                 )
                 remove_btn.pack(side="right", padx=5, pady=5)
         
-        # Add new domain section
-        add_domain_frame = tk.Frame(parent, bg=self.theme_colors['bg'])
-        add_domain_frame.pack(pady=15, fill="x", padx=20)
-        
-        tk.Label(
-            add_domain_frame,
-            text="Add New Domain:",
-            font=("Arial", 11, "bold"),
-            bg=self.theme_colors['bg'],
-            fg=self.theme_colors['fg']
-        ).pack(side="left", padx=(0, 10))
-        
-        # Entry for new domain
-        new_domain_var = tk.StringVar()
-        new_domain_entry = tk.Entry(
-            add_domain_frame,
-            textvariable=new_domain_var,
-            font=("Arial", 11),
-            bg=self.theme_colors['entry_bg'],
-            fg=self.theme_colors['entry_fg'],
-            insertbackground=self.theme_colors['entry_fg']
-        )
-        new_domain_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
-        
-        # Validation feedback label
-        validation_label = tk.Label(
-            parent,
-            text="",
-            font=("Arial", 9),
-            bg=self.theme_colors['bg'],
-            fg=self.theme_colors['error_fg']
-        )
-        validation_label.pack(pady=(0, 5), anchor="w", padx=20)
-        
-        # Real-time validation
-        def validate_input(*args):
-            domain = new_domain_var.get().strip()
-            if not domain:
-                validation_label.config(text="", fg=self.theme_colors['hint_fg'])
-                return
-            
-            is_valid, msg = self._validate_domain_format(domain)
-            if is_valid:
-                if msg:  # Warning message
-                    validation_label.config(text=f"⚠️ {msg}", fg='#ff9800')
-                else:
-                    validation_label.config(text="✓ Valid domain format", fg='#45bf55')
-            else:
-                validation_label.config(text=f"✗ {msg}", fg=self.theme_colors['error_fg'])
-        
-        new_domain_var.trace('w', validate_input)
-        
-        # Add button
-        tk.Button(
-            add_domain_frame,
-            text="➕ Add",
-            font=("Arial", 10, "bold"),
-            bg="#45bf55",
-            fg="white",
-            width=8,
-            command=lambda: self._on_add_domain(new_domain_var.get(), parent, validation_label)
-        ).pack(side="left")
-        
         # Info note with legend
         info_note = tk.Frame(parent, bg=self.theme_colors['info_bg'], relief="solid", borderwidth=1)
         info_note.pack(pady=10, fill="x", padx=20)
@@ -6007,7 +5973,7 @@ php /tmp/update_config.php"
         info_text = (
             "💡 Status Icons: ✓ Active | ⚠️ Unreachable | ⏳ Pending | ❌ Error\n\n"
             "• Click ✕ to remove a domain (with confirmation)\n"
-            "• Wildcard domains (*.example.com) are supported with warnings\n"
+            "• Use the \"Custom Domains (Optional)\" section at the top to add new domains\n"
             "• Changes are logged and can be undone\n"
             "• Hover over domains for more information"
         )

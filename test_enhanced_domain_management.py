@@ -86,7 +86,7 @@ def test_enhanced_domain_management():
     
     ui_checks = [
         ("Status Icons:", "Status icons legend"),
-        ("Add New Domain:", "Add domain UI"),
+        ("Custom Domains (Optional)", "Add domain UI section at top"),
         ("Refresh Status", "Refresh status button"),
         ("Restore Defaults", "Restore defaults button"),
         ("Undo Last Change", "Undo button"),

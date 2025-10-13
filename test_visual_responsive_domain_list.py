@@ -94,6 +94,20 @@ def create_mock_remote_access_page(root, num_domains=0):
     content.bind("<Configure>", configure_canvas)
     canvas.bind("<Configure>", configure_canvas)
     
+    # Add mouse wheel scrolling support for the main canvas
+    def on_mouse_wheel(event):
+        """Handle mouse wheel scrolling for the canvas"""
+        # Windows and MacOS
+        if event.num == 5 or event.delta < 0:
+            canvas.yview_scroll(1, "units")
+        if event.num == 4 or event.delta > 0:
+            canvas.yview_scroll(-1, "units")
+    
+    # Bind mouse wheel events (both Windows/Mac and Linux)
+    canvas.bind_all("<MouseWheel>", on_mouse_wheel)  # Windows and MacOS
+    canvas.bind_all("<Button-4>", on_mouse_wheel)    # Linux scroll up
+    canvas.bind_all("<Button-5>", on_mouse_wheel)    # Linux scroll down
+    
     # Page title
     tk.Label(
         content,
@@ -210,6 +224,20 @@ def create_mock_remote_access_page(root, num_domains=0):
         domains_frame.bind("<Configure>", configure_domain_scroll)
         domain_canvas.bind("<Configure>", configure_domain_scroll)
         
+        # Add mouse wheel scrolling support for the domain list canvas
+        def on_domain_mouse_wheel(event):
+            """Handle mouse wheel scrolling for the domain list canvas"""
+            # Windows and MacOS
+            if event.num == 5 or event.delta < 0:
+                domain_canvas.yview_scroll(1, "units")
+            if event.num == 4 or event.delta > 0:
+                domain_canvas.yview_scroll(-1, "units")
+        
+        # Bind mouse wheel events for domain list
+        domain_canvas.bind("<MouseWheel>", on_domain_mouse_wheel)  # Windows and MacOS
+        domain_canvas.bind("<Button-4>", on_domain_mouse_wheel)    # Linux scroll up
+        domain_canvas.bind("<Button-5>", on_domain_mouse_wheel)    # Linux scroll down
+        
         # Generate mock domains
         domain_names = [
             "localhost",
@@ -272,34 +300,6 @@ def create_mock_remote_access_page(root, num_domains=0):
                 height=1
             ).pack(side="right", padx=5, pady=5)
     
-    # Add new domain section
-    add_domain_frame = tk.Frame(content, bg=theme_colors['bg'])
-    add_domain_frame.pack(pady=15, fill="x", padx=20)
-    
-    tk.Label(
-        add_domain_frame,
-        text="Add New Domain:",
-        font=("Arial", 11, "bold"),
-        bg=theme_colors['bg'],
-        fg=theme_colors['fg']
-    ).pack(side="left", padx=(0, 10))
-    
-    tk.Entry(
-        add_domain_frame,
-        font=("Arial", 11),
-        bg=theme_colors['entry_bg'],
-        fg=theme_colors['entry_fg']
-    ).pack(side="left", fill="x", expand=True, padx=(0, 10))
-    
-    tk.Button(
-        add_domain_frame,
-        text="➕ Add",
-        font=("Arial", 10, "bold"),
-        bg="#45bf55",
-        fg="white",
-        width=8
-    ).pack(side="left")
-    
     # Info note
     info_note = tk.Frame(content, bg=theme_colors['info_bg'], relief="solid", borderwidth=1)
     info_note.pack(pady=10, fill="x", padx=20)
@@ -307,7 +307,7 @@ def create_mock_remote_access_page(root, num_domains=0):
     info_text = (
         "💡 Status Icons: ✓ Active | ⚠️ Unreachable | ⏳ Pending\n\n"
         "• Click ✕ to remove a domain (with confirmation)\n"
-        "• Wildcard domains (*.example.com) are supported\n"
+        "• Use the \"Custom Domains (Optional)\" section at the top to add new domains\n"
         "• Changes are logged and can be undone"
     )
     
