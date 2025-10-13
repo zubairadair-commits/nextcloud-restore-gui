@@ -3,6 +3,8 @@
 ## Overview
 The Nextcloud Restore & Backup Utility now supports automatic scheduled backups through Windows Task Scheduler. Users can configure, enable, disable, and delete backup schedules directly from the GUI without needing to manually interact with Windows Task Scheduler.
 
+**NEW in v1.2:** The app now automatically detects when it has been moved to a new location and repairs the scheduled task path automatically. See [SCHEDULED_TASK_AUTO_REPAIR.md](SCHEDULED_TASK_AUTO_REPAIR.md) for details.
+
 ## Key Features
 
 ### 1. GUI-Based Schedule Configuration
@@ -10,18 +12,24 @@ The Nextcloud Restore & Backup Utility now supports automatic scheduled backups 
 - **Visual status indicators** - See at a glance if backups are scheduled
 - **Easy management** - Enable, disable, or delete schedules with one click
 
-### 2. Flexible Scheduling Options
+### 2. Automatic Task Repair (NEW in v1.2)
+- **Auto-detection on startup** - Checks if app has been moved
+- **Automatic path repair** - Updates scheduled task with new location
+- **User notification** - Friendly dialog confirms successful repair
+- **Zero configuration** - Works automatically without user intervention
+
+### 3. Flexible Scheduling Options
 - **Daily backups** - Run backup every day at specified time
 - **Weekly backups** - Run backup once per week (default: Monday)
 - **Monthly backups** - Run backup once per month (default: 1st)
 - **Custom time** - Set any time in HH:MM format (e.g., 02:00 for 2 AM)
 
-### 3. Encryption Support
+### 4. Encryption Support
 - **Optional encryption** - Choose whether to encrypt scheduled backups
 - **Password management** - Store encryption password securely in configuration
 - **Consistent with manual backups** - Same encryption method as manual backups
 
-### 4. Silent Execution
+### 5. Silent Execution
 - **No console windows** - Uses subprocess.CREATE_NO_WINDOW flag
 - **Background operation** - Runs completely silently when triggered by scheduler
 - **Log-based feedback** - Scheduled backups log to console for monitoring
