@@ -1760,6 +1760,11 @@ class NextcloudRestoreWizard(tk.Tk):
             self._show_tailscale_config()
         elif self.current_page == 'schedule_backup':
             self.show_schedule_backup()
+        elif self.current_page == 'wizard':
+            # Restore wizard - maintain current wizard page
+            self.create_wizard()
+            if hasattr(self, 'wizard_page') and self.wizard_page > 1:
+                self.show_wizard_page(self.wizard_page)
         else:
             # Default to landing page for any other state
             self.show_landing()
@@ -2346,6 +2351,7 @@ class NextcloudRestoreWizard(tk.Tk):
             self.show_landing()
             return
         
+        self.current_page = 'wizard'
         for widget in self.body_frame.winfo_children():
             widget.destroy()
         self.status_label.config(text="Restore Wizard: Select backup archive to restore.")
