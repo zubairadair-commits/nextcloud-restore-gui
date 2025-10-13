@@ -1,7 +1,9 @@
 # Debug Labels Visual Guide
 
+> **Note:** As of October 2025, the debug labels have been removed from the production code. This document is preserved for historical reference and to document the debugging process used during development.
+
 ## Overview
-The Tailscale pages now include prominent debug labels at the top of each page to make it immediately obvious when the content frame is being rendered.
+The Tailscale pages previously included prominent debug labels at the top of each page to make it immediately obvious when the content frame was being rendered during the development and debugging phase.
 
 ## Visual Appearance
 
