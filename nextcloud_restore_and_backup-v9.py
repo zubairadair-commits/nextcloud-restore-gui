@@ -2115,6 +2115,198 @@ def disable_scheduled_task(task_name):
     except Exception as e:
         return False, f"Error disabling scheduled task: {e}"
 
+def get_scheduled_task_command(task_name):
+    """
+    Get the command (action) configured in a Windows scheduled task.
+    
+    Args:
+        task_name: Name of the scheduled task
+    
+    Returns: Command string from the task, or None if not found or error
+    """
+    if platform.system() != "Windows":
+        return None
+    
+    try:
+        creation_flags = get_subprocess_creation_flags()
+        
+        result = subprocess.run(
+            ["schtasks", "/Query", "/TN", task_name, "/FO", "LIST", "/V"],
+            creationflags=creation_flags,
+            capture_output=True,
+            text=True
+        )
+        
+        if result.returncode == 0:
+            # Parse the output to find "Task To Run" field
+            lines = result.stdout.strip().split('\n')
+            for line in lines:
+                if ':' in line:
+                    key, value = line.split(':', 1)
+                    key = key.strip()
+                    value = value.strip()
+                    if key == "Task To Run":
+                        return value
+        
+        return None
+    
+    except Exception as e:
+        logger.error(f"Error getting scheduled task command: {e}")
+        return None
+
+def extract_path_from_task_command(command):
+    """
+    Extract the executable/script path from a scheduled task command.
+    
+    Handles both formats:
+    - Python script: python "C:\\path\\to\\script.py" --args
+    - Executable: "C:\\path\\to\\app.exe" --args
+    
+    Args:
+        command: Full command string from scheduled task
+    
+    Returns: Extracted path or None if unable to parse
+    """
+    if not command:
+        return None
+    
+    try:
+        # Pattern 1: python "path" or python.exe "path"
+        if command.lower().startswith('python'):
+            # Find the quoted path after python
+            match = re.search(r'python(?:\.exe)?\s+"([^"]+)"', command, re.IGNORECASE)
+            if match:
+                return match.group(1)
+        
+        # Pattern 2: "path" (for .exe files)
+        match = re.search(r'^"([^"]+)"', command)
+        if match:
+            return match.group(1)
+        
+        # Pattern 3: unquoted path at start (less common)
+        parts = command.split()
+        if parts and os.path.exists(parts[0]):
+            return parts[0]
+        
+        return None
+    
+    except Exception as e:
+        logger.error(f"Error extracting path from command: {e}")
+        return None
+
+def check_and_repair_scheduled_task(task_name="NextcloudBackup"):
+    """
+    Check if the app has been moved and automatically repair the scheduled task.
+    
+    This function:
+    1. Gets the current executable path
+    2. Queries the scheduled task to get its configured path
+    3. Compares the two paths
+    4. If different, updates the scheduled task to use the new path
+    
+    Args:
+        task_name: Name of the scheduled task to check
+    
+    Returns: (repaired, message) tuple
+        - repaired: True if task was repaired, False if no repair needed or error
+        - message: Descriptive message about what happened
+    """
+    if platform.system() != "Windows":
+        return False, "Scheduled task repair only supported on Windows"
+    
+    try:
+        # Get current executable path
+        current_path = get_exe_path()
+        
+        # Get the scheduled task command
+        task_command = get_scheduled_task_command(task_name)
+        
+        if not task_command:
+            # No scheduled task exists or couldn't query it
+            return False, "No scheduled task found or unable to query"
+        
+        # Extract the path from the task command
+        task_path = extract_path_from_task_command(task_command)
+        
+        if not task_path:
+            logger.warning(f"Unable to extract path from task command: {task_command}")
+            return False, "Unable to parse scheduled task command"
+        
+        # Normalize paths for comparison (handle case differences, separators, etc.)
+        current_path_norm = os.path.normcase(os.path.normpath(current_path))
+        task_path_norm = os.path.normcase(os.path.normpath(task_path))
+        
+        # Check if paths are different
+        if current_path_norm == task_path_norm:
+            # Paths match, no repair needed
+            return False, "Scheduled task path is current"
+        
+        # Paths differ - need to repair!
+        logger.info(f"App moved detected: {task_path} -> {current_path}")
+        
+        # Get the full task status to extract other parameters
+        task_status = get_scheduled_task_status(task_name)
+        if not task_status or not task_status.get('exists'):
+            return False, "Unable to get task details for repair"
+        
+        # Parse the existing command to extract arguments
+        # We need to preserve the backup directory, encryption settings, etc.
+        backup_dir = None
+        encrypt = False
+        password = ""
+        
+        # Try to extract arguments from the existing command
+        if '--backup-dir' in task_command:
+            match = re.search(r'--backup-dir\s+"?([^"\s]+)"?', task_command)
+            if match:
+                backup_dir = match.group(1).strip('"')
+        
+        if '--encrypt' in task_command:
+            encrypt = True
+        
+        if '--password' in task_command:
+            match = re.search(r'--password\s+"?([^"\s]+)"?', task_command)
+            if match:
+                password = match.group(1).strip('"')
+        
+        if not backup_dir:
+            logger.error("Unable to extract backup directory from existing task")
+            return False, "Unable to extract task parameters for repair"
+        
+        # Extract schedule time from task status
+        # The time is typically in the format "Next Run Time: 12/31/2024 2:00:00 AM"
+        schedule_time = "02:00"  # default
+        if 'next_run' in task_status and task_status['next_run'] != 'Unknown':
+            try:
+                # Try to parse time from next run string
+                time_match = re.search(r'(\d{1,2}:\d{2})', task_status['next_run'])
+                if time_match:
+                    schedule_time = time_match.group(1)
+            except:
+                pass
+        
+        # Determine schedule type from the task (default to daily)
+        schedule_type = "daily"
+        
+        # Recreate the scheduled task with the new path
+        success, message = create_scheduled_task(
+            task_name=task_name,
+            schedule_type=schedule_type,
+            schedule_time=schedule_time,
+            backup_dir=backup_dir,
+            encrypt=encrypt,
+            password=password
+        )
+        
+        if success:
+            return True, f"Scheduled task repaired: Updated path from\n{task_path}\nto\n{current_path}"
+        else:
+            return False, f"Failed to repair scheduled task: {message}"
+    
+    except Exception as e:
+        logger.error(f"Error checking/repairing scheduled task: {e}")
+        return False, f"Error during repair: {str(e)}"
+
 # ---------------------------------------------------------------
 
 class NextcloudRestoreWizard(tk.Tk):
@@ -2252,6 +2444,9 @@ class NextcloudRestoreWizard(tk.Tk):
         # Bind window resize for responsive behavior
         self.bind("<Configure>", self._on_window_resize)
         self.last_window_size = (900, 900)
+        
+        # Check and repair scheduled task if app has been moved
+        self.after(1000, self._check_scheduled_task_on_startup)
 
         self.show_landing()
 
@@ -8338,6 +8533,83 @@ Would you like to open the detailed guide?
                 else:
                     # Normal font
                     self.header_label.config(font=("Arial", 22, "bold"))
+    
+    def _check_scheduled_task_on_startup(self):
+        """
+        Check on startup if the scheduled task needs repair (app has been moved).
+        Shows a notification to the user if repair was performed.
+        """
+        try:
+            repaired, message = check_and_repair_scheduled_task("NextcloudBackup")
+            
+            if repaired:
+                # App was moved and task was repaired - notify user
+                logger.info(f"Scheduled task auto-repaired: {message}")
+                
+                # Show notification dialog
+                dialog = tk.Toplevel(self)
+                dialog.title("Scheduled Task Updated")
+                dialog.geometry("500x200")
+                dialog.transient(self)
+                dialog.resizable(False, False)
+                
+                # Apply theme
+                dialog.configure(bg=self.theme_colors['bg'])
+                
+                # Icon and title
+                title_frame = tk.Frame(dialog, bg=self.theme_colors['bg'])
+                title_frame.pack(pady=20, padx=20, fill="x")
+                
+                icon_label = tk.Label(
+                    title_frame,
+                    text="✅",
+                    font=("Arial", 24),
+                    bg=self.theme_colors['bg'],
+                    fg=self.theme_colors['fg']
+                )
+                icon_label.pack(side="left", padx=(0, 10))
+                
+                title_label = tk.Label(
+                    title_frame,
+                    text="Scheduled Task Auto-Repaired",
+                    font=("Arial", 14, "bold"),
+                    bg=self.theme_colors['bg'],
+                    fg=self.theme_colors['fg']
+                )
+                title_label.pack(side="left")
+                
+                # Message
+                msg_label = tk.Label(
+                    dialog,
+                    text="The application location has changed.\nScheduled backup task updated automatically.",
+                    font=("Arial", 10),
+                    bg=self.theme_colors['bg'],
+                    fg=self.theme_colors['fg'],
+                    justify="left"
+                )
+                msg_label.pack(pady=10, padx=20)
+                
+                # OK button
+                ok_btn = tk.Button(
+                    dialog,
+                    text="OK",
+                    font=("Arial", 10),
+                    width=10,
+                    bg=self.theme_colors['button_bg'],
+                    fg=self.theme_colors['button_fg'],
+                    command=dialog.destroy
+                )
+                ok_btn.pack(pady=20)
+                
+                # Center the dialog
+                dialog.update_idletasks()
+                x = (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2)
+                y = (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
+                dialog.geometry(f"+{x}+{y}")
+        
+        except Exception as e:
+            # Silently log any errors - we don't want startup to fail
+            logger.error(f"Error checking scheduled task on startup: {e}")
     
     def check_dependencies(self):
         pass # handled stepwise
