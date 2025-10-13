@@ -2128,6 +2128,10 @@ class NextcloudRestoreWizard(tk.Tk):
         self.backup_history = BackupHistoryManager()
         self.last_health_check = None
         self.health_check_cache = None
+        
+        # Bind window resize for responsive behavior
+        self.bind("<Configure>", self._on_window_resize)
+        self.last_window_size = (900, 900)
 
         self.show_landing()
 
@@ -7706,6 +7710,13 @@ Would you like to open the detailed guide?
             canvas.itemconfig(canvas_window, width=event.width)
         canvas.bind("<Configure>", on_canvas_configure)
         
+        # Add mouse wheel scrolling
+        def on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        canvas.bind_all("<MouseWheel>", on_mousewheel)  # Windows
+        canvas.bind_all("<Button-4>", lambda e: canvas.yview_scroll(-1, "units"))  # Linux scroll up
+        canvas.bind_all("<Button-5>", lambda e: canvas.yview_scroll(1, "units"))  # Linux scroll down
+        
         # Get backup history
         backups = self.backup_history.get_all_backups()
         
@@ -7995,6 +8006,25 @@ Would you like to open the detailed guide?
         
         except Exception as e:
             messagebox.showerror("Export Failed", f"Failed to copy backup:\n\n{str(e)}")
+    
+    def _on_window_resize(self, event):
+        """Handle window resize for responsive layout"""
+        # Only process resize events for the main window
+        if event.widget == self:
+            new_size = (event.width, event.height)
+            
+            # Only update if size changed significantly (avoid micro-adjustments)
+            if abs(new_size[0] - self.last_window_size[0]) > 10 or \
+               abs(new_size[1] - self.last_window_size[1]) > 10:
+                self.last_window_size = new_size
+                
+                # Adjust font sizes based on window size
+                if new_size[0] < 750:
+                    # Smaller font for narrow windows
+                    self.header_label.config(font=("Arial", 18, "bold"))
+                else:
+                    # Normal font
+                    self.header_label.config(font=("Arial", 22, "bold"))
     
     def check_dependencies(self):
         pass # handled stepwise
