@@ -14,7 +14,19 @@ import platform
 import sys
 import argparse
 import json
+import logging
 from datetime import datetime, timedelta
+
+# Configure logging for diagnostic purposes
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('nextcloud_restore_gui.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 DOCKER_INSTALLER_URL = "https://www.docker.com/products/docker-desktop/"
 GPG_DOWNLOAD_URL = "https://files.gpg4win.org/gpg4win-latest.exe"
@@ -80,6 +92,41 @@ THEMES = {
         'schedule_btn': '#7b4a85',
     }
 }
+
+# --- Page Rendering Decorator for Logging and Error Handling ---
+def log_page_render(page_name):
+    """
+    Decorator to add diagnostic logging and error handling to page rendering methods.
+    Logs entry, exit, and any exceptions that occur during page rendering.
+    """
+    def decorator(func):
+        def wrapper(self, *args, **kwargs):
+            logger.info("=" * 60)
+            logger.info(f"{page_name}: Starting page render")
+            logger.info(f"Current theme: {self.current_theme}")
+            try:
+                result = func(self, *args, **kwargs)
+                logger.info(f"{page_name}: Page render complete successfully")
+                logger.info("=" * 60)
+                return result
+            except Exception as e:
+                logger.error("=" * 60)
+                logger.error(f"{page_name}: ERROR during page render: {e}")
+                logger.error(f"{page_name}: Traceback: {traceback.format_exc()}")
+                logger.error("=" * 60)
+                # Show error message to user
+                messagebox.showerror(
+                    "Page Rendering Error",
+                    f"Failed to render {page_name} page:\n{str(e)}\n\nCheck nextcloud_restore_gui.log for details."
+                )
+                # Try to show landing page as fallback
+                try:
+                    logger.info(f"{page_name}: Attempting fallback to landing page")
+                    self.show_landing()
+                except:
+                    logger.error(f"{page_name}: Fallback to landing page also failed")
+        return wrapper
+    return decorator
 
 # --- Silent subprocess execution utilities ---
 def get_subprocess_creation_flags():
@@ -1741,33 +1788,45 @@ class NextcloudRestoreWizard(tk.Tk):
 
     def toggle_theme(self):
         """Toggle between light and dark themes"""
+        old_theme = self.current_theme
         self.current_theme = 'dark' if self.current_theme == 'light' else 'light'
         self.theme_colors = THEMES[self.current_theme]
+        logger.info(f"THEME TOGGLE: Changed theme from {old_theme} to {self.current_theme}")
         
         # Update header theme icon
         theme_icon = "☀️" if self.current_theme == 'dark' else "🌙"
         self.header_theme_btn.config(text=theme_icon)
         
         self.apply_theme()
+        logger.info("THEME TOGGLE: Applied theme to UI elements")
         # Refresh the current screen - maintain user's current page
+        logger.info(f"THEME TOGGLE: Refreshing current page: {self.current_page}")
         self.refresh_current_page()
     
     def refresh_current_page(self):
         """Refresh the current page after theme change or other updates"""
+        logger.info(f"REFRESH PAGE: Starting refresh for page: {self.current_page}")
         if self.current_page == 'tailscale_wizard':
+            logger.info("REFRESH PAGE: Calling show_tailscale_wizard()")
             self.show_tailscale_wizard()
         elif self.current_page == 'tailscale_config':
+            logger.info("REFRESH PAGE: Calling _show_tailscale_config()")
             self._show_tailscale_config()
         elif self.current_page == 'schedule_backup':
+            logger.info("REFRESH PAGE: Calling show_schedule_backup()")
             self.show_schedule_backup()
         elif self.current_page == 'wizard':
             # Restore wizard - maintain current wizard page
+            logger.info("REFRESH PAGE: Calling create_wizard()")
             self.create_wizard()
             if hasattr(self, 'wizard_page') and self.wizard_page > 1:
+                logger.info(f"REFRESH PAGE: Restoring wizard page {self.wizard_page}")
                 self.show_wizard_page(self.wizard_page)
         else:
             # Default to landing page for any other state
+            logger.info("REFRESH PAGE: Calling show_landing() (default)")
             self.show_landing()
+        logger.info("REFRESH PAGE: Page refresh complete")
     
     def show_dropdown_menu(self):
         """Show dropdown menu with advanced features"""
@@ -4996,9 +5055,12 @@ php /tmp/update_config.php"
     
     # ----- Tailscale Setup Wizard -----
     
+    @log_page_render("TAILSCALE WIZARD")
     def show_tailscale_wizard(self):
         """Show the Tailscale setup wizard main page"""
+        logger.info("TAILSCALE WIZARD: Setting current_page to 'tailscale_wizard'")
         self.current_page = 'tailscale_wizard'
+        logger.info("TAILSCALE WIZARD: Clearing existing widgets")
         for widget in self.body_frame.winfo_children():
             widget.destroy()
         
@@ -5378,9 +5440,12 @@ php /tmp/update_config.php"
                 "Please start Tailscale manually from your system."
             )
     
+    @log_page_render("TAILSCALE CONFIG")
     def _show_tailscale_config(self):
         """Show Tailscale configuration wizard"""
+        logger.info("TAILSCALE CONFIG: Setting current_page to 'tailscale_config'")
         self.current_page = 'tailscale_config'
+        logger.info("TAILSCALE CONFIG: Clearing existing widgets")
         for widget in self.body_frame.winfo_children():
             widget.destroy()
         
