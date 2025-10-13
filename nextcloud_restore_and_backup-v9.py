@@ -4980,7 +4980,7 @@ php /tmp/update_config.php"
         
         self.status_label.config(text="Remote Access Setup (Tailscale)")
         
-        # Create scrollable frame
+        # Create scrollable frame with proper centering
         canvas = tk.Canvas(self.body_frame, bg=self.theme_colors['bg'], highlightthickness=0)
         scrollbar = ttk.Scrollbar(self.body_frame, orient="vertical", command=canvas.yview)
         scrollable_frame = tk.Frame(canvas, bg=self.theme_colors['bg'])
@@ -4990,15 +4990,23 @@ php /tmp/update_config.php"
             lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
         
-        canvas.create_window((canvas.winfo_reqwidth() // 2, 0), window=scrollable_frame, anchor="n")
+        # Create window with proper centering - use canvas width callback
+        def update_canvas_window(event=None):
+            canvas_width = canvas.winfo_width()
+            if canvas_width > 1:  # Only update after canvas is rendered
+                canvas.coords(canvas_window, canvas_width // 2, 0)
+        
+        canvas_window = canvas.create_window((0, 0), window=scrollable_frame, anchor="n")
         canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.bind('<Configure>', update_canvas_window)
         
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
         
-        # Wizard content frame (600px wide, centered)
+        # Wizard content frame (600px wide, centered in scrollable frame)
         content = tk.Frame(scrollable_frame, bg=self.theme_colors['bg'], width=600)
-        content.pack(pady=20, padx=40, fill="x", expand=True)
+        content.pack(pady=20, anchor="center")
+        content.pack_propagate(False)  # Maintain fixed width
         
         # Title
         tk.Label(
@@ -5346,7 +5354,7 @@ php /tmp/update_config.php"
         
         self.status_label.config(text="Configure Remote Access")
         
-        # Create scrollable frame
+        # Create scrollable frame with proper centering
         canvas = tk.Canvas(self.body_frame, bg=self.theme_colors['bg'], highlightthickness=0)
         scrollbar = ttk.Scrollbar(self.body_frame, orient="vertical", command=canvas.yview)
         scrollable_frame = tk.Frame(canvas, bg=self.theme_colors['bg'])
@@ -5356,15 +5364,23 @@ php /tmp/update_config.php"
             lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
         
-        canvas.create_window((canvas.winfo_reqwidth() // 2, 0), window=scrollable_frame, anchor="n")
+        # Create window with proper centering - use canvas width callback
+        def update_canvas_window(event=None):
+            canvas_width = canvas.winfo_width()
+            if canvas_width > 1:  # Only update after canvas is rendered
+                canvas.coords(canvas_window, canvas_width // 2, 0)
+        
+        canvas_window = canvas.create_window((0, 0), window=scrollable_frame, anchor="n")
         canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.bind('<Configure>', update_canvas_window)
         
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
         
-        # Content frame
+        # Content frame (600px wide, centered in scrollable frame)
         content = tk.Frame(scrollable_frame, bg=self.theme_colors['bg'], width=600)
-        content.pack(pady=20, padx=40, fill="x", expand=True)
+        content.pack(pady=20, anchor="center")
+        content.pack_propagate(False)  # Maintain fixed width
         
         # Title
         tk.Label(
@@ -5495,6 +5511,19 @@ php /tmp/update_config.php"
             command=lambda: self._apply_tailscale_config(ts_ip, ts_hostname, custom_domain_var.get())
         ).pack(pady=20)
         
+        # Startup automation button (for Linux systems)
+        if platform.system() == "Linux":
+            tk.Button(
+                content,
+                text="⚡ Setup Startup Automation",
+                font=("Arial", 11),
+                bg="#3daee9",
+                fg="white",
+                width=35,
+                height=1,
+                command=self._show_startup_automation_guide
+            ).pack(pady=(0, 20))
+        
         # Info about what will be configured
         info_box = tk.Frame(content, bg=self.theme_colors['warning_bg'], relief="solid", borderwidth=1)
         info_box.pack(pady=10, fill="x", padx=20)
@@ -5528,6 +5557,197 @@ php /tmp/update_config.php"
             fg=self.theme_colors['warning_fg'],
             justify=tk.LEFT
         ).pack(pady=(0, 10), padx=10, anchor="w")
+        
+        # Display current trusted domains section
+        self._display_current_trusted_domains(content)
+    
+    def _display_current_trusted_domains(self, parent):
+        """Display all current trusted domains with remove buttons"""
+        # Get Nextcloud container
+        container_names = get_nextcloud_container_name()
+        if not container_names:
+            return
+        
+        nextcloud_container = container_names
+        
+        # Get current trusted domains
+        current_domains = self._get_trusted_domains(nextcloud_container)
+        
+        if not current_domains:
+            return
+        
+        # Section title
+        tk.Label(
+            parent,
+            text="Current Trusted Domains",
+            font=("Arial", 13, "bold"),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg']
+        ).pack(pady=(30, 10), anchor="w", padx=20)
+        
+        tk.Label(
+            parent,
+            text="These domains are currently configured for Nextcloud access:",
+            font=("Arial", 10),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['hint_fg']
+        ).pack(pady=(0, 10), anchor="w", padx=20)
+        
+        # Domains list frame
+        domains_frame = tk.Frame(parent, bg=self.theme_colors['bg'])
+        domains_frame.pack(pady=5, fill="x", padx=20)
+        
+        # Display each domain with a remove button
+        for domain in current_domains:
+            domain_row = tk.Frame(domains_frame, bg=self.theme_colors['entry_bg'], relief="solid", borderwidth=1)
+            domain_row.pack(pady=3, fill="x")
+            
+            # Domain label
+            tk.Label(
+                domain_row,
+                text=domain,
+                font=("Arial", 11),
+                bg=self.theme_colors['entry_bg'],
+                fg=self.theme_colors['entry_fg'],
+                anchor="w"
+            ).pack(side="left", fill="x", expand=True, padx=10, pady=8)
+            
+            # Remove button
+            remove_btn = tk.Button(
+                domain_row,
+                text="✕",
+                font=("Arial", 12, "bold"),
+                bg=self.theme_colors['error_bg'] if hasattr(self.theme_colors, '__getitem__') and 'error_bg' in self.theme_colors else "#ff6b6b",
+                fg="white",
+                width=3,
+                height=1,
+                command=lambda d=domain: self._on_remove_domain(d, parent)
+            )
+            remove_btn.pack(side="right", padx=5, pady=5)
+        
+        # Info note
+        info_note = tk.Frame(parent, bg=self.theme_colors['info_bg'], relief="solid", borderwidth=1)
+        info_note.pack(pady=10, fill="x", padx=20)
+        
+        tk.Label(
+            info_note,
+            text="💡 Tip: Click the ✕ button to remove a domain from trusted domains. "
+                 "This will prevent access from that domain.",
+            font=("Arial", 9),
+            bg=self.theme_colors['info_bg'],
+            fg=self.theme_colors['info_fg'],
+            wraplength=540,
+            justify=tk.LEFT
+        ).pack(pady=8, padx=10, anchor="w")
+    
+    def _on_remove_domain(self, domain, parent_frame):
+        """Handle domain removal"""
+        # Confirm removal
+        confirm = messagebox.askyesno(
+            "Remove Trusted Domain",
+            f"Are you sure you want to remove this domain from trusted domains?\n\n"
+            f"Domain: {domain}\n\n"
+            f"Note: Removing this domain will prevent access to Nextcloud from this address."
+        )
+        
+        if not confirm:
+            return
+        
+        # Get Nextcloud container
+        container_names = get_nextcloud_container_name()
+        if not container_names:
+            messagebox.showerror(
+                "Error",
+                "No running Nextcloud container found.\n\n"
+                "Please ensure your Nextcloud instance is running."
+            )
+            return
+        
+        nextcloud_container = container_names
+        
+        # Remove the domain
+        success = self._remove_trusted_domain(nextcloud_container, domain)
+        
+        if success:
+            messagebox.showinfo(
+                "Success",
+                f"✓ Domain removed successfully!\n\n"
+                f"Removed: {domain}\n\n"
+                f"The configuration will refresh now."
+            )
+            # Refresh the page to show updated list
+            self._show_tailscale_config()
+        else:
+            messagebox.showerror(
+                "Error",
+                f"Failed to remove domain: {domain}\n\n"
+                "Please check that the Nextcloud container is running\n"
+                "and you have the necessary permissions."
+            )
+    
+    def _show_startup_automation_guide(self):
+        """Show startup automation installation guide"""
+        guide_text = """
+Startup Automation Setup
+
+This feature ensures your Tailscale domains are automatically added to
+Nextcloud's trusted domains when your system boots.
+
+Installation Steps (Linux only):
+
+1. Open a terminal and navigate to this application's directory
+
+2. Copy the startup script:
+   sudo cp nextcloud-remote-access-startup.sh /usr/local/bin/
+   sudo chmod +x /usr/local/bin/nextcloud-remote-access-startup.sh
+
+3. Install the systemd service:
+   sudo cp nextcloud-remote-access.service /etc/systemd/system/
+
+4. Enable the service:
+   sudo systemctl daemon-reload
+   sudo systemctl enable nextcloud-remote-access.service
+
+5. Start the service:
+   sudo systemctl start nextcloud-remote-access.service
+
+6. Check status:
+   sudo systemctl status nextcloud-remote-access.service
+
+For detailed instructions and troubleshooting, see:
+REMOTE_ACCESS_STARTUP_GUIDE.md
+
+Benefits:
+✓ Domains applied automatically on system boot
+✓ Always accessible via Tailscale after restarts
+✓ Supports custom domains via configuration file
+✓ Logged for troubleshooting
+
+Would you like to open the detailed guide?
+"""
+        
+        response = messagebox.askyesnocancel(
+            "Startup Automation Setup",
+            guide_text
+        )
+        
+        if response:  # Yes - open the guide
+            guide_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "REMOTE_ACCESS_STARTUP_GUIDE.md")
+            if os.path.exists(guide_path):
+                try:
+                    if platform.system() == "Linux":
+                        subprocess.run(["xdg-open", guide_path])
+                    elif platform.system() == "Darwin":  # macOS
+                        subprocess.run(["open", guide_path])
+                    else:
+                        webbrowser.open(f"file://{guide_path}")
+                except Exception as e:
+                    messagebox.showerror("Error", f"Could not open guide: {e}")
+            else:
+                messagebox.showwarning("Guide Not Found", "The guide file could not be found.")
+        elif response is False:  # No - just close
+            pass
+        # Cancel - do nothing
     
     def _get_tailscale_info(self):
         """Get Tailscale IP and hostname"""
@@ -5659,6 +5879,118 @@ php /tmp/update_config.php"
         
         except Exception as e:
             messagebox.showerror("Error", f"Failed to apply configuration: {e}")
+    
+    def _get_trusted_domains(self, container_name):
+        """Get list of current trusted domains from Nextcloud config.php"""
+        try:
+            # Read current config.php
+            result = subprocess.run(
+                ["docker", "exec", container_name, "cat", "/var/www/html/config/config.php"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode != 0:
+                print(f"Failed to read config.php: {result.stderr}")
+                return []
+            
+            config_content = result.stdout
+            
+            # Parse trusted_domains array
+            trusted_domains_pattern = r"'trusted_domains'\s*=>\s*array\s*\((.*?)\),"
+            match = re.search(trusted_domains_pattern, config_content, re.DOTALL)
+            
+            if not match:
+                print("Could not find trusted_domains in config.php")
+                return []
+            
+            # Extract existing domains
+            existing_domains_str = match.group(1)
+            existing_domains = []
+            
+            # Parse existing domain entries
+            domain_pattern = r"\d+\s*=>\s*'([^']+)'"
+            for domain_match in re.finditer(domain_pattern, existing_domains_str):
+                existing_domains.append(domain_match.group(1))
+            
+            return existing_domains
+        
+        except Exception as e:
+            print(f"Error getting trusted_domains: {e}")
+            return []
+    
+    def _remove_trusted_domain(self, container_name, domain_to_remove):
+        """Remove a specific domain from trusted_domains in Nextcloud config.php"""
+        try:
+            # Read current config.php
+            result = subprocess.run(
+                ["docker", "exec", container_name, "cat", "/var/www/html/config/config.php"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode != 0:
+                print(f"Failed to read config.php: {result.stderr}")
+                return False
+            
+            config_content = result.stdout
+            
+            # Parse trusted_domains array
+            trusted_domains_pattern = r"'trusted_domains'\s*=>\s*array\s*\((.*?)\),"
+            match = re.search(trusted_domains_pattern, config_content, re.DOTALL)
+            
+            if not match:
+                print("Could not find trusted_domains in config.php")
+                return False
+            
+            # Extract existing domains
+            existing_domains_str = match.group(1)
+            existing_domains = []
+            
+            # Parse existing domain entries
+            domain_pattern = r"\d+\s*=>\s*'([^']+)'"
+            for domain_match in re.finditer(domain_pattern, existing_domains_str):
+                domain = domain_match.group(1)
+                if domain != domain_to_remove:
+                    existing_domains.append(domain)
+            
+            # Build new trusted_domains array
+            new_domains_array = "array(\n"
+            for i, domain in enumerate(existing_domains):
+                new_domains_array += f"    {i} => '{domain}',\n"
+            new_domains_array += "  )"
+            
+            # Replace in config
+            new_config = re.sub(
+                trusted_domains_pattern,
+                f"'trusted_domains' => {new_domains_array},",
+                config_content,
+                count=1,
+                flags=re.DOTALL
+            )
+            
+            # Write back to container
+            write_cmd = f"cat > /var/www/html/config/config.php << 'EOFCONFIG'\n{new_config}\nEOFCONFIG"
+            
+            result = subprocess.run(
+                ["docker", "exec", container_name, "sh", "-c", write_cmd],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode != 0:
+                print(f"Failed to write config.php: {result.stderr}")
+                return False
+            
+            print(f"✓ Removed domain from trusted_domains: {domain_to_remove}")
+            return True
+        
+        except Exception as e:
+            print(f"Error removing trusted domain: {e}")
+            return False
     
     def _update_trusted_domains(self, container_name, new_domains):
         """Update trusted_domains in Nextcloud config.php"""
