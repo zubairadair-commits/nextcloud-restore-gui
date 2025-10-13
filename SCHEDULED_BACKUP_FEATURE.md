@@ -122,10 +122,20 @@ The application uses the `schtasks` command-line utility to:
 - Query task status
 - Enable/disable tasks
 
-Example task creation command:
+#### Smart Command Construction
+The application automatically detects whether it's running as a Python script (.py) or a compiled executable (.exe) and constructs the appropriate command:
+
+**For Python scripts (.py):**
 ```bash
-schtasks /Create /TN "NextcloudBackup" /TR "C:\path\to\app.exe --scheduled --backup-dir C:\Backups" /ST 02:00 /SC DAILY /F
+schtasks /Create /TN "NextcloudBackup" /TR "python \"C:\path\to\script.py\" --scheduled --backup-dir C:\Backups" /ST 02:00 /SC DAILY /F
 ```
+
+**For compiled executables (.exe):**
+```bash
+schtasks /Create /TN "NextcloudBackup" /TR "\"C:\path\to\app.exe\" --scheduled --backup-dir C:\Backups" /ST 02:00 /SC DAILY /F
+```
+
+This ensures that scheduled tasks work correctly in both development (running from .py files) and production (compiled .exe) environments.
 
 ### Configuration Storage
 Schedule configuration is stored in JSON format at:
@@ -273,6 +283,8 @@ Example configuration:
 #### `create_scheduled_task(task_name, schedule_type, schedule_time, backup_dir, encrypt, password="")`
 Creates a Windows scheduled task for automatic backups.
 
+**Smart Detection:** Automatically detects whether the application is running as a Python script (.py) or compiled executable (.exe) and constructs the appropriate command. Python scripts are invoked through the Python interpreter, while executables run directly.
+
 **Parameters:**
 - `task_name` (str): Name for the scheduled task
 - `schedule_type` (str): 'daily', 'weekly', or 'monthly'
@@ -317,7 +329,9 @@ Disables a Windows scheduled task.
 
 ## Change Log
 
-### Version 1.0 (Current)
+### Version 1.1 (Current)
+- **NEW:** Smart detection of .py scripts vs .exe executables
+- **NEW:** Automatic Python interpreter invocation for .py scripts
 - Initial implementation of scheduled backup feature
 - Windows Task Scheduler integration
 - GUI-based schedule configuration
@@ -325,6 +339,9 @@ Disables a Windows scheduled task.
 - Encryption support in scheduled backups
 - Silent execution with CREATE_NO_WINDOW flag
 - Configuration persistence in JSON format
+
+### Version 1.0
+- Initial release of scheduled backup feature
 
 ## Support
 

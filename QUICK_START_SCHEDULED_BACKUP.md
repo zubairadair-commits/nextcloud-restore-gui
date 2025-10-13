@@ -75,6 +75,8 @@ At the scheduled time (e.g., 2:00 AM):
 4. The backup is saved to your chosen directory
 5. (Optional) The backup is encrypted with your password
 
+**Note**: The scheduler automatically detects whether you're running from a Python script (.py) or compiled executable (.exe) and constructs the appropriate command. This ensures reliability in both development and production environments.
+
 ## Managing Your Schedule
 
 ### View Schedule Status
@@ -320,7 +322,12 @@ A: Not directly. Backup to local directory first, then use cloud sync tool (OneD
 
 ---
 
-**Version**: 1.0  
+**Version**: 1.1  
 **Last Updated**: October 2025  
 **Platform**: Windows 10/11  
 **Status**: Production Ready ✅
+
+**What's New in v1.1:**
+- Smart detection of Python scripts (.py) vs executables (.exe)
+- Automatic Python interpreter invocation for script-based installations
+- Enhanced reliability for both development and production use
