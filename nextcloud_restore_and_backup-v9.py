@@ -1701,6 +1701,9 @@ class NextcloudRestoreWizard(tk.Tk):
         self.db_credential_packed_widgets = []  # Packed widgets (warning/instruction labels)
         self.db_credential_frame = None  # Frame containing grid widgets
         self.db_sqlite_message_label = None  # Label to show SQLite-specific message
+        
+        # Track current page for theme toggle and navigation
+        self.current_page = 'landing'  # Possible values: 'landing', 'tailscale_wizard', 'tailscale_config', 'schedule_backup', 'wizard'
 
         self.show_landing()
 
@@ -1746,8 +1749,20 @@ class NextcloudRestoreWizard(tk.Tk):
         self.header_theme_btn.config(text=theme_icon)
         
         self.apply_theme()
-        # Refresh the current screen
-        self.show_landing()
+        # Refresh the current screen - maintain user's current page
+        self.refresh_current_page()
+    
+    def refresh_current_page(self):
+        """Refresh the current page after theme change or other updates"""
+        if self.current_page == 'tailscale_wizard':
+            self.show_tailscale_wizard()
+        elif self.current_page == 'tailscale_config':
+            self._show_tailscale_config()
+        elif self.current_page == 'schedule_backup':
+            self.show_schedule_backup()
+        else:
+            # Default to landing page for any other state
+            self.show_landing()
     
     def show_dropdown_menu(self):
         """Show dropdown menu with advanced features"""
@@ -1984,6 +1999,7 @@ class NextcloudRestoreWizard(tk.Tk):
             pass
 
     def show_landing(self):
+        self.current_page = 'landing'
         for widget in self.body_frame.winfo_children():
             widget.destroy()
         self.status_label.config(text="")
@@ -4526,6 +4542,7 @@ php /tmp/update_config.php"
     
     def show_schedule_backup(self):
         """Show the schedule backup configuration UI."""
+        self.current_page = 'schedule_backup'
         for widget in self.body_frame.winfo_children():
             widget.destroy()
         
@@ -4975,6 +4992,7 @@ php /tmp/update_config.php"
     
     def show_tailscale_wizard(self):
         """Show the Tailscale setup wizard main page"""
+        self.current_page = 'tailscale_wizard'
         for widget in self.body_frame.winfo_children():
             widget.destroy()
         
@@ -5356,6 +5374,7 @@ php /tmp/update_config.php"
     
     def _show_tailscale_config(self):
         """Show Tailscale configuration wizard"""
+        self.current_page = 'tailscale_config'
         for widget in self.body_frame.winfo_children():
             widget.destroy()
         
