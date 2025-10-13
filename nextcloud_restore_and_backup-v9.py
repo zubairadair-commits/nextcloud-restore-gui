@@ -1867,11 +1867,11 @@ def create_scheduled_task(task_name, schedule_type, schedule_time, backup_dir, e
         
         # Map schedule_type to schtasks frequency
         if schedule_type == "daily":
-            schedule_args = "/SC DAILY"
+            schedule_args = ["/SC", "DAILY"]
         elif schedule_type == "weekly":
-            schedule_args = "/SC WEEKLY /D MON"  # Default to Monday
+            schedule_args = ["/SC", "WEEKLY", "/D", "MON"]  # Default to Monday
         elif schedule_type == "monthly":
-            schedule_args = "/SC MONTHLY /D 1"  # Default to 1st of month
+            schedule_args = ["/SC", "MONTHLY", "/D", "1"]  # Default to 1st of month
         else:
             return False, f"Unsupported schedule type: {schedule_type}"
         
@@ -1891,10 +1891,10 @@ def create_scheduled_task(task_name, schedule_type, schedule_time, backup_dir, e
             "schtasks", "/Create",
             "/TN", task_name,
             "/TR", command,
-            "/ST", schedule_time,
-            schedule_args,
-            "/F"  # Force creation, overwrite if exists
+            "/ST", schedule_time
         ]
+        schtasks_cmd.extend(schedule_args)
+        schtasks_cmd.append("/F")  # Force creation, overwrite if exists
         
         result = subprocess.run(
             schtasks_cmd,
