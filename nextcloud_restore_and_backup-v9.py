@@ -1769,6 +1769,11 @@ class NextcloudRestoreWizard(tk.Tk):
         
         # Track current page for theme toggle and navigation
         self.current_page = 'landing'  # Possible values: 'landing', 'tailscale_wizard', 'tailscale_config', 'schedule_backup', 'wizard'
+        
+        # Domain management state
+        self.domain_change_history = []  # Track changes for undo functionality
+        self.original_domains = None  # Store original domains for restore defaults
+        self.domain_status_cache = {}  # Cache domain status checks
 
         self.show_landing()
 
@@ -5716,7 +5721,7 @@ php /tmp/update_config.php"
         logger.info("TAILSCALE CONFIG: All widgets created successfully")
     
     def _display_current_trusted_domains(self, parent):
-        """Display all current trusted domains with remove buttons"""
+        """Display all current trusted domains with enhanced management features"""
         # Get Nextcloud container
         container_names = get_nextcloud_container_name()
         if not container_names:
@@ -5730,14 +5735,29 @@ php /tmp/update_config.php"
         if not current_domains:
             return
         
-        # Section title
+        # Section title with help icon
+        title_frame = tk.Frame(parent, bg=self.theme_colors['bg'])
+        title_frame.pack(pady=(30, 10), fill="x", padx=20)
+        
         tk.Label(
-            parent,
+            title_frame,
             text="Current Trusted Domains",
             font=("Arial", 13, "bold"),
             bg=self.theme_colors['bg'],
             fg=self.theme_colors['fg']
-        ).pack(pady=(30, 10), anchor="w", padx=20)
+        ).pack(side="left")
+        
+        # Help tooltip button
+        help_btn = tk.Button(
+            title_frame,
+            text="ℹ️",
+            font=("Arial", 10),
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg'],
+            width=2,
+            command=self._show_domain_help
+        )
+        help_btn.pack(side="left", padx=10)
         
         tk.Label(
             parent,
@@ -5747,24 +5767,117 @@ php /tmp/update_config.php"
             fg=self.theme_colors['hint_fg']
         ).pack(pady=(0, 10), anchor="w", padx=20)
         
-        # Domains list frame
-        domains_frame = tk.Frame(parent, bg=self.theme_colors['bg'])
-        domains_frame.pack(pady=5, fill="x", padx=20)
+        # Management controls frame
+        controls_frame = tk.Frame(parent, bg=self.theme_colors['bg'])
+        controls_frame.pack(pady=(0, 10), fill="x", padx=20)
         
-        # Display each domain with a remove button
+        # Refresh status button
+        tk.Button(
+            controls_frame,
+            text="🔄 Refresh Status",
+            font=("Arial", 9),
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg'],
+            command=lambda: self._refresh_domain_status(parent)
+        ).pack(side="left", padx=(0, 5))
+        
+        # Restore defaults button
+        if self.original_domains:
+            tk.Button(
+                controls_frame,
+                text="↺ Restore Defaults",
+                font=("Arial", 9),
+                bg=self.theme_colors['button_bg'],
+                fg=self.theme_colors['button_fg'],
+                command=lambda: self._on_restore_defaults(parent)
+            ).pack(side="left", padx=5)
+        
+        # Undo button
+        if self.domain_change_history:
+            tk.Button(
+                controls_frame,
+                text="↶ Undo Last Change",
+                font=("Arial", 9),
+                bg=self.theme_colors['button_bg'],
+                fg=self.theme_colors['button_fg'],
+                command=lambda: self._on_undo_change(parent)
+            ).pack(side="left", padx=5)
+        
+        # Scrollable domains list frame with canvas
+        list_container = tk.Frame(parent, bg=self.theme_colors['bg'])
+        list_container.pack(pady=5, fill="both", expand=False, padx=20)
+        
+        # Create canvas and scrollbar
+        canvas = tk.Canvas(
+            list_container,
+            bg=self.theme_colors['bg'],
+            height=min(300, len(current_domains) * 50),  # Max height 300px
+            highlightthickness=0
+        )
+        scrollbar = tk.Scrollbar(list_container, orient="vertical", command=canvas.yview)
+        domains_frame = tk.Frame(canvas, bg=self.theme_colors['bg'])
+        
+        # Configure canvas
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Pack scrollbar and canvas
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        
+        # Create window in canvas
+        canvas_window = canvas.create_window((0, 0), window=domains_frame, anchor="nw")
+        
+        # Update scroll region when frame size changes
+        def configure_scroll_region(event=None):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        
+        domains_frame.bind("<Configure>", configure_scroll_region)
+        
+        # Display each domain with status icon and remove button
         for domain in current_domains:
             domain_row = tk.Frame(domains_frame, bg=self.theme_colors['entry_bg'], relief="solid", borderwidth=1)
-            domain_row.pack(pady=3, fill="x")
+            domain_row.pack(pady=3, fill="x", padx=2)
             
-            # Domain label
-            tk.Label(
+            # Check domain status
+            status = self._check_domain_reachability(domain)
+            
+            # Status icon
+            status_icons = {
+                'active': '✓',
+                'unreachable': '⚠️',
+                'pending': '⏳',
+                'error': '❌'
+            }
+            status_colors = {
+                'active': '#45bf55',
+                'unreachable': '#ff9800',
+                'pending': '#2196f3',
+                'error': '#f44336'
+            }
+            
+            status_label = tk.Label(
+                domain_row,
+                text=status_icons.get(status, '?'),
+                font=("Arial", 12),
+                bg=self.theme_colors['entry_bg'],
+                fg=status_colors.get(status, self.theme_colors['entry_fg']),
+                width=2
+            )
+            status_label.pack(side="left", padx=(5, 0), pady=8)
+            
+            # Domain label with tooltip on hover
+            domain_label = tk.Label(
                 domain_row,
                 text=domain,
                 font=("Arial", 11),
                 bg=self.theme_colors['entry_bg'],
                 fg=self.theme_colors['entry_fg'],
                 anchor="w"
-            ).pack(side="left", fill="x", expand=True, padx=10, pady=8)
+            )
+            domain_label.pack(side="left", fill="x", expand=True, padx=10, pady=8)
+            
+            # Add tooltip
+            self._create_tooltip(domain_label, self._get_domain_tooltip(domain, status))
             
             # Remove button
             remove_btn = tk.Button(
@@ -5779,20 +5892,141 @@ php /tmp/update_config.php"
             )
             remove_btn.pack(side="right", padx=5, pady=5)
         
-        # Info note
+        # Add new domain section
+        add_domain_frame = tk.Frame(parent, bg=self.theme_colors['bg'])
+        add_domain_frame.pack(pady=15, fill="x", padx=20)
+        
+        tk.Label(
+            add_domain_frame,
+            text="Add New Domain:",
+            font=("Arial", 11, "bold"),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg']
+        ).pack(side="left", padx=(0, 10))
+        
+        # Entry for new domain
+        new_domain_var = tk.StringVar()
+        new_domain_entry = tk.Entry(
+            add_domain_frame,
+            textvariable=new_domain_var,
+            font=("Arial", 11),
+            bg=self.theme_colors['entry_bg'],
+            fg=self.theme_colors['entry_fg'],
+            insertbackground=self.theme_colors['entry_fg']
+        )
+        new_domain_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
+        
+        # Validation feedback label
+        validation_label = tk.Label(
+            parent,
+            text="",
+            font=("Arial", 9),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['error_fg']
+        )
+        validation_label.pack(pady=(0, 5), anchor="w", padx=20)
+        
+        # Real-time validation
+        def validate_input(*args):
+            domain = new_domain_var.get().strip()
+            if not domain:
+                validation_label.config(text="", fg=self.theme_colors['hint_fg'])
+                return
+            
+            is_valid, msg = self._validate_domain_format(domain)
+            if is_valid:
+                if msg:  # Warning message
+                    validation_label.config(text=f"⚠️ {msg}", fg='#ff9800')
+                else:
+                    validation_label.config(text="✓ Valid domain format", fg='#45bf55')
+            else:
+                validation_label.config(text=f"✗ {msg}", fg=self.theme_colors['error_fg'])
+        
+        new_domain_var.trace('w', validate_input)
+        
+        # Add button
+        tk.Button(
+            add_domain_frame,
+            text="➕ Add",
+            font=("Arial", 10, "bold"),
+            bg="#45bf55",
+            fg="white",
+            width=8,
+            command=lambda: self._on_add_domain(new_domain_var.get(), parent, validation_label)
+        ).pack(side="left")
+        
+        # Info note with legend
         info_note = tk.Frame(parent, bg=self.theme_colors['info_bg'], relief="solid", borderwidth=1)
         info_note.pack(pady=10, fill="x", padx=20)
         
+        info_text = (
+            "💡 Status Icons: ✓ Active | ⚠️ Unreachable | ⏳ Pending | ❌ Error\n\n"
+            "• Click ✕ to remove a domain (with confirmation)\n"
+            "• Wildcard domains (*.example.com) are supported with warnings\n"
+            "• Changes are logged and can be undone\n"
+            "• Hover over domains for more information"
+        )
+        
         tk.Label(
             info_note,
-            text="💡 Tip: Click the ✕ button to remove a domain from trusted domains. "
-                 "This will prevent access from that domain.",
+            text=info_text,
             font=("Arial", 9),
             bg=self.theme_colors['info_bg'],
             fg=self.theme_colors['info_fg'],
             wraplength=540,
             justify=tk.LEFT
         ).pack(pady=8, padx=10, anchor="w")
+    
+    def _on_add_domain(self, domain, parent_frame, validation_label):
+        """Handle adding a new domain"""
+        domain = domain.strip()
+        
+        if not domain:
+            validation_label.config(
+                text="✗ Please enter a domain",
+                fg=self.theme_colors['error_fg']
+            )
+            return
+        
+        # Get Nextcloud container
+        container_names = get_nextcloud_container_name()
+        if not container_names:
+            messagebox.showerror(
+                "Error",
+                "No running Nextcloud container found.\n\n"
+                "Please ensure your Nextcloud instance is running."
+            )
+            return
+        
+        nextcloud_container = container_names
+        
+        # Add the domain
+        success, msg = self._add_trusted_domain(nextcloud_container, domain)
+        
+        if success:
+            if msg:  # Has warning
+                messagebox.showinfo(
+                    "Success",
+                    f"✓ Domain added successfully!\n\n"
+                    f"Added: {domain}\n\n"
+                    f"Note: {msg}\n\n"
+                    f"The configuration will refresh now."
+                )
+            else:
+                messagebox.showinfo(
+                    "Success",
+                    f"✓ Domain added successfully!\n\n"
+                    f"Added: {domain}\n\n"
+                    f"The configuration will refresh now."
+                )
+            # Refresh the page to show updated list
+            self._show_tailscale_config()
+        else:
+            messagebox.showerror(
+                "Error",
+                f"Failed to add domain: {domain}\n\n"
+                f"Reason: {msg}"
+            )
     
     def _on_remove_domain(self, domain, parent_frame):
         """Handle domain removal"""
@@ -5838,6 +6072,178 @@ php /tmp/update_config.php"
                 "Please check that the Nextcloud container is running\n"
                 "and you have the necessary permissions."
             )
+    
+    def _on_undo_change(self, parent_frame):
+        """Handle undo of last domain change"""
+        # Get Nextcloud container
+        container_names = get_nextcloud_container_name()
+        if not container_names:
+            messagebox.showerror(
+                "Error",
+                "No running Nextcloud container found.\n\n"
+                "Please ensure your Nextcloud instance is running."
+            )
+            return
+        
+        nextcloud_container = container_names
+        
+        # Undo last change
+        success, msg = self._undo_last_domain_change(nextcloud_container)
+        
+        if success:
+            messagebox.showinfo(
+                "Success",
+                f"✓ {msg}\n\n"
+                f"The configuration will refresh now."
+            )
+            # Refresh the page
+            self._show_tailscale_config()
+        else:
+            messagebox.showerror(
+                "Error",
+                f"Failed to undo change.\n\n"
+                f"Reason: {msg}"
+            )
+    
+    def _on_restore_defaults(self, parent_frame):
+        """Handle restore defaults"""
+        # Get Nextcloud container
+        container_names = get_nextcloud_container_name()
+        if not container_names:
+            messagebox.showerror(
+                "Error",
+                "No running Nextcloud container found.\n\n"
+                "Please ensure your Nextcloud instance is running."
+            )
+            return
+        
+        nextcloud_container = container_names
+        
+        # Restore defaults
+        success, msg = self._restore_default_domains(nextcloud_container)
+        
+        if success:
+            messagebox.showinfo(
+                "Success",
+                f"✓ {msg}\n\n"
+                f"The configuration will refresh now."
+            )
+            # Refresh the page
+            self._show_tailscale_config()
+        else:
+            if msg != "Restore cancelled":
+                messagebox.showerror(
+                    "Error",
+                    f"Failed to restore defaults.\n\n"
+                    f"Reason: {msg}"
+                )
+    
+    def _refresh_domain_status(self, parent_frame):
+        """Refresh domain status by clearing cache and reloading"""
+        # Clear status cache
+        self.domain_status_cache.clear()
+        logger.info("Domain status cache cleared")
+        
+        # Show brief notification
+        messagebox.showinfo(
+            "Refresh Status",
+            "✓ Domain status cache cleared.\n\n"
+            "The page will refresh to show updated status."
+        )
+        
+        # Refresh the page
+        self._show_tailscale_config()
+    
+    def _show_domain_help(self):
+        """Show help information about domain management"""
+        help_text = """
+Domain Management Help
+
+Types of Domains:
+• Tailscale IP: Direct IP address (e.g., 100.x.x.x)
+• MagicDNS: Tailscale hostname (e.g., device-name.tailnet.ts.net)
+• Custom Domain: Your own domain (e.g., mycloud.example.com)
+• Wildcard Domain: Matches subdomains (e.g., *.example.com)
+
+Status Icons:
+• ✓ Active: Domain is reachable
+• ⚠️ Unreachable: Domain cannot be resolved
+• ⏳ Pending: Status check in progress
+• ❌ Error: Error checking domain status
+
+Features:
+• Add Domain: Enter a domain and click Add
+• Remove Domain: Click ✕ next to a domain
+• Restore Defaults: Revert to original domains
+• Undo: Revert the last change
+• Refresh Status: Update domain reachability status
+
+Validation:
+• Domains are validated before adding
+• Duplicates are prevented
+• Wildcard domains are supported with warnings
+• Removing all domains requires confirmation
+
+All changes are logged for troubleshooting and audit purposes.
+"""
+        
+        messagebox.showinfo("Domain Management Help", help_text)
+    
+    def _get_domain_tooltip(self, domain, status):
+        """Get tooltip text for a domain"""
+        status_text = {
+            'active': 'Active - Domain is reachable',
+            'unreachable': 'Unreachable - Domain cannot be resolved',
+            'pending': 'Pending - Status check in progress',
+            'error': 'Error - Error checking domain status'
+        }
+        
+        tooltip = f"Domain: {domain}\nStatus: {status_text.get(status, 'Unknown')}"
+        
+        # Add domain type info
+        if domain.startswith('100.'):
+            tooltip += "\nType: Tailscale IP"
+        elif '.ts.net' in domain:
+            tooltip += "\nType: Tailscale MagicDNS"
+        elif domain.startswith('*.'):
+            tooltip += "\nType: Wildcard Domain"
+        elif domain == 'localhost' or domain.startswith('127.'):
+            tooltip += "\nType: Local"
+        else:
+            tooltip += "\nType: Custom Domain"
+        
+        return tooltip
+    
+    def _create_tooltip(self, widget, text):
+        """Create a tooltip for a widget"""
+        def on_enter(event):
+            tooltip = tk.Toplevel()
+            tooltip.wm_overrideredirect(True)
+            tooltip.wm_geometry(f"+{event.x_root+10}+{event.y_root+10}")
+            
+            label = tk.Label(
+                tooltip,
+                text=text,
+                justify=tk.LEFT,
+                background=self.theme_colors['info_bg'],
+                foreground=self.theme_colors['info_fg'],
+                relief=tk.SOLID,
+                borderwidth=1,
+                font=("Arial", 9),
+                padx=10,
+                pady=5
+            )
+            label.pack()
+            
+            widget.tooltip = tooltip
+        
+        def on_leave(event):
+            if hasattr(widget, 'tooltip'):
+                widget.tooltip.destroy()
+                delattr(widget, 'tooltip')
+        
+        widget.bind("<Enter>", on_enter)
+        widget.bind("<Leave>", on_leave)
     
     def _show_startup_automation_guide(self):
         """Show startup automation installation guide"""
@@ -6034,6 +6440,103 @@ Would you like to open the detailed guide?
         except Exception as e:
             messagebox.showerror("Error", f"Failed to apply configuration: {e}")
     
+    def _validate_domain_format(self, domain):
+        """
+        Validate domain format with comprehensive checks.
+        Returns: (is_valid, error_message)
+        """
+        if not domain or not domain.strip():
+            return (False, "Domain cannot be empty")
+        
+        domain = domain.strip()
+        
+        # Check for wildcard domains
+        is_wildcard = domain.startswith('*.')
+        if is_wildcard:
+            domain_to_check = domain[2:]  # Remove *. prefix
+        else:
+            domain_to_check = domain
+        
+        # Basic format validation
+        # Allow localhost, IP addresses, and domain names
+        if domain_to_check == 'localhost':
+            return (True, None)
+        
+        # Check if it's an IP address (IPv4 or IPv6)
+        ipv4_pattern = r'^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$'
+        if re.match(ipv4_pattern, domain_to_check):
+            if is_wildcard:
+                return (False, "Wildcard domains are not valid for IP addresses")
+            return (True, None)
+        
+        # Check for IPv6 (simple check)
+        if ':' in domain_to_check and '[' not in domain_to_check:
+            if is_wildcard:
+                return (False, "Wildcard domains are not valid for IPv6 addresses")
+            return (True, None)
+        
+        # Domain name validation
+        domain_pattern = r'^(?:[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$'
+        if not re.match(domain_pattern, domain_to_check):
+            return (False, "Invalid domain format. Use format like: example.com or subdomain.example.com")
+        
+        # Check for port specification
+        if ':' in domain_to_check and not domain_to_check.count(':') > 1:  # Not IPv6
+            parts = domain_to_check.rsplit(':', 1)
+            try:
+                port = int(parts[1])
+                if port < 1 or port > 65535:
+                    return (False, "Invalid port number")
+            except ValueError:
+                return (False, "Invalid port specification")
+        
+        return (True, "Wildcard domain" if is_wildcard else None)
+    
+    def _check_domain_reachability(self, domain):
+        """
+        Check if a domain is reachable (non-blocking check).
+        Returns: ('active', 'unreachable', 'pending', 'error')
+        """
+        # Check cache first
+        if domain in self.domain_status_cache:
+            cached_time, status = self.domain_status_cache[domain]
+            # Cache valid for 5 minutes
+            if time.time() - cached_time < 300:
+                return status
+        
+        try:
+            # Quick DNS resolution check (timeout 2 seconds)
+            import socket
+            socket.setdefaulttimeout(2)
+            
+            # Extract domain without port
+            check_domain = domain
+            if ':' in domain and not domain.startswith('['):
+                check_domain = domain.rsplit(':', 1)[0]
+            
+            # Skip validation for special cases
+            if check_domain in ['localhost', '127.0.0.1', '::1']:
+                status = 'active'
+            elif check_domain.startswith('100.'):  # Tailscale IP range
+                status = 'active'
+            elif check_domain.startswith('*.'):  # Wildcard
+                status = 'active'  # Can't validate wildcards
+            else:
+                # Try to resolve the domain
+                try:
+                    socket.gethostbyname(check_domain)
+                    status = 'active'
+                except socket.gaierror:
+                    status = 'unreachable'
+            
+            # Cache the result
+            self.domain_status_cache[domain] = (time.time(), status)
+            return status
+            
+        except Exception as e:
+            logger.warning(f"Error checking domain reachability for {domain}: {e}")
+            return 'error'
+    
     def _get_trusted_domains(self, container_name):
         """Get list of current trusted domains from Nextcloud config.php"""
         try:
@@ -6068,15 +6571,93 @@ Would you like to open the detailed guide?
             for domain_match in re.finditer(domain_pattern, existing_domains_str):
                 existing_domains.append(domain_match.group(1))
             
+            # Store original domains if not yet stored
+            if self.original_domains is None and existing_domains:
+                self.original_domains = existing_domains.copy()
+                logger.info(f"Stored original domains: {self.original_domains}")
+            
             return existing_domains
         
         except Exception as e:
             print(f"Error getting trusted_domains: {e}")
             return []
     
+    def _add_trusted_domain(self, container_name, domain_to_add):
+        """
+        Add a specific domain to trusted_domains in Nextcloud config.php.
+        Returns: (success, error_message)
+        """
+        try:
+            # Validate domain format first
+            is_valid, validation_msg = self._validate_domain_format(domain_to_add)
+            if not is_valid:
+                return (False, validation_msg)
+            
+            # Get current domains
+            current_domains = self._get_trusted_domains(container_name)
+            
+            # Check for duplicates
+            if domain_to_add in current_domains:
+                return (False, "Domain already exists in trusted domains")
+            
+            # Log the change for audit and undo
+            change_record = {
+                'timestamp': datetime.now().isoformat(),
+                'action': 'add',
+                'domain': domain_to_add,
+                'previous_domains': current_domains.copy()
+            }
+            self.domain_change_history.append(change_record)
+            logger.info(f"Domain change recorded: {change_record}")
+            
+            # Add the domain
+            new_domains = current_domains + [domain_to_add]
+            success = self._set_trusted_domains(container_name, new_domains)
+            
+            if success:
+                # Check reachability if it's a warning about wildcard
+                if validation_msg:
+                    return (True, f"Domain added with warning: {validation_msg}")
+                return (True, None)
+            else:
+                # Remove from history if failed
+                self.domain_change_history.pop()
+                return (False, "Failed to update config.php")
+        
+        except Exception as e:
+            logger.error(f"Error adding trusted domain: {e}")
+            return (False, f"Error: {str(e)}")
+    
     def _remove_trusted_domain(self, container_name, domain_to_remove):
         """Remove a specific domain from trusted_domains in Nextcloud config.php"""
         try:
+            # Get current domains
+            current_domains = self._get_trusted_domains(container_name)
+            
+            # Check if this is the last domain
+            if len(current_domains) <= 1:
+                # Warn about removing all domains
+                confirm = messagebox.askyesno(
+                    "Warning: Removing Last Domain",
+                    "⚠️ WARNING: You are about to remove the last trusted domain!\n\n"
+                    "This will prevent ALL access to Nextcloud through the web interface.\n"
+                    "You will be locked out and need to manually fix the config.php file.\n\n"
+                    "Are you ABSOLUTELY SURE you want to continue?",
+                    icon='warning'
+                )
+                if not confirm:
+                    return False
+            
+            # Log the change for audit and undo
+            change_record = {
+                'timestamp': datetime.now().isoformat(),
+                'action': 'remove',
+                'domain': domain_to_remove,
+                'previous_domains': current_domains.copy()
+            }
+            self.domain_change_history.append(change_record)
+            logger.info(f"Domain change recorded: {change_record}")
+            
             # Read current config.php
             result = subprocess.run(
                 ["docker", "exec", container_name, "cat", "/var/www/html/config/config.php"],
@@ -6087,6 +6668,7 @@ Would you like to open the detailed guide?
             
             if result.returncode != 0:
                 print(f"Failed to read config.php: {result.stderr}")
+                self.domain_change_history.pop()  # Remove from history
                 return False
             
             config_content = result.stdout
@@ -6097,6 +6679,7 @@ Would you like to open the detailed guide?
             
             if not match:
                 print("Could not find trusted_domains in config.php")
+                self.domain_change_history.pop()  # Remove from history
                 return False
             
             # Extract existing domains
@@ -6137,14 +6720,157 @@ Would you like to open the detailed guide?
             
             if result.returncode != 0:
                 print(f"Failed to write config.php: {result.stderr}")
+                self.domain_change_history.pop()  # Remove from history
                 return False
             
             print(f"✓ Removed domain from trusted_domains: {domain_to_remove}")
+            logger.info(f"✓ Removed domain from trusted_domains: {domain_to_remove}")
             return True
         
         except Exception as e:
             print(f"Error removing trusted domain: {e}")
+            logger.error(f"Error removing trusted domain: {e}")
             return False
+    
+    def _set_trusted_domains(self, container_name, domains_list):
+        """
+        Set the complete list of trusted domains in Nextcloud config.php.
+        This replaces all existing domains with the provided list.
+        Returns: True on success, False on failure
+        """
+        try:
+            # Read current config.php
+            result = subprocess.run(
+                ["docker", "exec", container_name, "cat", "/var/www/html/config/config.php"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode != 0:
+                print(f"Failed to read config.php: {result.stderr}")
+                return False
+            
+            config_content = result.stdout
+            
+            # Parse trusted_domains array
+            trusted_domains_pattern = r"'trusted_domains'\s*=>\s*array\s*\((.*?)\),"
+            match = re.search(trusted_domains_pattern, config_content, re.DOTALL)
+            
+            if not match:
+                print("Could not find trusted_domains in config.php")
+                return False
+            
+            # Build new trusted_domains array
+            new_domains_array = "array(\n"
+            for i, domain in enumerate(domains_list):
+                new_domains_array += f"    {i} => '{domain}',\n"
+            new_domains_array += "  )"
+            
+            # Replace in config
+            new_config = re.sub(
+                trusted_domains_pattern,
+                f"'trusted_domains' => {new_domains_array},",
+                config_content,
+                count=1,
+                flags=re.DOTALL
+            )
+            
+            # Write back to container
+            write_cmd = f"cat > /var/www/html/config/config.php << 'EOFCONFIG'\n{new_config}\nEOFCONFIG"
+            
+            result = subprocess.run(
+                ["docker", "exec", container_name, "sh", "-c", write_cmd],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode != 0:
+                print(f"Failed to write config.php: {result.stderr}")
+                return False
+            
+            print(f"✓ Updated trusted_domains")
+            logger.info(f"✓ Updated trusted_domains: {domains_list}")
+            return True
+        
+        except Exception as e:
+            print(f"Error setting trusted domains: {e}")
+            logger.error(f"Error setting trusted domains: {e}")
+            return False
+    
+    def _undo_last_domain_change(self, container_name):
+        """
+        Undo the last domain change.
+        Returns: (success, message)
+        """
+        if not self.domain_change_history:
+            return (False, "No changes to undo")
+        
+        try:
+            # Get the last change
+            last_change = self.domain_change_history.pop()
+            logger.info(f"Undoing change: {last_change}")
+            
+            # Restore previous domains
+            success = self._set_trusted_domains(container_name, last_change['previous_domains'])
+            
+            if success:
+                action = last_change['action']
+                domain = last_change['domain']
+                return (True, f"Undone: {action} of domain '{domain}'")
+            else:
+                # Put it back if failed
+                self.domain_change_history.append(last_change)
+                return (False, "Failed to undo change")
+        
+        except Exception as e:
+            logger.error(f"Error undoing domain change: {e}")
+            return (False, f"Error: {str(e)}")
+    
+    def _restore_default_domains(self, container_name):
+        """
+        Restore trusted domains to their original values.
+        Returns: (success, message)
+        """
+        if self.original_domains is None:
+            return (False, "No original domains stored")
+        
+        try:
+            # Confirm restore
+            confirm = messagebox.askyesno(
+                "Restore Default Domains",
+                "This will restore trusted domains to their original values:\n\n" +
+                "\n".join(f"• {d}" for d in self.original_domains) +
+                "\n\nAll current domains will be replaced. Continue?"
+            )
+            
+            if not confirm:
+                return (False, "Restore cancelled")
+            
+            # Log the change
+            current_domains = self._get_trusted_domains(container_name)
+            change_record = {
+                'timestamp': datetime.now().isoformat(),
+                'action': 'restore_defaults',
+                'domain': None,
+                'previous_domains': current_domains.copy()
+            }
+            self.domain_change_history.append(change_record)
+            
+            # Restore
+            success = self._set_trusted_domains(container_name, self.original_domains.copy())
+            
+            if success:
+                logger.info("✓ Restored default domains")
+                return (True, "Default domains restored successfully")
+            else:
+                self.domain_change_history.pop()
+                return (False, "Failed to restore defaults")
+        
+        except Exception as e:
+            logger.error(f"Error restoring default domains: {e}")
+            return (False, f"Error: {str(e)}")
     
     def _update_trusted_domains(self, container_name, new_domains):
         """Update trusted_domains in Nextcloud config.php"""
