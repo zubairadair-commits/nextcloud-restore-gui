@@ -5096,45 +5096,34 @@ php /tmp/update_config.php"
         loading_label.pack(expand=True)
         self.update_idletasks()
         
-        # Create a container frame to hold the scrollable content with proper centering context
-        # This ensures the content block is centered as a unit, not just individual widgets
-        logger.info("TAILSCALE WIZARD: Creating container frame")
-        loading_label.destroy()  # Remove loading indicator
-        container = tk.Frame(self.body_frame, bg=self.theme_colors['bg'])
-        container.pack(fill="both", expand=True)
+        # Remove loading indicator and create content frame with simplified geometry
+        logger.info("TAILSCALE WIZARD: Creating centered content frame")
+        loading_label.destroy()
         
-        # Create scrollable frame with proper centering
-        logger.info("TAILSCALE WIZARD: Creating scrollable canvas and frame")
-        canvas = tk.Canvas(container, bg=self.theme_colors['bg'], highlightthickness=0)
-        scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        # Create content frame using .place() for centering (600px wide)
+        # This is simpler than Canvas/scrollbar approach and uses only .pack() for children
+        content = tk.Frame(self.body_frame, bg=self.theme_colors['bg'], width=600)
         
-        # Set fixed width on scrollable frame to enable proper centering
-        scrollable_frame = tk.Frame(canvas, bg=self.theme_colors['bg'], width=700)
+        # Maintain fixed width
+        def maintain_width(event=None):
+            content.config(width=600)
         
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        content.bind('<Configure>', maintain_width)
+        content.place(relx=0.5, anchor="n", y=10)
+        logger.info("TAILSCALE WIZARD: Content frame placed successfully")
+        
+        # Add visible debug label at top (big, colored) to confirm frame is rendered
+        logger.info("TAILSCALE WIZARD: Adding debug label")
+        debug_label = tk.Label(
+            content,
+            text="🔍 DEBUG: Content Frame Rendered",
+            font=("Arial", 14, "bold"),
+            bg="#FFD700",  # Gold/yellow color
+            fg="#000000",  # Black text
+            relief="raised",
+            borderwidth=2
         )
-        
-        # Create window with proper centering - use canvas width callback
-        def update_canvas_window(event=None):
-            canvas_width = canvas.winfo_width()
-            if canvas_width > 1:  # Only update after canvas is rendered
-                canvas.coords(canvas_window, canvas_width // 2, 0)
-        
-        canvas_window = canvas.create_window((0, 0), window=scrollable_frame, anchor="n")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        canvas.bind('<Configure>', update_canvas_window)
-        
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-        logger.info("TAILSCALE WIZARD: Canvas and scrollbar packed successfully")
-        
-        # Wizard content frame (600px wide, centered in scrollable frame)
-        logger.info("TAILSCALE WIZARD: Creating content frame")
-        content = tk.Frame(scrollable_frame, bg=self.theme_colors['bg'], width=600)
-        content.pack(pady=20, anchor="center")
-        content.pack_propagate(False)  # Maintain fixed width
+        debug_label.pack(pady=5, fill="x", padx=40)
         
         # Title
         logger.info("TAILSCALE WIZARD: Creating title labels")
@@ -5144,7 +5133,7 @@ php /tmp/update_config.php"
             font=("Arial", 18, "bold"),
             bg=self.theme_colors['bg'],
             fg=self.theme_colors['fg']
-        ).pack(pady=(10, 5))
+        ).pack(pady=(10, 5), fill="x", padx=40)
         
         tk.Label(
             content,
@@ -5152,12 +5141,12 @@ php /tmp/update_config.php"
             font=("Arial", 11),
             bg=self.theme_colors['bg'],
             fg=self.theme_colors['hint_fg']
-        ).pack(pady=(0, 20))
+        ).pack(pady=(0, 20), fill="x", padx=40)
         
         # Info box
         logger.info("TAILSCALE WIZARD: Creating info box")
         info_frame = tk.Frame(content, bg=self.theme_colors['info_bg'], relief="solid", borderwidth=1)
-        info_frame.pack(pady=10, fill="x", padx=20)
+        info_frame.pack(pady=10, fill="x", padx=40)
         
         tk.Label(
             info_frame,
@@ -5188,7 +5177,7 @@ php /tmp/update_config.php"
             command=self.show_landing,
             bg=self.theme_colors['button_bg'],
             fg=self.theme_colors['button_fg']
-        ).pack(pady=(10, 20))
+        ).pack(pady=(10, 20), fill="x", padx=40)
         
         # Check Tailscale status
         logger.info("TAILSCALE WIZARD: Checking Tailscale installation status")
@@ -5202,7 +5191,7 @@ php /tmp/update_config.php"
         # Status display
         logger.info("TAILSCALE WIZARD: Creating status display")
         status_frame = tk.Frame(content, bg=self.theme_colors['bg'])
-        status_frame.pack(pady=10, fill="x", padx=20)
+        status_frame.pack(pady=10, fill="x", padx=40)
         
         # Installation status
         install_status = "✓ Installed" if ts_installed else "✗ Not Installed"
@@ -5234,7 +5223,7 @@ php /tmp/update_config.php"
         # Action buttons frame
         logger.info("TAILSCALE WIZARD: Creating action buttons")
         actions_frame = tk.Frame(content, bg=self.theme_colors['bg'])
-        actions_frame.pack(pady=20, fill="x", padx=20)
+        actions_frame.pack(pady=20, fill="x", padx=40)
         
         if not ts_installed:
             logger.info("TAILSCALE WIZARD: Creating Install button (Tailscale not installed)")
@@ -5511,45 +5500,34 @@ php /tmp/update_config.php"
         loading_label.pack(expand=True)
         self.update_idletasks()
         
-        # Create a container frame to hold the scrollable content with proper centering context
-        # This ensures the content block is centered as a unit, not just individual widgets
-        logger.info("TAILSCALE CONFIG: Creating container frame")
-        loading_label.destroy()  # Remove loading indicator
-        container = tk.Frame(self.body_frame, bg=self.theme_colors['bg'])
-        container.pack(fill="both", expand=True)
+        # Remove loading indicator and create content frame with simplified geometry
+        logger.info("TAILSCALE CONFIG: Creating centered content frame")
+        loading_label.destroy()
         
-        # Create scrollable frame with proper centering
-        logger.info("TAILSCALE CONFIG: Creating scrollable canvas and frame")
-        canvas = tk.Canvas(container, bg=self.theme_colors['bg'], highlightthickness=0)
-        scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        # Create content frame using .place() for centering (600px wide)
+        # This is simpler than Canvas/scrollbar approach and uses only .pack() for children
+        content = tk.Frame(self.body_frame, bg=self.theme_colors['bg'], width=600)
         
-        # Set fixed width on scrollable frame to enable proper centering
-        scrollable_frame = tk.Frame(canvas, bg=self.theme_colors['bg'], width=700)
+        # Maintain fixed width
+        def maintain_width(event=None):
+            content.config(width=600)
         
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        content.bind('<Configure>', maintain_width)
+        content.place(relx=0.5, anchor="n", y=10)
+        logger.info("TAILSCALE CONFIG: Content frame placed successfully")
+        
+        # Add visible debug label at top (big, colored) to confirm frame is rendered
+        logger.info("TAILSCALE CONFIG: Adding debug label")
+        debug_label = tk.Label(
+            content,
+            text="🔍 DEBUG: Content Frame Rendered",
+            font=("Arial", 14, "bold"),
+            bg="#FFD700",  # Gold/yellow color
+            fg="#000000",  # Black text
+            relief="raised",
+            borderwidth=2
         )
-        
-        # Create window with proper centering - use canvas width callback
-        def update_canvas_window(event=None):
-            canvas_width = canvas.winfo_width()
-            if canvas_width > 1:  # Only update after canvas is rendered
-                canvas.coords(canvas_window, canvas_width // 2, 0)
-        
-        canvas_window = canvas.create_window((0, 0), window=scrollable_frame, anchor="n")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        canvas.bind('<Configure>', update_canvas_window)
-        
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-        logger.info("TAILSCALE CONFIG: Canvas and scrollbar packed successfully")
-        
-        # Content frame (600px wide, centered in scrollable frame)
-        logger.info("TAILSCALE CONFIG: Creating content frame")
-        content = tk.Frame(scrollable_frame, bg=self.theme_colors['bg'], width=600)
-        content.pack(pady=20, anchor="center")
-        content.pack_propagate(False)  # Maintain fixed width
+        debug_label.pack(pady=5, fill="x", padx=40)
         
         # Title
         logger.info("TAILSCALE CONFIG: Creating title and back button")
@@ -5559,7 +5537,7 @@ php /tmp/update_config.php"
             font=("Arial", 18, "bold"),
             bg=self.theme_colors['bg'],
             fg=self.theme_colors['fg']
-        ).pack(pady=(10, 5))
+        ).pack(pady=(10, 5), fill="x", padx=40)
         
         # Back button
         tk.Button(
@@ -5569,7 +5547,7 @@ php /tmp/update_config.php"
             command=self.show_tailscale_wizard,
             bg=self.theme_colors['button_bg'],
             fg=self.theme_colors['button_fg']
-        ).pack(pady=(0, 20))
+        ).pack(pady=(0, 20), fill="x", padx=40)
         
         # Get Tailscale info
         logger.info("TAILSCALE CONFIG: Retrieving Tailscale network information")
@@ -5579,7 +5557,7 @@ php /tmp/update_config.php"
         # Display Tailscale info
         logger.info("TAILSCALE CONFIG: Creating Tailscale info display")
         info_frame = tk.Frame(content, bg=self.theme_colors['info_bg'], relief="solid", borderwidth=1)
-        info_frame.pack(pady=10, fill="x", padx=20)
+        info_frame.pack(pady=10, fill="x", padx=40)
         
         tk.Label(
             info_frame,
@@ -5632,7 +5610,7 @@ php /tmp/update_config.php"
             font=("Arial", 13, "bold"),
             bg=self.theme_colors['bg'],
             fg=self.theme_colors['fg']
-        ).pack(pady=(20, 5), anchor="w", padx=20)
+        ).pack(pady=(20, 5), fill="x", padx=40)
         
         tk.Label(
             content,
@@ -5640,11 +5618,11 @@ php /tmp/update_config.php"
             font=("Arial", 10),
             bg=self.theme_colors['bg'],
             fg=self.theme_colors['hint_fg']
-        ).pack(pady=(0, 10), anchor="w", padx=20)
+        ).pack(pady=(0, 10), fill="x", padx=40)
         
         # Custom domain entry
         domain_frame = tk.Frame(content, bg=self.theme_colors['bg'])
-        domain_frame.pack(pady=5, fill="x", padx=20)
+        domain_frame.pack(pady=5, fill="x", padx=40)
         
         tk.Label(
             domain_frame,
@@ -5670,7 +5648,7 @@ php /tmp/update_config.php"
             font=("Arial", 9),
             bg=self.theme_colors['bg'],
             fg=self.theme_colors['hint_fg']
-        ).pack(pady=(0, 15), anchor="w", padx=20)
+        ).pack(pady=(0, 15), fill="x", padx=40)
         
         # Action buttons
         tk.Button(
@@ -5682,7 +5660,7 @@ php /tmp/update_config.php"
             width=35,
             height=2,
             command=lambda: self._apply_tailscale_config(ts_ip, ts_hostname, custom_domain_var.get())
-        ).pack(pady=20)
+        ).pack(pady=20, fill="x", padx=40)
         
         # Startup automation button (for Linux systems)
         if platform.system() == "Linux":
@@ -5695,11 +5673,11 @@ php /tmp/update_config.php"
                 width=35,
                 height=1,
                 command=self._show_startup_automation_guide
-            ).pack(pady=(0, 20))
+            ).pack(pady=(0, 20), fill="x", padx=40)
         
         # Info about what will be configured
         info_box = tk.Frame(content, bg=self.theme_colors['warning_bg'], relief="solid", borderwidth=1)
-        info_box.pack(pady=10, fill="x", padx=20)
+        info_box.pack(pady=10, fill="x", padx=40)
         
         tk.Label(
             info_box,
