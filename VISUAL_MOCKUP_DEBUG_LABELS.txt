@@ -2,7 +2,10 @@
   VISUAL MOCKUP: Remote Access Setup with Debug Labels
 ================================================================================
 
-This mockup shows what the Tailscale pages look like with the new debug labels.
+⚠️ HISTORICAL DOCUMENT - Debug labels have been removed as of October 2025.
+
+This mockup shows what the Tailscale pages looked like with the debug labels
+during development. The labels have since been removed from production code.
 
 ================================================================================
 LIGHT THEME - Remote Access Setup (Tailscale Wizard)
