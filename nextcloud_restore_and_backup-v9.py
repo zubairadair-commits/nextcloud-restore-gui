@@ -15,7 +15,9 @@ import sys
 import argparse
 import json
 import logging
+import sqlite3
 from datetime import datetime, timedelta
+from pathlib import Path
 
 # Configure logging for diagnostic purposes
 logging.basicConfig(
@@ -30,6 +32,353 @@ logger = logging.getLogger(__name__)
 
 DOCKER_INSTALLER_URL = "https://www.docker.com/products/docker-desktop/"
 GPG_DOWNLOAD_URL = "https://files.gpg4win.org/gpg4win-latest.exe"
+
+# --- Tooltip System for In-App Help ---
+class ToolTip:
+    """
+    Tooltip widget that appears on hover to provide contextual help.
+    """
+    def __init__(self, widget, text, delay=500):
+        self.widget = widget
+        self.text = text
+        self.delay = delay
+        self.tooltip_window = None
+        self.after_id = None
+        
+        self.widget.bind("<Enter>", self.on_enter)
+        self.widget.bind("<Leave>", self.on_leave)
+        self.widget.bind("<ButtonPress>", self.on_leave)
+    
+    def on_enter(self, event=None):
+        """Schedule tooltip to appear after delay"""
+        self.after_id = self.widget.after(self.delay, self.show_tooltip)
+    
+    def on_leave(self, event=None):
+        """Hide tooltip and cancel scheduled appearance"""
+        if self.after_id:
+            self.widget.after_cancel(self.after_id)
+            self.after_id = None
+        self.hide_tooltip()
+    
+    def show_tooltip(self):
+        """Display the tooltip window"""
+        if self.tooltip_window:
+            return
+        
+        x = self.widget.winfo_rootx() + 20
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 5
+        
+        self.tooltip_window = tk.Toplevel(self.widget)
+        self.tooltip_window.wm_overrideredirect(True)
+        self.tooltip_window.wm_geometry(f"+{x}+{y}")
+        
+        label = tk.Label(
+            self.tooltip_window,
+            text=self.text,
+            background="#ffffcc",
+            foreground="#000000",
+            relief=tk.SOLID,
+            borderwidth=1,
+            font=("Arial", 9),
+            justify=tk.LEFT,
+            padx=5,
+            pady=3
+        )
+        label.pack()
+    
+    def hide_tooltip(self):
+        """Hide the tooltip window"""
+        if self.tooltip_window:
+            self.tooltip_window.destroy()
+            self.tooltip_window = None
+
+# --- Backup History Manager ---
+class BackupHistoryManager:
+    """
+    Manages backup history using SQLite database.
+    Tracks backup metadata including size, timestamp, verification status, and notes.
+    """
+    def __init__(self, db_path=None):
+        if db_path is None:
+            # Use user's home directory for cross-platform compatibility
+            home_dir = Path.home()
+            config_dir = home_dir / ".nextcloud_backup_utility"
+            config_dir.mkdir(exist_ok=True)
+            self.db_path = config_dir / "backup_history.db"
+        else:
+            self.db_path = Path(db_path)
+        
+        self._init_database()
+    
+    def _init_database(self):
+        """Initialize the database schema"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS backups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                backup_path TEXT NOT NULL,
+                timestamp DATETIME NOT NULL,
+                size_bytes INTEGER,
+                encrypted BOOLEAN,
+                database_type TEXT,
+                folders_backed_up TEXT,
+                verification_status TEXT,
+                verification_details TEXT,
+                notes TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        conn.commit()
+        conn.close()
+    
+    def add_backup(self, backup_path, database_type=None, folders=None, encrypted=False, notes=""):
+        """Add a new backup record"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # Get file size
+        size_bytes = 0
+        if os.path.exists(backup_path):
+            size_bytes = os.path.getsize(backup_path)
+        
+        # Convert folders list to JSON string
+        folders_json = json.dumps(folders) if folders else "[]"
+        
+        cursor.execute('''
+            INSERT INTO backups 
+            (backup_path, timestamp, size_bytes, encrypted, database_type, folders_backed_up, notes, verification_status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (backup_path, datetime.now().isoformat(), size_bytes, encrypted, 
+              database_type, folders_json, notes, "pending"))
+        
+        backup_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        
+        return backup_id
+    
+    def update_verification(self, backup_id, status, details=""):
+        """Update verification status of a backup"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE backups 
+            SET verification_status = ?, verification_details = ?
+            WHERE id = ?
+        ''', (status, details, backup_id))
+        
+        conn.commit()
+        conn.close()
+    
+    def get_all_backups(self, limit=50):
+        """Retrieve all backups, most recent first"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT id, backup_path, timestamp, size_bytes, encrypted, 
+                   database_type, folders_backed_up, verification_status, 
+                   verification_details, notes
+            FROM backups
+            ORDER BY timestamp DESC
+            LIMIT ?
+        ''', (limit,))
+        
+        results = cursor.fetchall()
+        conn.close()
+        
+        return results
+    
+    def get_backup_by_id(self, backup_id):
+        """Get a specific backup record"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT id, backup_path, timestamp, size_bytes, encrypted, 
+                   database_type, folders_backed_up, verification_status, 
+                   verification_details, notes
+            FROM backups
+            WHERE id = ?
+        ''', (backup_id,))
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        return result
+
+# --- Service Health Check Functions ---
+def check_service_health():
+    """
+    Check health of various services and return status dictionary.
+    Returns dict with service names as keys and status dicts as values.
+    """
+    health_status = {
+        'nextcloud': {'status': 'unknown', 'message': '', 'checked_at': datetime.now()},
+        'tailscale': {'status': 'unknown', 'message': '', 'checked_at': datetime.now()},
+        'docker': {'status': 'unknown', 'message': '', 'checked_at': datetime.now()},
+        'network': {'status': 'unknown', 'message': '', 'checked_at': datetime.now()},
+    }
+    
+    # Check Docker
+    try:
+        result = run_docker_command_silent(['docker', 'ps'], timeout=5)
+        if result and result.returncode == 0:
+            health_status['docker'] = {
+                'status': 'healthy',
+                'message': 'Docker is running',
+                'checked_at': datetime.now()
+            }
+        else:
+            health_status['docker'] = {
+                'status': 'error',
+                'message': 'Docker is not responding',
+                'checked_at': datetime.now()
+            }
+    except Exception as e:
+        health_status['docker'] = {
+            'status': 'error',
+            'message': f'Docker check failed: {str(e)}',
+            'checked_at': datetime.now()
+        }
+    
+    # Check Nextcloud container
+    try:
+        containers = get_nextcloud_container_name()
+        if containers:
+            health_status['nextcloud'] = {
+                'status': 'healthy',
+                'message': f'Nextcloud container running: {containers}',
+                'checked_at': datetime.now()
+            }
+        else:
+            health_status['nextcloud'] = {
+                'status': 'warning',
+                'message': 'No Nextcloud container detected',
+                'checked_at': datetime.now()
+            }
+    except Exception as e:
+        health_status['nextcloud'] = {
+            'status': 'error',
+            'message': f'Failed to check Nextcloud: {str(e)}',
+            'checked_at': datetime.now()
+        }
+    
+    # Check Tailscale
+    try:
+        if platform.system() != "Windows":
+            result = subprocess.run(
+                ['tailscale', 'status'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0:
+                health_status['tailscale'] = {
+                    'status': 'healthy',
+                    'message': 'Tailscale is running',
+                    'checked_at': datetime.now()
+                }
+            else:
+                health_status['tailscale'] = {
+                    'status': 'warning',
+                    'message': 'Tailscale not running or not installed',
+                    'checked_at': datetime.now()
+                }
+        else:
+            health_status['tailscale'] = {
+                'status': 'unknown',
+                'message': 'Tailscale check not available on Windows',
+                'checked_at': datetime.now()
+            }
+    except Exception:
+        health_status['tailscale'] = {
+            'status': 'warning',
+            'message': 'Tailscale not installed',
+            'checked_at': datetime.now()
+        }
+    
+    # Check network connectivity
+    try:
+        import socket
+        socket.create_connection(("8.8.8.8", 53), timeout=3)
+        health_status['network'] = {
+            'status': 'healthy',
+            'message': 'Network connectivity OK',
+            'checked_at': datetime.now()
+        }
+    except Exception:
+        health_status['network'] = {
+            'status': 'error',
+            'message': 'No network connectivity',
+            'checked_at': datetime.now()
+        }
+    
+    return health_status
+
+def verify_backup_integrity(backup_path, password=None):
+    """
+    Verify backup file integrity by testing archive extraction.
+    Returns (status, details) tuple where status is 'success', 'warning', or 'error'.
+    """
+    try:
+        if not os.path.exists(backup_path):
+            return ('error', f'Backup file not found: {backup_path}')
+        
+        # Check file size
+        file_size = os.path.getsize(backup_path)
+        if file_size == 0:
+            return ('error', 'Backup file is empty')
+        
+        # Test if it's encrypted
+        is_encrypted = backup_path.endswith('.gpg')
+        
+        if is_encrypted and not password:
+            return ('warning', 'Encrypted backup - password required for full verification')
+        
+        # Test archive integrity
+        test_file = backup_path
+        temp_decrypted = None
+        
+        try:
+            if is_encrypted and password:
+                # Decrypt to temp file for testing
+                temp_decrypted = tempfile.mktemp(suffix='.tar.gz')
+                result = decrypt_file_gpg(backup_path, temp_decrypted, password)
+                if not result:
+                    return ('error', 'Failed to decrypt backup - incorrect password or corrupted file')
+                test_file = temp_decrypted
+            
+            # Test tar.gz integrity
+            with tarfile.open(test_file, 'r:gz') as tar:
+                # List members to verify structure
+                members = tar.getmembers()
+                if len(members) == 0:
+                    return ('error', 'Backup archive is empty')
+                
+                # Check for key folders
+                has_config = any('config/' in m.name for m in members)
+                has_data = any('data/' in m.name for m in members)
+                
+                if not has_config:
+                    return ('warning', 'Backup may be incomplete - config folder not found')
+                if not has_data:
+                    return ('warning', 'Backup may be incomplete - data folder not found')
+                
+                return ('success', f'Backup verified successfully - {len(members)} files, {file_size / (1024*1024):.1f} MB')
+        
+        finally:
+            if temp_decrypted and os.path.exists(temp_decrypted):
+                os.remove(temp_decrypted)
+    
+    except tarfile.TarError as e:
+        return ('error', f'Corrupted archive: {str(e)}')
+    except Exception as e:
+        return ('error', f'Verification failed: {str(e)}')
 
 # --- Customizable container and DB settings ---
 NEXTCLOUD_IMAGE = "nextcloud"
@@ -1774,6 +2123,11 @@ class NextcloudRestoreWizard(tk.Tk):
         self.domain_change_history = []  # Track changes for undo functionality
         self.original_domains = None  # Store original domains for restore defaults
         self.domain_status_cache = {}  # Cache domain status checks
+        
+        # Backup history and service health
+        self.backup_history = BackupHistoryManager()
+        self.last_health_check = None
+        self.health_check_cache = None
 
         self.show_landing()
 
@@ -2102,6 +2456,7 @@ class NextcloudRestoreWizard(tk.Tk):
             command=self.start_backup
         )
         self.backup_btn.pack(pady=(18,6))
+        ToolTip(self.backup_btn, "Create a backup of your Nextcloud data, config, and database")
         
         self.restore_btn = tk.Button(
             landing_frame, text="🛠 Restore from Backup", font=("Arial", 16, "bold"),
@@ -2109,6 +2464,7 @@ class NextcloudRestoreWizard(tk.Tk):
             command=self.start_restore
         )
         self.restore_btn.pack(pady=6)
+        ToolTip(self.restore_btn, "Restore your Nextcloud from a previous backup file")
         
         self.new_btn = tk.Button(
             landing_frame, text="✨ Start New Nextcloud Instance", font=("Arial", 16, "bold"),
@@ -2116,6 +2472,7 @@ class NextcloudRestoreWizard(tk.Tk):
             command=self.start_new_instance_workflow
         )
         self.new_btn.pack(pady=(6,12))
+        ToolTip(self.new_btn, "Set up a brand new Nextcloud instance with Docker")
         
         # Add scheduled backup button
         self.schedule_btn = tk.Button(
@@ -2123,10 +2480,23 @@ class NextcloudRestoreWizard(tk.Tk):
             height=2, width=button_width, bg=self.theme_colors['schedule_btn'], fg="white", 
             command=self.show_schedule_backup
         )
-        self.schedule_btn.pack(pady=(6,22))
+        self.schedule_btn.pack(pady=(6,12))
+        ToolTip(self.schedule_btn, "Configure automatic backups to run on a schedule")
+        
+        # Add backup history button
+        backup_history_btn = tk.Button(
+            landing_frame, text="📜 Backup History", font=("Arial", 14),
+            width=button_width, bg=self.theme_colors['button_bg'], fg=self.theme_colors['button_fg'],
+            command=self.show_backup_history
+        )
+        backup_history_btn.pack(pady=6)
+        ToolTip(backup_history_btn, "View and manage previous backups")
         
         # Show schedule status if exists
         self._update_schedule_status_label(landing_frame)
+        
+        # Add service health dashboard
+        self._add_health_dashboard(landing_frame)
 
     # ----- Backup logic -----
     def start_backup(self):
@@ -2238,31 +2608,193 @@ class NextcloudRestoreWizard(tk.Tk):
         self.backup_dbtype = dbtype
         self.backup_db_config = db_config
         
-        self.ask_encryption_password_inline(backup_dir, chosen_container)
+        # Show folder selection dialog
+        self._show_folder_selection(backup_dir, chosen_container, dbtype, db_config)
 
+    def _show_folder_selection(self, backup_dir, container_name, dbtype, db_config):
+        """Show folder selection UI for selective backup"""
+        for widget in self.body_frame.winfo_children():
+            widget.destroy()
+        
+        self.status_label.config(text="Select Folders to Backup")
+        
+        main_frame = tk.Frame(self.body_frame, bg=self.theme_colors['bg'])
+        main_frame.pack(expand=True, fill="both", padx=20, pady=10)
+        
+        # Title
+        title_label = tk.Label(
+            main_frame,
+            text="📁 Select Folders to Include in Backup",
+            font=("Arial", 14, "bold"),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg']
+        )
+        title_label.pack(pady=(10, 15))
+        
+        # Info text
+        info_label = tk.Label(
+            main_frame,
+            text="Choose which folders to include. Critical folders are required.",
+            font=("Arial", 10),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['hint_fg']
+        )
+        info_label.pack(pady=(0, 15))
+        
+        # Folder options with checkboxes
+        folder_frame = tk.Frame(main_frame, bg=self.theme_colors['bg'])
+        folder_frame.pack(pady=10)
+        
+        folder_vars = {}
+        folders = [
+            ("config", True, "Configuration files (Required)"),
+            ("data", True, "User data and files (Required)"),
+            ("apps", False, "Standard Nextcloud apps"),
+            ("custom_apps", False, "Custom/third-party apps"),
+        ]
+        
+        for folder, is_critical, description in folders:
+            row_frame = tk.Frame(folder_frame, bg=self.theme_colors['bg'])
+            row_frame.pack(fill="x", pady=5)
+            
+            var = tk.BooleanVar(value=True)
+            folder_vars[folder] = (var, is_critical)
+            
+            cb = tk.Checkbutton(
+                row_frame,
+                text=f"{folder}",
+                variable=var,
+                font=("Arial", 11, "bold" if is_critical else "normal"),
+                bg=self.theme_colors['bg'],
+                fg=self.theme_colors['fg'],
+                selectcolor=self.theme_colors['entry_bg'],
+                state=tk.DISABLED if is_critical else tk.NORMAL
+            )
+            cb.pack(side="left", padx=(0, 10))
+            
+            desc_label = tk.Label(
+                row_frame,
+                text=f"- {description}",
+                font=("Arial", 9),
+                bg=self.theme_colors['bg'],
+                fg=self.theme_colors['hint_fg'],
+                anchor="w"
+            )
+            desc_label.pack(side="left")
+            
+            if is_critical:
+                ToolTip(cb, "This folder is required for a complete backup")
+        
+        # Button frame
+        button_frame = tk.Frame(main_frame, bg=self.theme_colors['bg'])
+        button_frame.pack(pady=20)
+        
+        back_btn = tk.Button(
+            button_frame,
+            text="← Back",
+            font=("Arial", 11),
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg'],
+            command=self.show_landing
+        )
+        back_btn.pack(side="left", padx=5)
+        
+        continue_btn = tk.Button(
+            button_frame,
+            text="Continue →",
+            font=("Arial", 11, "bold"),
+            bg=self.theme_colors['backup_btn'],
+            fg="white",
+            command=lambda: self._show_encryption_dialog(
+                backup_dir, container_name, dbtype, db_config, folder_vars
+            )
+        )
+        continue_btn.pack(side="left", padx=5)
+        ToolTip(continue_btn, "Proceed to encryption options")
+    
+    def _show_encryption_dialog(self, backup_dir, container_name, dbtype, db_config, folder_vars):
+        """Show encryption password dialog"""
+        # Store selected folders for backup process
+        self.selected_backup_folders = [
+            (folder, is_critical)
+            for folder, (var, is_critical) in folder_vars.items()
+            if var.get()
+        ]
+        
+        # Store database info for backup
+        self.backup_dbtype = dbtype
+        self.backup_db_config = db_config
+        
+        self.ask_encryption_password_inline(backup_dir, container_name)
+    
     def ask_encryption_password_inline(self, backup_dir, container_name):
         for widget in self.body_frame.winfo_children():
             widget.destroy()
-        frame = tk.Frame(self.body_frame)
+        frame = tk.Frame(self.body_frame, bg=self.theme_colors['bg'])
         frame.pack(pady=30, fill="both", expand=True)
-        btn_back = tk.Button(frame, text="Return to Main Menu", font=("Arial", 12), command=self.show_landing)
+        
+        tk.Label(
+            frame,
+            text="🔒 Backup Encryption",
+            font=("Arial", 14, "bold"),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg']
+        ).pack(pady=(20, 10))
+        
+        btn_back = tk.Button(
+            frame,
+            text="← Back",
+            font=("Arial", 10),
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg'],
+            command=self.show_landing
+        )
         btn_back.pack(pady=8, anchor="center")
-        tk.Label(frame, text="Enter password to encrypt your backup (leave blank for no encryption):", font=("Arial", 13)).pack(pady=10, anchor="center")
+        
+        tk.Label(
+            frame,
+            text="Enter password to encrypt your backup (leave blank for no encryption):",
+            font=("Arial", 11),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg']
+        ).pack(pady=10, anchor="center")
         
         # Create a container for the password entry to control its width responsively
-        pwd_container = tk.Frame(frame)
+        pwd_container = tk.Frame(frame, bg=self.theme_colors['bg'])
         pwd_container.pack(pady=8, fill="x", padx=100)
-        pwd_entry = tk.Entry(pwd_container, font=("Arial", 13), show="*")
+        pwd_entry = tk.Entry(
+            pwd_container,
+            font=("Arial", 13),
+            show="*",
+            bg=self.theme_colors['entry_bg'],
+            fg=self.theme_colors['entry_fg']
+        )
         pwd_entry.pack(fill="x", expand=True)
+        ToolTip(pwd_entry, "Use a strong password to protect sensitive data. Leave empty to skip encryption.")
+        
         def submit_pwd():
             encryption_password = pwd_entry.get()
             encrypt = bool(encryption_password)
             self.progressbar = ttk.Progressbar(self.body_frame, length=520, mode='determinate', maximum=10)
             self.progressbar.pack(pady=10)
-            self.progress_message = tk.Label(self.body_frame, text="", font=("Arial", 13))
+            self.progress_message = tk.Label(
+                self.body_frame,
+                text="",
+                font=("Arial", 13),
+                bg=self.theme_colors['bg'],
+                fg=self.theme_colors['fg']
+            )
             self.progress_message.pack(pady=10)
             threading.Thread(target=self.run_backup_process, args=(backup_dir, encrypt, encryption_password, container_name), daemon=True).start()
-        tk.Button(frame, text="Continue", font=("Arial", 12), command=submit_pwd).pack(pady=10)
+        
+        tk.Button(
+            frame,
+            text="Start Backup",
+            font=("Arial", 12, "bold"),
+            bg=self.theme_colors['backup_btn'],
+            fg="white",
+            command=submit_pwd
+        ).pack(pady=10)
 
     def set_progress(self, step, msg):
         if hasattr(self, "progressbar") and self.progressbar:
@@ -2282,12 +2814,16 @@ class NextcloudRestoreWizard(tk.Tk):
             backup_file = os.path.join(backup_dir, f"nextcloud-backup-{timestamp}.tar.gz")
             encrypted_file = backup_file + ".gpg"
 
-            folders_to_copy = [
-                ("config", True),
-                ("data", True),
-                ("apps", False),
-                ("custom_apps", False),
-            ]
+            # Use selected folders if available, otherwise use defaults
+            if hasattr(self, 'selected_backup_folders') and self.selected_backup_folders:
+                folders_to_copy = self.selected_backup_folders
+            else:
+                folders_to_copy = [
+                    ("config", True),
+                    ("data", True),
+                    ("apps", False),
+                    ("custom_apps", False),
+                ]
             copied_folders = []
             skipped_folders = []
             for idx, (folder, is_critical) in enumerate(folders_to_copy, start=2):
@@ -2411,6 +2947,28 @@ class NextcloudRestoreWizard(tk.Tk):
                 )
             summary += f"\n\nBackup saved to:\n{final_file}"
 
+            # Add backup to history
+            folders_list = ['config', 'data'] + [f for f in copied_folders if f not in ['config', 'data']]
+            backup_id = self.backup_history.add_backup(
+                backup_path=final_file,
+                database_type=dbtype,
+                folders=folders_list,
+                encrypted=bool(encrypt and encryption_password),
+                notes=""
+            )
+            
+            # Run backup verification
+            self.set_progress(10, "Verifying backup integrity...")
+            verification_status, verification_details = verify_backup_integrity(
+                final_file,
+                encryption_password if encrypt else None
+            )
+            self.backup_history.update_verification(backup_id, verification_status, verification_details)
+            
+            # Add verification result to summary
+            verification_icon = {'success': '✅', 'warning': '⚠️', 'error': '❌'}.get(verification_status, '❓')
+            summary += f"\n\n{verification_icon} Verification: {verification_details}"
+            
             self.set_progress(10, "Backup complete!")
             messagebox.showinfo("Backup Complete", summary)
         except Exception as e:
@@ -6957,6 +7515,486 @@ Would you like to open the detailed guide?
         except Exception as e:
             print(f"Error updating trusted_domains: {e}")
             return False
+    
+    def _add_health_dashboard(self, parent_frame):
+        """Add service health dashboard to landing page"""
+        # Create collapsible health section
+        health_frame = tk.Frame(parent_frame, bg=self.theme_colors['bg'])
+        health_frame.pack(fill="x", padx=20, pady=(10, 5))
+        
+        # Header with refresh button
+        header_frame = tk.Frame(health_frame, bg=self.theme_colors['bg'])
+        header_frame.pack(fill="x")
+        
+        health_label = tk.Label(
+            header_frame,
+            text="🏥 System Health",
+            font=("Arial", 12, "bold"),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg']
+        )
+        health_label.pack(side="left")
+        
+        refresh_btn = tk.Button(
+            header_frame,
+            text="🔄",
+            font=("Arial", 10),
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg'],
+            command=lambda: self._refresh_health_dashboard(status_container),
+            cursor="hand2",
+            width=3
+        )
+        refresh_btn.pack(side="right")
+        ToolTip(refresh_btn, "Refresh health status")
+        
+        # Status container
+        status_container = tk.Frame(health_frame, bg=self.theme_colors['bg'])
+        status_container.pack(fill="x", pady=(5, 0))
+        
+        # Initial health check
+        self._refresh_health_dashboard(status_container)
+    
+    def _refresh_health_dashboard(self, container):
+        """Refresh health status display"""
+        # Clear existing widgets
+        for widget in container.winfo_children():
+            widget.destroy()
+        
+        # Run health check in background to avoid blocking UI
+        def check_and_update():
+            health_status = check_service_health()
+            self.health_check_cache = health_status
+            self.last_health_check = datetime.now()
+            
+            # Update UI in main thread
+            self.after(0, lambda: self._display_health_status(container, health_status))
+        
+        # Show loading message
+        loading_label = tk.Label(
+            container,
+            text="Checking system health...",
+            font=("Arial", 9),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['hint_fg']
+        )
+        loading_label.pack()
+        
+        # Run check in thread
+        threading.Thread(target=check_and_update, daemon=True).start()
+    
+    def _display_health_status(self, container, health_status):
+        """Display health status in container"""
+        # Clear loading message
+        for widget in container.winfo_children():
+            widget.destroy()
+        
+        # Status icons
+        status_icons = {
+            'healthy': '✅',
+            'warning': '⚠️',
+            'error': '❌',
+            'unknown': '❓'
+        }
+        
+        # Create grid layout for status items
+        row = 0
+        for service, status_info in health_status.items():
+            status = status_info['status']
+            message = status_info['message']
+            
+            # Service name
+            service_label = tk.Label(
+                container,
+                text=f"{service.capitalize()}:",
+                font=("Arial", 9),
+                bg=self.theme_colors['bg'],
+                fg=self.theme_colors['fg'],
+                width=12,
+                anchor="w"
+            )
+            service_label.grid(row=row, column=0, sticky="w", padx=(5, 2), pady=2)
+            
+            # Status icon and message
+            status_label = tk.Label(
+                container,
+                text=f"{status_icons[status]} {message}",
+                font=("Arial", 9),
+                bg=self.theme_colors['bg'],
+                fg=self.theme_colors['fg'],
+                anchor="w"
+            )
+            status_label.grid(row=row, column=1, sticky="w", padx=(2, 5), pady=2)
+            
+            row += 1
+        
+        # Last checked time
+        if self.last_health_check:
+            time_str = self.last_health_check.strftime("%H:%M:%S")
+            time_label = tk.Label(
+                container,
+                text=f"Last checked: {time_str}",
+                font=("Arial", 8),
+                bg=self.theme_colors['bg'],
+                fg=self.theme_colors['hint_fg']
+            )
+            time_label.grid(row=row, column=0, columnspan=2, pady=(5, 0))
+    
+    def show_backup_history(self):
+        """Show backup history window with list of previous backups"""
+        self.current_page = 'backup_history'
+        for widget in self.body_frame.winfo_children():
+            widget.destroy()
+        
+        self.status_label.config(text="Backup History")
+        
+        # Create main container
+        main_frame = tk.Frame(self.body_frame, bg=self.theme_colors['bg'])
+        main_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        
+        # Header with back button
+        header_frame = tk.Frame(main_frame, bg=self.theme_colors['bg'])
+        header_frame.pack(fill="x", pady=(0, 10))
+        
+        back_btn = tk.Button(
+            header_frame,
+            text="← Back",
+            font=("Arial", 10),
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg'],
+            command=self.show_landing
+        )
+        back_btn.pack(side="left")
+        
+        title_label = tk.Label(
+            header_frame,
+            text="📜 Backup History & Restore Points",
+            font=("Arial", 14, "bold"),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg']
+        )
+        title_label.pack(side="left", padx=20)
+        
+        # Create scrollable list
+        list_frame = tk.Frame(main_frame, bg=self.theme_colors['bg'])
+        list_frame.pack(fill="both", expand=True)
+        
+        # Add scrollbar
+        scrollbar = tk.Scrollbar(list_frame)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Canvas for scrolling
+        canvas = tk.Canvas(
+            list_frame,
+            bg=self.theme_colors['bg'],
+            highlightthickness=0,
+            yscrollcommand=scrollbar.set
+        )
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.config(command=canvas.yview)
+        
+        # Inner frame for content
+        content_frame = tk.Frame(canvas, bg=self.theme_colors['bg'])
+        canvas_window = canvas.create_window((0, 0), window=content_frame, anchor="nw")
+        
+        # Bind resize event
+        def on_frame_configure(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        content_frame.bind("<Configure>", on_frame_configure)
+        
+        def on_canvas_configure(event):
+            canvas.itemconfig(canvas_window, width=event.width)
+        canvas.bind("<Configure>", on_canvas_configure)
+        
+        # Get backup history
+        backups = self.backup_history.get_all_backups()
+        
+        if not backups:
+            no_backups_label = tk.Label(
+                content_frame,
+                text="No backup history found.\n\nBackups created using this tool will appear here.",
+                font=("Arial", 12),
+                bg=self.theme_colors['bg'],
+                fg=self.theme_colors['hint_fg'],
+                justify=tk.CENTER
+            )
+            no_backups_label.pack(pady=50)
+        else:
+            # Display each backup
+            for backup in backups:
+                self._create_backup_item(content_frame, backup)
+    
+    def _create_backup_item(self, parent, backup_data):
+        """Create a single backup item in the history list"""
+        backup_id, path, timestamp, size_bytes, encrypted, db_type, folders, verification_status, verification_details, notes = backup_data
+        
+        # Parse timestamp
+        try:
+            dt = datetime.fromisoformat(timestamp)
+            timestamp_str = dt.strftime("%Y-%m-%d %H:%M:%S")
+        except:
+            timestamp_str = timestamp
+        
+        # Format size
+        size_mb = size_bytes / (1024 * 1024) if size_bytes else 0
+        size_str = f"{size_mb:.1f} MB"
+        
+        # Status icon
+        status_icons = {
+            'success': '✅',
+            'warning': '⚠️',
+            'error': '❌',
+            'pending': '⏳'
+        }
+        status_icon = status_icons.get(verification_status, '❓')
+        
+        # Create frame for this backup
+        item_frame = tk.Frame(
+            parent,
+            bg=self.theme_colors['info_bg'],
+            relief=tk.RAISED,
+            borderwidth=1
+        )
+        item_frame.pack(fill="x", pady=5, padx=5)
+        
+        # Top row: timestamp and size
+        top_row = tk.Frame(item_frame, bg=self.theme_colors['info_bg'])
+        top_row.pack(fill="x", padx=10, pady=(8, 2))
+        
+        timestamp_label = tk.Label(
+            top_row,
+            text=f"📅 {timestamp_str}",
+            font=("Arial", 10, "bold"),
+            bg=self.theme_colors['info_bg'],
+            fg=self.theme_colors['info_fg']
+        )
+        timestamp_label.pack(side="left")
+        
+        size_label = tk.Label(
+            top_row,
+            text=f"💾 {size_str}",
+            font=("Arial", 9),
+            bg=self.theme_colors['info_bg'],
+            fg=self.theme_colors['info_fg']
+        )
+        size_label.pack(side="right")
+        
+        # Middle row: path and details
+        path_label = tk.Label(
+            item_frame,
+            text=f"📁 {os.path.basename(path)}",
+            font=("Arial", 9),
+            bg=self.theme_colors['info_bg'],
+            fg=self.theme_colors['info_fg'],
+            anchor="w"
+        )
+        path_label.pack(fill="x", padx=10, pady=2)
+        
+        # Details row
+        details_text = []
+        if encrypted:
+            details_text.append("🔒 Encrypted")
+        if db_type:
+            details_text.append(f"DB: {db_type}")
+        
+        if details_text:
+            details_label = tk.Label(
+                item_frame,
+                text=" | ".join(details_text),
+                font=("Arial", 8),
+                bg=self.theme_colors['info_bg'],
+                fg=self.theme_colors['hint_fg'],
+                anchor="w"
+            )
+            details_label.pack(fill="x", padx=10, pady=2)
+        
+        # Verification status
+        verification_label = tk.Label(
+            item_frame,
+            text=f"{status_icon} Verification: {verification_status}",
+            font=("Arial", 8),
+            bg=self.theme_colors['info_bg'],
+            fg=self.theme_colors['info_fg'],
+            anchor="w"
+        )
+        verification_label.pack(fill="x", padx=10, pady=2)
+        
+        # Notes if present
+        if notes:
+            notes_label = tk.Label(
+                item_frame,
+                text=f"📝 {notes}",
+                font=("Arial", 8, "italic"),
+                bg=self.theme_colors['info_bg'],
+                fg=self.theme_colors['hint_fg'],
+                anchor="w"
+            )
+            notes_label.pack(fill="x", padx=10, pady=2)
+        
+        # Action buttons
+        button_frame = tk.Frame(item_frame, bg=self.theme_colors['info_bg'])
+        button_frame.pack(fill="x", padx=10, pady=(5, 8))
+        
+        # Restore button
+        restore_btn = tk.Button(
+            button_frame,
+            text="🛠 Restore",
+            font=("Arial", 9),
+            bg=self.theme_colors['restore_btn'],
+            fg="white",
+            command=lambda p=path: self._restore_from_history(p),
+            cursor="hand2"
+        )
+        restore_btn.pack(side="left", padx=(0, 5))
+        ToolTip(restore_btn, "Restore from this backup")
+        
+        # Verify button
+        verify_btn = tk.Button(
+            button_frame,
+            text="✓ Verify",
+            font=("Arial", 9),
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg'],
+            command=lambda bid=backup_id, p=path, enc=encrypted: self._verify_backup_from_history(bid, p, enc),
+            cursor="hand2"
+        )
+        verify_btn.pack(side="left", padx=5)
+        ToolTip(verify_btn, "Verify backup integrity")
+        
+        # Export button
+        export_btn = tk.Button(
+            button_frame,
+            text="📤 Export",
+            font=("Arial", 9),
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg'],
+            command=lambda p=path: self._export_backup(p),
+            cursor="hand2"
+        )
+        export_btn.pack(side="left", padx=5)
+        ToolTip(export_btn, "Copy backup to another location")
+        
+        # Show full path button
+        path_btn = tk.Button(
+            button_frame,
+            text="📍",
+            font=("Arial", 9),
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg'],
+            command=lambda p=path: messagebox.showinfo("Backup Location", f"Full path:\n\n{p}"),
+            cursor="hand2",
+            width=2
+        )
+        path_btn.pack(side="right")
+        ToolTip(path_btn, "Show full path")
+    
+    def _restore_from_history(self, backup_path):
+        """Initiate restore from a backup in history"""
+        if not os.path.exists(backup_path):
+            messagebox.showerror("Error", f"Backup file not found:\n{backup_path}")
+            return
+        
+        # Ask for confirmation
+        result = messagebox.askyesno(
+            "Restore Backup",
+            f"Restore from this backup?\n\n{os.path.basename(backup_path)}\n\nThis will replace current Nextcloud data."
+        )
+        
+        if result:
+            # Set backup path and start restore wizard
+            self.restore_backup_path = backup_path
+            self.start_restore()
+    
+    def _verify_backup_from_history(self, backup_id, backup_path, is_encrypted):
+        """Verify backup integrity and update history"""
+        if not os.path.exists(backup_path):
+            messagebox.showerror("Error", f"Backup file not found:\n{backup_path}")
+            self.backup_history.update_verification(backup_id, "error", "File not found")
+            return
+        
+        # Ask for password if encrypted
+        password = None
+        if is_encrypted:
+            password = simpledialog.askstring(
+                "Encryption Password",
+                "Enter backup encryption password for verification:",
+                show='*'
+            )
+            if not password:
+                return
+        
+        # Show progress
+        progress_window = tk.Toplevel(self)
+        progress_window.title("Verifying Backup")
+        progress_window.geometry("400x100")
+        progress_window.transient(self)
+        progress_window.grab_set()
+        
+        progress_label = tk.Label(
+            progress_window,
+            text="Verifying backup integrity...",
+            font=("Arial", 10)
+        )
+        progress_label.pack(pady=20)
+        
+        # Run verification in thread
+        def verify():
+            status, details = verify_backup_integrity(backup_path, password)
+            self.backup_history.update_verification(backup_id, status, details)
+            
+            # Close progress window and show result
+            progress_window.destroy()
+            
+            if status == 'success':
+                messagebox.showinfo("Verification Complete", f"✅ {details}")
+            elif status == 'warning':
+                messagebox.showwarning("Verification Warning", f"⚠️ {details}")
+            else:
+                messagebox.showerror("Verification Failed", f"❌ {details}")
+            
+            # Refresh history view
+            self.show_backup_history()
+        
+        threading.Thread(target=verify, daemon=True).start()
+    
+    def _export_backup(self, backup_path):
+        """Export/copy backup to another location"""
+        if not os.path.exists(backup_path):
+            messagebox.showerror("Error", f"Backup file not found:\n{backup_path}")
+            return
+        
+        # Ask for destination
+        dest_dir = filedialog.askdirectory(title="Select destination folder for backup copy")
+        if not dest_dir:
+            return
+        
+        # Copy file
+        try:
+            dest_path = os.path.join(dest_dir, os.path.basename(backup_path))
+            
+            # Show progress window
+            progress_window = tk.Toplevel(self)
+            progress_window.title("Exporting Backup")
+            progress_window.geometry("400x100")
+            progress_window.transient(self)
+            progress_window.grab_set()
+            
+            progress_label = tk.Label(
+                progress_window,
+                text="Copying backup file...",
+                font=("Arial", 10)
+            )
+            progress_label.pack(pady=20)
+            
+            def do_copy():
+                shutil.copy2(backup_path, dest_path)
+                progress_window.destroy()
+                messagebox.showinfo("Export Complete", f"Backup copied to:\n\n{dest_path}")
+            
+            threading.Thread(target=do_copy, daemon=True).start()
+        
+        except Exception as e:
+            messagebox.showerror("Export Failed", f"Failed to copy backup:\n\n{str(e)}")
     
     def check_dependencies(self):
         pass # handled stepwise
