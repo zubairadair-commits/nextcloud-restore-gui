@@ -5002,17 +5002,23 @@ php /tmp/update_config.php"
     def show_port_entry(self):
         for widget in self.body_frame.winfo_children():
             widget.destroy()
-        entry_frame = tk.Frame(self.body_frame)
+        entry_frame = tk.Frame(self.body_frame, bg=self.theme_colors['bg'])
         entry_frame.pack(pady=30)
-        btn_back = tk.Button(entry_frame, text="Return to Main Menu", font=("Arial", 12), command=self.show_landing)
+        btn_back = tk.Button(entry_frame, text="Return to Main Menu", font=("Arial", 12), 
+                            bg=self.theme_colors['button_bg'], fg=self.theme_colors['button_fg'],
+                            command=self.show_landing)
         btn_back.pack(pady=8)
-        tk.Label(entry_frame, text="Select a port to access Nextcloud in your browser.", font=("Arial", 14)).pack(pady=8)
-        tk.Label(entry_frame, text="The port determines the address you use to reach Nextcloud.\nFor example, if you choose port 8080, you'll go to http://localhost:8080", font=("Arial", 11), fg="gray").pack(pady=(0,10))
+        tk.Label(entry_frame, text="Select a port to access Nextcloud in your browser.", font=("Arial", 14),
+                bg=self.theme_colors['bg'], fg=self.theme_colors['fg']).pack(pady=8)
+        tk.Label(entry_frame, text="The port determines the address you use to reach Nextcloud.\nFor example, if you choose port 8080, you'll go to http://localhost:8080", 
+                font=("Arial", 11), bg=self.theme_colors['bg'], fg=self.theme_colors['hint_fg']).pack(pady=(0,10))
         ports = ["8080", "8888", "3000", "5000", "9000", "80", "Custom"]
         port_var = tk.StringVar(value=ports[0])
         port_combo = ttk.Combobox(entry_frame, textvariable=port_var, values=ports, font=("Arial", 13), state="readonly", width=10)
         port_combo.pack(pady=3)
-        custom_port_entry = tk.Entry(entry_frame, font=("Arial", 13), width=10)
+        custom_port_entry = tk.Entry(entry_frame, font=("Arial", 13), width=10,
+                                     bg=self.theme_colors['entry_bg'], fg=self.theme_colors['entry_fg'],
+                                     insertbackground=self.theme_colors['entry_fg'])
         custom_port_entry.pack_forget()
 
         def on_combo_change(event):
@@ -5039,6 +5045,9 @@ php /tmp/update_config.php"
             start_btn.config(state="disabled")
             threading.Thread(target=self.launch_nextcloud_instance, args=(int(port),), daemon=True).start()
         start_btn.config(command=on_start)
+        
+        # Apply theme recursively to all widgets in the panel
+        self.apply_theme_recursive(entry_frame)
 
     def launch_nextcloud_instance(self, port):
         try:
@@ -5046,15 +5055,17 @@ php /tmp/update_config.php"
             for widget in self.body_frame.winfo_children():
                 widget.destroy()
             
-            progress_frame = tk.Frame(self.body_frame)
+            progress_frame = tk.Frame(self.body_frame, bg=self.theme_colors['bg'])
             progress_frame.pack(pady=30, expand=True)
             
             # Status label with spinner
-            status_label = tk.Label(progress_frame, text="", font=("Arial", 13), fg="blue")
+            status_label = tk.Label(progress_frame, text="", font=("Arial", 13), 
+                                   bg=self.theme_colors['bg'], fg=self.theme_colors['fg'])
             status_label.pack(pady=10)
             
             # Detailed message label
-            detail_label = tk.Label(progress_frame, text="", font=("Arial", 11), fg="gray")
+            detail_label = tk.Label(progress_frame, text="", font=("Arial", 11), 
+                                   bg=self.theme_colors['bg'], fg=self.theme_colors['hint_fg'])
             detail_label.pack(pady=5)
             
             # Track if we should continue (for cancellation)
@@ -5168,12 +5179,14 @@ php /tmp/update_config.php"
             for widget in self.body_frame.winfo_children():
                 widget.destroy()
             
-            info_frame = tk.Frame(self.body_frame)
+            info_frame = tk.Frame(self.body_frame, bg=self.theme_colors['bg'])
             info_frame.pack(pady=30)
             
             if ready[0]:
-                tk.Label(info_frame, text="✓ Nextcloud is ready!", font=("Arial", 16, "bold"), fg="green").pack(pady=8)
-                tk.Label(info_frame, text="Access it at:", font=("Arial", 14)).pack(pady=(10, 5))
+                tk.Label(info_frame, text="✓ Nextcloud is ready!", font=("Arial", 16, "bold"), 
+                        bg=self.theme_colors['bg'], fg=self.theme_colors['warning_fg']).pack(pady=8)
+                tk.Label(info_frame, text="Access it at:", font=("Arial", 14),
+                        bg=self.theme_colors['bg'], fg=self.theme_colors['fg']).pack(pady=(10, 5))
                 
                 def open_localhost(event=None, link=url):
                     webbrowser.open(link)
@@ -5182,33 +5195,39 @@ php /tmp/update_config.php"
                     info_frame,
                     text=url,
                     font=("Arial", 16, "bold"),
+                    bg=self.theme_colors['bg'],
                     fg="#3daee9",
                     cursor="hand2"
                 )
                 link_label.pack(pady=8)
                 link_label.bind("<Button-1>", lambda e: open_localhost(link=url))
                 
-                tk.Label(info_frame, text=f"Container ID: {container_id}", font=("Arial", 11), fg="gray").pack(pady=5)
+                tk.Label(info_frame, text=f"Container ID: {container_id}", font=("Arial", 11), 
+                        bg=self.theme_colors['bg'], fg=self.theme_colors['hint_fg']).pack(pady=5)
                 self.status_label.config(text=f"Nextcloud is ready at {url}")
             else:
                 # Nextcloud started but not ready yet
-                tk.Label(info_frame, text="⚠ Nextcloud container is starting", font=("Arial", 16, "bold"), fg="orange").pack(pady=8)
+                tk.Label(info_frame, text="⚠ Nextcloud container is starting", font=("Arial", 16, "bold"), 
+                        bg=self.theme_colors['bg'], fg=self.theme_colors['warning_fg']).pack(pady=8)
                 tk.Label(info_frame, text="The service is still initializing.\nThe link will become available when ready.", 
-                        font=("Arial", 12), fg="gray").pack(pady=10)
-                tk.Label(info_frame, text="Access it at:", font=("Arial", 14)).pack(pady=(10, 5))
+                        font=("Arial", 12), bg=self.theme_colors['bg'], fg=self.theme_colors['hint_fg']).pack(pady=10)
+                tk.Label(info_frame, text="Access it at:", font=("Arial", 14),
+                        bg=self.theme_colors['bg'], fg=self.theme_colors['fg']).pack(pady=(10, 5))
                 
                 # Disabled link initially
                 link_label = tk.Label(
                     info_frame,
                     text=url,
                     font=("Arial", 16, "bold"),
-                    fg="#aaaaaa"  # Gray color for disabled
+                    bg=self.theme_colors['bg'],
+                    fg=self.theme_colors['hint_fg']  # Use hint color for disabled state
                 )
                 link_label.pack(pady=8)
                 
-                tk.Label(info_frame, text=f"Container ID: {container_id}", font=("Arial", 11), fg="gray").pack(pady=5)
+                tk.Label(info_frame, text=f"Container ID: {container_id}", font=("Arial", 11), 
+                        bg=self.theme_colors['bg'], fg=self.theme_colors['hint_fg']).pack(pady=5)
                 tk.Label(info_frame, text="⏳ Waiting for Nextcloud to become ready...", 
-                        font=("Arial", 11), fg="blue").pack(pady=10)
+                        font=("Arial", 11), bg=self.theme_colors['bg'], fg=self.theme_colors['fg']).pack(pady=10)
                 
                 self.status_label.config(text="Nextcloud container started, initializing...")
                 
@@ -5222,14 +5241,19 @@ php /tmp/update_config.php"
                         # Find and update the waiting message
                         for child in info_frame.winfo_children():
                             if isinstance(child, tk.Label) and "Waiting for Nextcloud" in child.cget("text"):
-                                child.config(text="✓ Nextcloud is now ready! Click the link above.", fg="green")
+                                child.config(text="✓ Nextcloud is now ready! Click the link above.", 
+                                           fg=self.theme_colors['warning_fg'])
                         
                         self.status_label.config(text=f"Nextcloud is ready at {url}")
                 
                 threading.Thread(target=check_and_enable, daemon=True).start()
             
             tk.Button(info_frame, text="Return to Main Menu", font=("Arial", 13), 
+                     bg=self.theme_colors['button_bg'], fg=self.theme_colors['button_fg'],
                      command=self.show_landing).pack(pady=18)
+            
+            # Apply theme recursively to all widgets in the panel
+            self.apply_theme_recursive(info_frame)
             
         except Exception as e:
             tb = traceback.format_exc()
@@ -5266,14 +5290,16 @@ php /tmp/update_config.php"
         self.status_label.config(text="Schedule Backup Configuration")
         
         # Create main frame
-        frame = tk.Frame(self.body_frame)
+        frame = tk.Frame(self.body_frame, bg=self.theme_colors['bg'])
         frame.pack(pady=20, fill="both", expand=True)
         
         # Back button
         tk.Button(
             frame, 
             text="Return to Main Menu", 
-            font=("Arial", 12), 
+            font=("Arial", 12),
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg'],
             command=self.show_landing
         ).pack(pady=8)
         
@@ -5281,7 +5307,9 @@ php /tmp/update_config.php"
         tk.Label(
             frame, 
             text="Schedule Automatic Backups", 
-            font=("Arial", 18, "bold")
+            font=("Arial", 18, "bold"),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg']
         ).pack(pady=15)
         
         # Load existing config
@@ -5291,14 +5319,15 @@ php /tmp/update_config.php"
         task_name = config.get('task_name', 'NextcloudBackup') if config else 'NextcloudBackup'
         status = get_scheduled_task_status(task_name)
         
-        status_frame = tk.Frame(frame, bg="#e8f4f8", relief="ridge", borderwidth=2)
+        status_frame = tk.Frame(frame, bg=self.theme_colors['info_bg'], relief="ridge", borderwidth=2)
         status_frame.pack(pady=10, fill="x", padx=40)
         
         tk.Label(
             status_frame, 
             text="Current Status", 
             font=("Arial", 14, "bold"), 
-            bg="#e8f4f8"
+            bg=self.theme_colors['info_bg'],
+            fg=self.theme_colors['info_fg']
         ).pack(pady=5)
         
         if status and status.get('exists'):
@@ -5312,18 +5341,20 @@ php /tmp/update_config.php"
                 status_frame, 
                 text=status_text, 
                 font=("Arial", 11), 
-                bg="#e8f4f8", 
-                fg="#27ae60"
+                bg=self.theme_colors['info_bg'], 
+                fg=self.theme_colors['warning_fg']
             ).pack(pady=5)
             
             # Add buttons for managing existing schedule
-            btn_frame = tk.Frame(status_frame, bg="#e8f4f8")
+            btn_frame = tk.Frame(status_frame, bg=self.theme_colors['info_bg'])
             btn_frame.pack(pady=10)
             
             tk.Button(
                 btn_frame, 
                 text="Disable Schedule", 
                 font=("Arial", 11),
+                bg=self.theme_colors['button_bg'],
+                fg=self.theme_colors['button_fg'],
                 command=lambda: self._disable_schedule(task_name)
             ).pack(side="left", padx=5)
             
@@ -5331,6 +5362,8 @@ php /tmp/update_config.php"
                 btn_frame, 
                 text="Delete Schedule", 
                 font=("Arial", 11),
+                bg=self.theme_colors['button_bg'],
+                fg=self.theme_colors['button_fg'],
                 command=lambda: self._delete_schedule(task_name)
             ).pack(side="left", padx=5)
         else:
@@ -5338,41 +5371,49 @@ php /tmp/update_config.php"
                 status_frame, 
                 text="✗ No scheduled backup configured", 
                 font=("Arial", 11), 
-                bg="#e8f4f8", 
-                fg="#e74c3c"
+                bg=self.theme_colors['info_bg'], 
+                fg=self.theme_colors['error_fg']
             ).pack(pady=5)
         
         # Configuration section
-        config_frame = tk.Frame(frame)
+        config_frame = tk.Frame(frame, bg=self.theme_colors['bg'])
         config_frame.pack(pady=20, fill="x", padx=40)
         
         tk.Label(
             config_frame, 
             text="Configure New Schedule", 
-            font=("Arial", 14, "bold")
+            font=("Arial", 14, "bold"),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg']
         ).pack(pady=10)
         
         # Backup directory
-        tk.Label(config_frame, text="Backup Directory:", font=("Arial", 11)).pack(pady=5)
-        dir_frame = tk.Frame(config_frame)
+        tk.Label(config_frame, text="Backup Directory:", font=("Arial", 11),
+                bg=self.theme_colors['bg'], fg=self.theme_colors['fg']).pack(pady=5)
+        dir_frame = tk.Frame(config_frame, bg=self.theme_colors['bg'])
         dir_frame.pack(pady=5, fill="x")
         
         backup_dir_var = tk.StringVar(value=config.get('backup_dir', '') if config else '')
-        dir_entry = tk.Entry(dir_frame, textvariable=backup_dir_var, font=("Arial", 11))
+        dir_entry = tk.Entry(dir_frame, textvariable=backup_dir_var, font=("Arial", 11),
+                            bg=self.theme_colors['entry_bg'], fg=self.theme_colors['entry_fg'],
+                            insertbackground=self.theme_colors['entry_fg'])
         dir_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
         
         tk.Button(
             dir_frame, 
             text="Browse", 
             font=("Arial", 10),
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg'],
             command=lambda: self._browse_backup_dir(backup_dir_var)
         ).pack(side="right")
         
         # Frequency
-        tk.Label(config_frame, text="Frequency:", font=("Arial", 11)).pack(pady=(15, 5))
+        tk.Label(config_frame, text="Frequency:", font=("Arial", 11),
+                bg=self.theme_colors['bg'], fg=self.theme_colors['fg']).pack(pady=(15, 5))
         frequency_var = tk.StringVar(value=config.get('frequency', 'daily') if config else 'daily')
         
-        freq_frame = tk.Frame(config_frame)
+        freq_frame = tk.Frame(config_frame, bg=self.theme_colors['bg'])
         freq_frame.pack(pady=5)
         
         for freq in ['daily', 'weekly', 'monthly']:
@@ -5381,13 +5422,19 @@ php /tmp/update_config.php"
                 text=freq.capitalize(), 
                 variable=frequency_var, 
                 value=freq,
-                font=("Arial", 11)
+                font=("Arial", 11),
+                bg=self.theme_colors['bg'],
+                fg=self.theme_colors['fg'],
+                selectcolor=self.theme_colors['entry_bg']
             ).pack(side="left", padx=10)
         
         # Time
-        tk.Label(config_frame, text="Backup Time (HH:MM):", font=("Arial", 11)).pack(pady=(15, 5))
+        tk.Label(config_frame, text="Backup Time (HH:MM):", font=("Arial", 11),
+                bg=self.theme_colors['bg'], fg=self.theme_colors['fg']).pack(pady=(15, 5))
         time_var = tk.StringVar(value=config.get('time', '02:00') if config else '02:00')
-        time_entry = tk.Entry(config_frame, textvariable=time_var, font=("Arial", 11), width=10)
+        time_entry = tk.Entry(config_frame, textvariable=time_var, font=("Arial", 11), width=10,
+                             bg=self.theme_colors['entry_bg'], fg=self.theme_colors['entry_fg'],
+                             insertbackground=self.theme_colors['entry_fg'])
         time_entry.pack(pady=5)
         
         # Encryption
@@ -5396,16 +5443,22 @@ php /tmp/update_config.php"
             config_frame, 
             text="Encrypt backups", 
             variable=encrypt_var,
-            font=("Arial", 11)
+            font=("Arial", 11),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg'],
+            selectcolor=self.theme_colors['entry_bg']
         ).pack(pady=10)
         
         # Password (shown only if encryption is enabled)
-        password_frame = tk.Frame(config_frame)
+        password_frame = tk.Frame(config_frame, bg=self.theme_colors['bg'])
         password_frame.pack(pady=5)
         
-        tk.Label(password_frame, text="Encryption Password:", font=("Arial", 11)).pack()
+        tk.Label(password_frame, text="Encryption Password:", font=("Arial", 11),
+                bg=self.theme_colors['bg'], fg=self.theme_colors['fg']).pack()
         password_var = tk.StringVar(value=config.get('password', '') if config else '')
-        password_entry = tk.Entry(password_frame, textvariable=password_var, show="*", font=("Arial", 11), width=30)
+        password_entry = tk.Entry(password_frame, textvariable=password_var, show="*", font=("Arial", 11), width=30,
+                                 bg=self.theme_colors['entry_bg'], fg=self.theme_colors['entry_fg'],
+                                 insertbackground=self.theme_colors['entry_fg'])
         password_entry.pack(pady=5)
         
         def toggle_password_field(*args):
@@ -5423,7 +5476,8 @@ php /tmp/update_config.php"
                 config_frame,
                 text="⚠️ Note: Scheduled backups are currently only supported on Windows",
                 font=("Arial", 10),
-                fg="#e67e22"
+                bg=self.theme_colors['bg'],
+                fg=self.theme_colors['warning_fg']
             )
             warning_label.pack(pady=10)
         
@@ -5442,6 +5496,9 @@ php /tmp/update_config.php"
                 password_var.get()
             )
         ).pack(pady=20)
+        
+        # Apply theme recursively to all widgets in the panel
+        self.apply_theme_recursive(frame)
     
     def _browse_backup_dir(self, var):
         """Browse for backup directory."""
