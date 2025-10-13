@@ -4980,10 +4980,17 @@ php /tmp/update_config.php"
         
         self.status_label.config(text="Remote Access Setup (Tailscale)")
         
+        # Create a container frame to hold the scrollable content with proper centering context
+        # This ensures the content block is centered as a unit, not just individual widgets
+        container = tk.Frame(self.body_frame, bg=self.theme_colors['bg'])
+        container.pack(fill="both", expand=True)
+        
         # Create scrollable frame with proper centering
-        canvas = tk.Canvas(self.body_frame, bg=self.theme_colors['bg'], highlightthickness=0)
-        scrollbar = ttk.Scrollbar(self.body_frame, orient="vertical", command=canvas.yview)
-        scrollable_frame = tk.Frame(canvas, bg=self.theme_colors['bg'])
+        canvas = tk.Canvas(container, bg=self.theme_colors['bg'], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        
+        # Set fixed width on scrollable frame to enable proper centering
+        scrollable_frame = tk.Frame(canvas, bg=self.theme_colors['bg'], width=700)
         
         scrollable_frame.bind(
             "<Configure>",
@@ -5354,10 +5361,17 @@ php /tmp/update_config.php"
         
         self.status_label.config(text="Configure Remote Access")
         
+        # Create a container frame to hold the scrollable content with proper centering context
+        # This ensures the content block is centered as a unit, not just individual widgets
+        container = tk.Frame(self.body_frame, bg=self.theme_colors['bg'])
+        container.pack(fill="both", expand=True)
+        
         # Create scrollable frame with proper centering
-        canvas = tk.Canvas(self.body_frame, bg=self.theme_colors['bg'], highlightthickness=0)
-        scrollbar = ttk.Scrollbar(self.body_frame, orient="vertical", command=canvas.yview)
-        scrollable_frame = tk.Frame(canvas, bg=self.theme_colors['bg'])
+        canvas = tk.Canvas(container, bg=self.theme_colors['bg'], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        
+        # Set fixed width on scrollable frame to enable proper centering
+        scrollable_frame = tk.Frame(canvas, bg=self.theme_colors['bg'], width=700)
         
         scrollable_frame.bind(
             "<Configure>",
