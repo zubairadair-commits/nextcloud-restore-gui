@@ -1935,7 +1935,13 @@ def create_scheduled_task(task_name, schedule_type, schedule_time, backup_dir, e
             args.extend(["--password", password])
         
         # Build the full command
-        command = f'"{exe_path}" {" ".join(args)}'
+        # Detect if running as .py script or .exe executable
+        if exe_path.lower().endswith('.py'):
+            # For Python scripts, invoke through Python interpreter
+            command = f'python "{exe_path}" {" ".join(args)}'
+        else:
+            # For compiled executables (.exe), run directly
+            command = f'"{exe_path}" {" ".join(args)}'
         
         # Map schedule_type to schtasks frequency
         if schedule_type == "daily":
