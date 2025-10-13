@@ -6187,19 +6187,6 @@ php /tmp/update_config.php"
         content.place(relx=0.5, anchor="n", y=10)
         logger.info("TAILSCALE WIZARD: Content frame placed successfully")
         
-        # Add visible debug label at top (big, colored) to confirm frame is rendered
-        logger.info("TAILSCALE WIZARD: Adding debug label")
-        debug_label = tk.Label(
-            content,
-            text="🔍 DEBUG: Content Frame Rendered",
-            font=("Arial", 14, "bold"),
-            bg="#FFD700",  # Gold/yellow color
-            fg="#000000",  # Black text
-            relief="raised",
-            borderwidth=2
-        )
-        debug_label.pack(pady=5, fill="x", padx=40)
-        
         # Title
         logger.info("TAILSCALE WIZARD: Creating title labels")
         tk.Label(
@@ -6625,19 +6612,6 @@ php /tmp/update_config.php"
         canvas.bind_all("<Button-5>", on_mouse_wheel)    # Linux scroll down
         
         logger.info("TAILSCALE CONFIG: Content frame configured with responsive layout and mouse wheel scrolling")
-        
-        # Add visible debug label at top (big, colored) to confirm frame is rendered
-        logger.info("TAILSCALE CONFIG: Adding debug label")
-        debug_label = tk.Label(
-            content,
-            text="🔍 DEBUG: Content Frame Rendered",
-            font=("Arial", 14, "bold"),
-            bg="#FFD700",  # Gold/yellow color
-            fg="#000000",  # Black text
-            relief="raised",
-            borderwidth=2
-        )
-        debug_label.pack(pady=5, fill="x", padx=40)
         
         # Title
         logger.info("TAILSCALE CONFIG: Creating title and back button")

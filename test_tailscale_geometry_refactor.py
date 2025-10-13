@@ -5,7 +5,6 @@ Validates that:
 1. Canvas/scrollbar complexity has been removed
 2. Content frame uses .place() for centering
 3. All widgets use .pack() geometry manager
-4. Debug label is present for visibility
 """
 
 import sys
@@ -87,46 +86,30 @@ def test_tailscale_geometry_refactor():
             print("✗ Check 5: Width maintenance function missing")
             checks.append(False)
         
-        # Check 6: Debug label is present and visible (big, colored)
-        if '🔍 DEBUG: Content Frame Rendered' in method_content:
-            print("✓ Check 6: Debug label present")
-            checks.append(True)
-        else:
-            print("✗ Check 6: Debug label NOT found")
-            checks.append(False)
-        
-        # Check 7: Debug label has visible styling (gold background)
-        if 'bg="#FFD700"' in method_content and 'DEBUG: Content Frame Rendered' in method_content:
-            print("✓ Check 7: Debug label has visible styling (gold background)")
-            checks.append(True)
-        else:
-            print("✗ Check 7: Debug label styling not as expected")
-            checks.append(False)
-        
-        # Check 8: Widgets use .pack() with fill="x", padx=40 pattern
+        # Check 6: Widgets use .pack() with fill="x", padx=40 pattern
         pack_fill_x_count = len(re.findall(r'\.pack\(.*?fill="x".*?padx=40', method_content))
         if pack_fill_x_count >= 3:
-            print(f"✓ Check 8: Multiple widgets use .pack() with fill='x', padx=40 ({pack_fill_x_count} found)")
+            print(f"✓ Check 6: Multiple widgets use .pack() with fill='x', padx=40 ({pack_fill_x_count} found)")
             checks.append(True)
         else:
-            print(f"✗ Check 8: Insufficient .pack() with fill='x', padx=40 patterns ({pack_fill_x_count} found, need >= 3)")
+            print(f"✗ Check 6: Insufficient .pack() with fill='x', padx=40 patterns ({pack_fill_x_count} found, need >= 3)")
             checks.append(False)
         
-        # Check 9: No .grid() calls (except in specific allowed contexts like grid_columnconfigure)
+        # Check 7: No .grid() calls (except in specific allowed contexts like grid_columnconfigure)
         grid_calls = re.findall(r'\.grid\([^_]', method_content)
         if len(grid_calls) == 0:
-            print("✓ Check 9: No .grid() geometry manager used")
+            print("✓ Check 7: No .grid() geometry manager used")
             checks.append(True)
         else:
-            print(f"✗ Check 9: .grid() calls found: {len(grid_calls)}")
+            print(f"✗ Check 7: .grid() calls found: {len(grid_calls)}")
             checks.append(False)
         
-        # Check 10: Loading indicator still present for initial blank prevention
+        # Check 8: Loading indicator still present for initial blank prevention
         if 'Loading' in method_content and 'loading_label' in method_content:
-            print("✓ Check 10: Loading indicator present")
+            print("✓ Check 8: Loading indicator present")
             checks.append(True)
         else:
-            print("✗ Check 10: Loading indicator missing")
+            print("✗ Check 8: Loading indicator missing")
             checks.append(False)
         
         all_passed = all(checks)
@@ -145,7 +128,6 @@ def test_tailscale_geometry_refactor():
         print("  • Canvas/scrollbar complexity removed")
         print("  • Content frame uses .place() for centering")
         print("  • All widgets use .pack() geometry manager")
-        print("  • Debug labels present for visibility")
         print("  • Width maintenance implemented")
         print("  • Loading indicators prevent blank pages")
         return True
