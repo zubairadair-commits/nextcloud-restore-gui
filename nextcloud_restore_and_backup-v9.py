@@ -98,6 +98,7 @@ def log_page_render(page_name):
     """
     Decorator to add diagnostic logging and error handling to page rendering methods.
     Logs entry, exit, and any exceptions that occur during page rendering.
+    Ensures minimal fallback UI is always shown if rendering fails.
     """
     def decorator(func):
         def wrapper(self, *args, **kwargs):
@@ -125,6 +126,23 @@ def log_page_render(page_name):
                     self.show_landing()
                 except:
                     logger.error(f"{page_name}: Fallback to landing page also failed")
+                    # Last resort: create minimal error UI so page is never blank
+                    try:
+                        logger.info(f"{page_name}: Creating minimal error UI as last resort")
+                        for widget in self.body_frame.winfo_children():
+                            widget.destroy()
+                        error_label = tk.Label(
+                            self.body_frame,
+                            text=f"⚠️ Error Loading {page_name}\n\nCheck nextcloud_restore_gui.log for details.\n\nPlease restart the application.",
+                            font=("Arial", 14, "bold"),
+                            bg=self.theme_colors['bg'],
+                            fg=self.theme_colors['error_fg'],
+                            justify=tk.CENTER
+                        )
+                        error_label.pack(expand=True)
+                        logger.info(f"{page_name}: Minimal error UI created successfully")
+                    except Exception as final_error:
+                        logger.error(f"{page_name}: Even minimal error UI failed: {final_error}")
         return wrapper
     return decorator
 
@@ -5066,12 +5084,27 @@ php /tmp/update_config.php"
         
         self.status_label.config(text="Remote Access Setup (Tailscale)")
         
+        # Create minimal loading indicator first so page is never blank
+        logger.info("TAILSCALE WIZARD: Creating minimal loading indicator")
+        loading_label = tk.Label(
+            self.body_frame,
+            text="Loading Remote Access Setup...",
+            font=("Arial", 12),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg']
+        )
+        loading_label.pack(expand=True)
+        self.update_idletasks()
+        
         # Create a container frame to hold the scrollable content with proper centering context
         # This ensures the content block is centered as a unit, not just individual widgets
+        logger.info("TAILSCALE WIZARD: Creating container frame")
+        loading_label.destroy()  # Remove loading indicator
         container = tk.Frame(self.body_frame, bg=self.theme_colors['bg'])
         container.pack(fill="both", expand=True)
         
         # Create scrollable frame with proper centering
+        logger.info("TAILSCALE WIZARD: Creating scrollable canvas and frame")
         canvas = tk.Canvas(container, bg=self.theme_colors['bg'], highlightthickness=0)
         scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
         
@@ -5095,13 +5128,16 @@ php /tmp/update_config.php"
         
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
+        logger.info("TAILSCALE WIZARD: Canvas and scrollbar packed successfully")
         
         # Wizard content frame (600px wide, centered in scrollable frame)
+        logger.info("TAILSCALE WIZARD: Creating content frame")
         content = tk.Frame(scrollable_frame, bg=self.theme_colors['bg'], width=600)
         content.pack(pady=20, anchor="center")
         content.pack_propagate(False)  # Maintain fixed width
         
         # Title
+        logger.info("TAILSCALE WIZARD: Creating title labels")
         tk.Label(
             content,
             text="🌐 Remote Access Setup",
@@ -5119,6 +5155,7 @@ php /tmp/update_config.php"
         ).pack(pady=(0, 20))
         
         # Info box
+        logger.info("TAILSCALE WIZARD: Creating info box")
         info_frame = tk.Frame(content, bg=self.theme_colors['info_bg'], relief="solid", borderwidth=1)
         info_frame.pack(pady=10, fill="x", padx=20)
         
@@ -5143,6 +5180,7 @@ php /tmp/update_config.php"
         ).pack(pady=(0, 10), padx=10, anchor="w")
         
         # Return to main menu button
+        logger.info("TAILSCALE WIZARD: Creating return button")
         tk.Button(
             content,
             text="Return to Main Menu",
@@ -5153,13 +5191,16 @@ php /tmp/update_config.php"
         ).pack(pady=(10, 20))
         
         # Check Tailscale status
+        logger.info("TAILSCALE WIZARD: Checking Tailscale installation status")
         self.status_label.config(text="Checking Tailscale installation...")
         self.update_idletasks()
         
         ts_installed = self._check_tailscale_installed()
         ts_running = self._check_tailscale_running() if ts_installed else False
+        logger.info(f"TAILSCALE WIZARD: Status - Installed: {ts_installed}, Running: {ts_running}")
         
         # Status display
+        logger.info("TAILSCALE WIZARD: Creating status display")
         status_frame = tk.Frame(content, bg=self.theme_colors['bg'])
         status_frame.pack(pady=10, fill="x", padx=20)
         
@@ -5191,10 +5232,12 @@ php /tmp/update_config.php"
         self.status_label.config(text="Remote Access Setup (Tailscale)")
         
         # Action buttons frame
+        logger.info("TAILSCALE WIZARD: Creating action buttons")
         actions_frame = tk.Frame(content, bg=self.theme_colors['bg'])
         actions_frame.pack(pady=20, fill="x", padx=20)
         
         if not ts_installed:
+            logger.info("TAILSCALE WIZARD: Creating Install button (Tailscale not installed)")
             # Install button
             tk.Button(
                 actions_frame,
@@ -5216,6 +5259,7 @@ php /tmp/update_config.php"
             ).pack(pady=5)
         
         elif not ts_running:
+            logger.info("TAILSCALE WIZARD: Creating Start button (Tailscale not running)")
             # Start Tailscale button
             tk.Button(
                 actions_frame,
@@ -5229,6 +5273,7 @@ php /tmp/update_config.php"
             ).pack(pady=5)
         
         else:
+            logger.info("TAILSCALE WIZARD: Creating Configure button (Tailscale running)")
             # Tailscale is running - show configuration options
             tk.Button(
                 actions_frame,
@@ -5242,7 +5287,10 @@ php /tmp/update_config.php"
             ).pack(pady=5)
             
             # Show current status
+            logger.info("TAILSCALE WIZARD: Displaying Tailscale info")
             self._display_tailscale_info(content)
+        
+        logger.info("TAILSCALE WIZARD: All widgets created successfully")
     
     def _check_tailscale_installed(self):
         """Check if Tailscale is installed"""
@@ -5451,12 +5499,27 @@ php /tmp/update_config.php"
         
         self.status_label.config(text="Configure Remote Access")
         
+        # Create minimal loading indicator first so page is never blank
+        logger.info("TAILSCALE CONFIG: Creating minimal loading indicator")
+        loading_label = tk.Label(
+            self.body_frame,
+            text="Loading Configuration...",
+            font=("Arial", 12),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg']
+        )
+        loading_label.pack(expand=True)
+        self.update_idletasks()
+        
         # Create a container frame to hold the scrollable content with proper centering context
         # This ensures the content block is centered as a unit, not just individual widgets
+        logger.info("TAILSCALE CONFIG: Creating container frame")
+        loading_label.destroy()  # Remove loading indicator
         container = tk.Frame(self.body_frame, bg=self.theme_colors['bg'])
         container.pack(fill="both", expand=True)
         
         # Create scrollable frame with proper centering
+        logger.info("TAILSCALE CONFIG: Creating scrollable canvas and frame")
         canvas = tk.Canvas(container, bg=self.theme_colors['bg'], highlightthickness=0)
         scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
         
@@ -5480,13 +5543,16 @@ php /tmp/update_config.php"
         
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
+        logger.info("TAILSCALE CONFIG: Canvas and scrollbar packed successfully")
         
         # Content frame (600px wide, centered in scrollable frame)
+        logger.info("TAILSCALE CONFIG: Creating content frame")
         content = tk.Frame(scrollable_frame, bg=self.theme_colors['bg'], width=600)
         content.pack(pady=20, anchor="center")
         content.pack_propagate(False)  # Maintain fixed width
         
         # Title
+        logger.info("TAILSCALE CONFIG: Creating title and back button")
         tk.Label(
             content,
             text="⚙️ Configure Remote Access",
@@ -5506,9 +5572,12 @@ php /tmp/update_config.php"
         ).pack(pady=(0, 20))
         
         # Get Tailscale info
+        logger.info("TAILSCALE CONFIG: Retrieving Tailscale network information")
         ts_ip, ts_hostname = self._get_tailscale_info()
+        logger.info(f"TAILSCALE CONFIG: Retrieved - IP: {ts_ip}, Hostname: {ts_hostname}")
         
         # Display Tailscale info
+        logger.info("TAILSCALE CONFIG: Creating Tailscale info display")
         info_frame = tk.Frame(content, bg=self.theme_colors['info_bg'], relief="solid", borderwidth=1)
         info_frame.pack(pady=10, fill="x", padx=20)
         
@@ -5663,7 +5732,10 @@ php /tmp/update_config.php"
         ).pack(pady=(0, 10), padx=10, anchor="w")
         
         # Display current trusted domains section
+        logger.info("TAILSCALE CONFIG: Displaying current trusted domains")
         self._display_current_trusted_domains(content)
+        
+        logger.info("TAILSCALE CONFIG: All widgets created successfully")
     
     def _display_current_trusted_domains(self, parent):
         """Display all current trusted domains with remove buttons"""
