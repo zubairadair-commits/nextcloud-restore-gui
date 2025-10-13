@@ -5505,21 +5505,41 @@ php /tmp/update_config.php"
         loading_label.pack(expand=True)
         self.update_idletasks()
         
-        # Remove loading indicator and create content frame with simplified geometry
-        logger.info("TAILSCALE CONFIG: Creating centered content frame")
+        # Remove loading indicator and create content frame with responsive layout
+        logger.info("TAILSCALE CONFIG: Creating responsive content frame")
         loading_label.destroy()
         
-        # Create content frame using .place() for centering (600px wide)
-        # This is simpler than Canvas/scrollbar approach and uses only .pack() for children
-        content = tk.Frame(self.body_frame, bg=self.theme_colors['bg'], width=600)
+        # Create scrollable content frame for responsive layout
+        # Use Canvas with scrollbar for proper vertical scrolling
+        canvas = tk.Canvas(self.body_frame, bg=self.theme_colors['bg'], highlightthickness=0)
+        scrollbar = tk.Scrollbar(self.body_frame, orient="vertical", command=canvas.yview)
+        content = tk.Frame(canvas, bg=self.theme_colors['bg'])
         
-        # Maintain fixed width
-        def maintain_width(event=None):
-            content.config(width=600)
+        # Configure canvas scrolling
+        canvas.configure(yscrollcommand=scrollbar.set)
         
-        content.bind('<Configure>', maintain_width)
-        content.place(relx=0.5, anchor="n", y=10)
-        logger.info("TAILSCALE CONFIG: Content frame placed successfully")
+        # Pack scrollbar and canvas with responsive layout
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        
+        # Create window in canvas for content
+        canvas_window = canvas.create_window((0, 0), window=content, anchor="nw")
+        
+        # Update scroll region and canvas width when frame size changes
+        def configure_canvas(event=None):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            # Make content frame width match canvas width for centering
+            canvas_width = canvas.winfo_width()
+            if canvas_width > 1:  # Only update if canvas has been rendered
+                # Center content with max width of 600px
+                content_width = min(600, canvas_width - 20)
+                x_offset = (canvas_width - content_width) // 2
+                canvas.itemconfig(canvas_window, width=content_width)
+                canvas.coords(canvas_window, x_offset, 10)
+        
+        content.bind("<Configure>", configure_canvas)
+        canvas.bind("<Configure>", configure_canvas)
+        logger.info("TAILSCALE CONFIG: Content frame configured with responsive layout")
         
         # Add visible debug label at top (big, colored) to confirm frame is rendered
         logger.info("TAILSCALE CONFIG: Adding debug label")
@@ -5732,9 +5752,6 @@ php /tmp/update_config.php"
         # Get current trusted domains
         current_domains = self._get_trusted_domains(nextcloud_container)
         
-        if not current_domains:
-            return
-        
         # Section title with help icon
         title_frame = tk.Frame(parent, bg=self.theme_colors['bg'])
         title_frame.pack(pady=(30, 10), fill="x", padx=20)
@@ -5803,94 +5820,122 @@ php /tmp/update_config.php"
                 command=lambda: self._on_undo_change(parent)
             ).pack(side="left", padx=5)
         
-        # Scrollable domains list frame with canvas
-        list_container = tk.Frame(parent, bg=self.theme_colors['bg'])
-        list_container.pack(pady=5, fill="both", expand=False, padx=20)
-        
-        # Create canvas and scrollbar
-        canvas = tk.Canvas(
-            list_container,
-            bg=self.theme_colors['bg'],
-            height=min(300, len(current_domains) * 50),  # Max height 300px
-            highlightthickness=0
-        )
-        scrollbar = tk.Scrollbar(list_container, orient="vertical", command=canvas.yview)
-        domains_frame = tk.Frame(canvas, bg=self.theme_colors['bg'])
-        
-        # Configure canvas
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        # Pack scrollbar and canvas
-        scrollbar.pack(side="right", fill="y")
-        canvas.pack(side="left", fill="both", expand=True)
-        
-        # Create window in canvas
-        canvas_window = canvas.create_window((0, 0), window=domains_frame, anchor="nw")
-        
-        # Update scroll region when frame size changes
-        def configure_scroll_region(event=None):
-            canvas.configure(scrollregion=canvas.bbox("all"))
-        
-        domains_frame.bind("<Configure>", configure_scroll_region)
-        
-        # Display each domain with status icon and remove button
-        for domain in current_domains:
-            domain_row = tk.Frame(domains_frame, bg=self.theme_colors['entry_bg'], relief="solid", borderwidth=1)
-            domain_row.pack(pady=3, fill="x", padx=2)
+        # Check if there are domains to display
+        if not current_domains:
+            # Display "No trusted domains configured" message
+            no_domains_frame = tk.Frame(parent, bg=self.theme_colors['warning_bg'], relief="solid", borderwidth=1)
+            no_domains_frame.pack(pady=10, fill="x", padx=20)
             
-            # Check domain status
-            status = self._check_domain_reachability(domain)
-            
-            # Status icon
-            status_icons = {
-                'active': '✓',
-                'unreachable': '⚠️',
-                'pending': '⏳',
-                'error': '❌'
-            }
-            status_colors = {
-                'active': '#45bf55',
-                'unreachable': '#ff9800',
-                'pending': '#2196f3',
-                'error': '#f44336'
-            }
-            
-            status_label = tk.Label(
-                domain_row,
-                text=status_icons.get(status, '?'),
-                font=("Arial", 12),
-                bg=self.theme_colors['entry_bg'],
-                fg=status_colors.get(status, self.theme_colors['entry_fg']),
-                width=2
-            )
-            status_label.pack(side="left", padx=(5, 0), pady=8)
-            
-            # Domain label with tooltip on hover
-            domain_label = tk.Label(
-                domain_row,
-                text=domain,
-                font=("Arial", 11),
-                bg=self.theme_colors['entry_bg'],
-                fg=self.theme_colors['entry_fg'],
-                anchor="w"
-            )
-            domain_label.pack(side="left", fill="x", expand=True, padx=10, pady=8)
-            
-            # Add tooltip
-            self._create_tooltip(domain_label, self._get_domain_tooltip(domain, status))
-            
-            # Remove button
-            remove_btn = tk.Button(
-                domain_row,
-                text="✕",
+            tk.Label(
+                no_domains_frame,
+                text="No trusted domains configured",
                 font=("Arial", 12, "bold"),
-                bg=self.theme_colors['error_bg'] if hasattr(self.theme_colors, '__getitem__') and 'error_bg' in self.theme_colors else "#ff6b6b",
-                fg="white",
-                width=3,
-                height=1,
-                command=lambda d=domain: self._on_remove_domain(d, parent)
+                bg=self.theme_colors['warning_bg'],
+                fg=self.theme_colors['warning_fg']
+            ).pack(pady=15, padx=10)
+            
+            tk.Label(
+                no_domains_frame,
+                text="Add domains using the form below to allow access to your Nextcloud instance.",
+                font=("Arial", 10),
+                bg=self.theme_colors['warning_bg'],
+                fg=self.theme_colors['warning_fg'],
+                wraplength=540
+            ).pack(pady=(0, 15), padx=10)
+        else:
+            # Scrollable domains list frame with canvas
+            list_container = tk.Frame(parent, bg=self.theme_colors['bg'])
+            list_container.pack(pady=5, fill="both", expand=True, padx=20)
+            
+            # Create canvas and scrollbar
+            canvas = tk.Canvas(
+                list_container,
+                bg=self.theme_colors['bg'],
+                height=min(300, len(current_domains) * 50),  # Max height 300px
+                highlightthickness=0
             )
-            remove_btn.pack(side="right", padx=5, pady=5)
+            scrollbar = tk.Scrollbar(list_container, orient="vertical", command=canvas.yview)
+            domains_frame = tk.Frame(canvas, bg=self.theme_colors['bg'])
+            
+            # Configure canvas
+            canvas.configure(yscrollcommand=scrollbar.set)
+            
+            # Pack scrollbar and canvas
+            scrollbar.pack(side="right", fill="y")
+            canvas.pack(side="left", fill="both", expand=True)
+            
+            # Create window in canvas
+            canvas_window = canvas.create_window((0, 0), window=domains_frame, anchor="nw")
+            
+            # Update scroll region and canvas width when frame size changes
+            def configure_scroll_region(event=None):
+                canvas.configure(scrollregion=canvas.bbox("all"))
+                # Make canvas window width match canvas width
+                canvas_width = canvas.winfo_width()
+                if canvas_width > 1:  # Only update if canvas has been rendered
+                    canvas.itemconfig(canvas_window, width=canvas_width)
+            
+            domains_frame.bind("<Configure>", configure_scroll_region)
+            canvas.bind("<Configure>", configure_scroll_region)
+            
+            # Display each domain with status icon and remove button
+            for domain in current_domains:
+                domain_row = tk.Frame(domains_frame, bg=self.theme_colors['entry_bg'], relief="solid", borderwidth=1)
+                domain_row.pack(pady=3, fill="x", padx=2)
+                
+                # Check domain status
+                status = self._check_domain_reachability(domain)
+                
+                # Status icon
+                status_icons = {
+                    'active': '✓',
+                    'unreachable': '⚠️',
+                    'pending': '⏳',
+                    'error': '❌'
+                }
+                status_colors = {
+                    'active': '#45bf55',
+                    'unreachable': '#ff9800',
+                    'pending': '#2196f3',
+                    'error': '#f44336'
+                }
+                
+                status_label = tk.Label(
+                    domain_row,
+                    text=status_icons.get(status, '?'),
+                    font=("Arial", 12),
+                    bg=self.theme_colors['entry_bg'],
+                    fg=status_colors.get(status, self.theme_colors['entry_fg']),
+                    width=2
+                )
+                status_label.pack(side="left", padx=(5, 0), pady=8)
+                
+                # Domain label with tooltip on hover
+                domain_label = tk.Label(
+                    domain_row,
+                    text=domain,
+                    font=("Arial", 11),
+                    bg=self.theme_colors['entry_bg'],
+                    fg=self.theme_colors['entry_fg'],
+                    anchor="w"
+                )
+                domain_label.pack(side="left", fill="x", expand=True, padx=10, pady=8)
+                
+                # Add tooltip
+                self._create_tooltip(domain_label, self._get_domain_tooltip(domain, status))
+                
+                # Remove button
+                remove_btn = tk.Button(
+                    domain_row,
+                    text="✕",
+                    font=("Arial", 12, "bold"),
+                    bg=self.theme_colors['error_bg'] if hasattr(self.theme_colors, '__getitem__') and 'error_bg' in self.theme_colors else "#ff6b6b",
+                    fg="white",
+                    width=3,
+                    height=1,
+                    command=lambda d=domain: self._on_remove_domain(d, parent)
+                )
+                remove_btn.pack(side="right", padx=5, pady=5)
         
         # Add new domain section
         add_domain_frame = tk.Frame(parent, bg=self.theme_colors['bg'])
