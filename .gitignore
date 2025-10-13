@@ -20,3 +20,7 @@ ENV/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Log files
+*.log
+nextcloud_restore_gui.log
