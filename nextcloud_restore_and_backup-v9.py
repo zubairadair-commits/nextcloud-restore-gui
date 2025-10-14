@@ -2152,40 +2152,42 @@ def validate_scheduled_task_setup(task_name, schedule_type, schedule_time, backu
 def run_test_backup(backup_dir, encrypt, password=""):
     """
     Run a test backup to verify the configuration works.
+    Only backs up the schedule config file, then immediately deletes it.
     Returns (success, message) tuple.
     """
-    logger.info("TEST RUN: Starting test backup")
+    logger.info("TEST RUN: Starting test backup of config file")
     
     try:
-        # Create a test backup directory
-        test_backup_name = f"test_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.tar.gz"
+        # Get the schedule config file path
+        config_path = get_schedule_config_path()
+        
+        # Check if config file exists
+        if not os.path.exists(config_path):
+            logger.error("TEST RUN: Schedule config file not found")
+            return False, "Test backup failed: Schedule configuration file not found."
+        
+        # Create a test backup of the config file
+        test_backup_name = f"test_config_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.tar.gz"
         test_backup_path = os.path.join(backup_dir, test_backup_name)
         
-        # Create a minimal test backup (just a small test file)
-        with tempfile.TemporaryDirectory() as temp_dir:
-            # Create a test file
-            test_file = os.path.join(temp_dir, "test.txt")
-            with open(test_file, 'w') as f:
-                f.write(f"Test backup created at {datetime.now().isoformat()}\n")
-                f.write("This is a test backup to verify scheduled backup configuration.\n")
-            
-            # Create tar.gz archive
-            with tarfile.open(test_backup_path, 'w:gz') as tar:
-                tar.add(test_file, arcname='test.txt')
+        # Create tar.gz archive with just the config file
+        with tarfile.open(test_backup_path, 'w:gz') as tar:
+            tar.add(config_path, arcname='schedule_config.json')
         
         # Verify the backup was created
         if os.path.exists(test_backup_path):
             file_size = os.path.getsize(test_backup_path)
-            logger.info(f"TEST RUN: Test backup created successfully: {test_backup_path} ({file_size} bytes)")
+            logger.info(f"TEST RUN: Config backup created successfully: {test_backup_path} ({file_size} bytes)")
             
-            # Clean up test backup
+            # Immediately delete the test backup
             try:
                 os.remove(test_backup_path)
-                logger.info("TEST RUN: Test backup cleaned up")
-            except:
-                pass  # Ignore cleanup errors
+                logger.info("TEST RUN: Config backup deleted after successful test")
+            except Exception as cleanup_error:
+                logger.warning(f"TEST RUN: Failed to delete test backup: {cleanup_error}")
+                # Still return success since the backup itself worked
             
-            return True, f"✓ Test backup successful!\n\nTest file created: {test_backup_name}\nSize: {file_size} bytes\nLocation: {backup_dir}\n\nYour scheduled backup configuration is working correctly."
+            return True, f"✓ Test backup successful!\n\nConfig file backed up: schedule_config.json\nTest backup size: {file_size} bytes\nLocation verified: {backup_dir}\nBackup immediately deleted (as expected)\n\nYour scheduled backup configuration is working correctly."
         else:
             logger.error("TEST RUN: Test backup file was not created")
             return False, "Test backup failed: Backup file was not created."
@@ -2742,7 +2744,7 @@ class NextcloudRestoreWizard(tk.Tk):
         self.minsize(700, 700)  # Set minimum window size to prevent excessive collapsing
 
         # Initialize theme
-        self.current_theme = 'light'
+        self.current_theme = 'dark'
         self.theme_colors = THEMES[self.current_theme]
         
         # Configure root window
