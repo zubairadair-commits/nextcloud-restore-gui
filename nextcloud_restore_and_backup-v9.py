@@ -2310,8 +2310,16 @@ def check_and_repair_scheduled_task(task_name="NextcloudBackup"):
 # ---------------------------------------------------------------
 
 class NextcloudRestoreWizard(tk.Tk):
-    def __init__(self):
+    def __init__(self, scheduled_mode=False):
         super().__init__()
+        
+        # Store scheduled mode flag
+        self.scheduled_mode = scheduled_mode
+        
+        # If in scheduled mode, skip all GUI initialization
+        if scheduled_mode:
+            return
+        
         self.title("Nextcloud Restore & Backup Utility")
         self.geometry("900x900")  # Wider window for better content display
         self.minsize(700, 700)  # Set minimum window size to prevent excessive collapsing
@@ -8607,9 +8615,8 @@ if __name__ == "__main__":
         
         encrypt = args.encrypt and not args.no_encrypt
         
-        # Create a minimal app instance just to run the backup
-        app = NextcloudRestoreWizard()
-        app.withdraw()  # Hide the main window
+        # Create a minimal app instance in scheduled mode (no GUI initialization)
+        app = NextcloudRestoreWizard(scheduled_mode=True)
         app.run_scheduled_backup(args.backup_dir, encrypt, args.password)
         sys.exit(0)
     else:
