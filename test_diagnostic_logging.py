@@ -29,9 +29,9 @@ def test_logging_infrastructure():
     else:
         print("✗ Check 1: logging module NOT imported")
     
-    # Check 2: Logger configured
+    # Check 2: Logger configured (updated for RotatingFileHandler)
     total_checks += 1
-    if 'logging.basicConfig' in content and 'nextcloud_restore_gui.log' in content:
+    if ('setup_logging()' in content or 'logging.basicConfig' in content) and 'nextcloud_restore_gui.log' in content:
         print("✓ Check 2: Logger configured with file handler")
         checks_passed += 1
     else:
