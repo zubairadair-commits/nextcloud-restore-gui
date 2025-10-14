@@ -15,20 +15,59 @@ import sys
 import argparse
 import json
 import logging
+from logging.handlers import RotatingFileHandler
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 
-# Configure logging for diagnostic purposes
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('nextcloud_restore_gui.log'),
-        logging.StreamHandler()
-    ]
-)
+# Configure persistent logging with rotation
+# Log file location: Documents/NextcloudLogs/nextcloud_restore_gui.log
+def setup_logging():
+    """
+    Setup logging with rotation to a user-writable location.
+    Logs are stored in Documents/NextcloudLogs/ directory.
+    """
+    # Determine user's Documents directory
+    if platform.system() == 'Windows':
+        documents_dir = Path.home() / 'Documents'
+    else:
+        documents_dir = Path.home() / 'Documents'
+    
+    # Create log directory if it doesn't exist
+    log_dir = documents_dir / 'NextcloudLogs'
+    log_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Log file path
+    log_file = log_dir / 'nextcloud_restore_gui.log'
+    
+    # Configure rotating file handler
+    # Max size: 10MB, Keep 5 backup files
+    file_handler = RotatingFileHandler(
+        log_file,
+        maxBytes=10*1024*1024,  # 10 MB
+        backupCount=5,
+        encoding='utf-8'
+    )
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    
+    # Console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    
+    # Configure root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(console_handler)
+    
+    return log_file
+
+# Setup logging and get log file path
+LOG_FILE_PATH = setup_logging()
 logger = logging.getLogger(__name__)
+logger.info(f"Logging initialized. Log file: {LOG_FILE_PATH}")
 
 DOCKER_INSTALLER_URL = "https://www.docker.com/products/docker-desktop/"
 GPG_DOWNLOAD_URL = "https://files.gpg4win.org/gpg4win-latest.exe"
@@ -2593,6 +2632,32 @@ class NextcloudRestoreWizard(tk.Tk):
         tailscale_btn.bind("<Enter>", on_enter)
         tailscale_btn.bind("<Leave>", on_leave)
         
+        # View Logs option
+        logs_btn = tk.Button(
+            menu_frame,
+            text="📋 View Logs",
+            font=("Arial", 11),
+            width=25,
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg'],
+            command=lambda: [menu_window.destroy(), self.show_log_viewer()],
+            relief=tk.FLAT,
+            cursor="hand2",
+            anchor="w",
+            padx=10
+        )
+        logs_btn.pack(pady=5, padx=10, fill="x")
+        
+        # Add hover effects for logs button
+        def on_enter_logs(e):
+            logs_btn.config(bg=self.theme_colors['button_active_bg'])
+        
+        def on_leave_logs(e):
+            logs_btn.config(bg=self.theme_colors['button_bg'])
+        
+        logs_btn.bind("<Enter>", on_enter_logs)
+        logs_btn.bind("<Leave>", on_leave_logs)
+        
         # Placeholder for future features (commented out)
         # Add more options here in the future
         
@@ -2610,6 +2675,168 @@ class NextcloudRestoreWizard(tk.Tk):
         
         # Make menu modal
         menu_window.grab_set()
+    
+    def show_log_viewer(self):
+        """Show log viewer window with current log contents"""
+        logger.info("Opening log viewer")
+        
+        # Create log viewer window
+        log_window = tk.Toplevel(self)
+        log_window.title("Application Logs")
+        log_window.geometry("900x600")
+        log_window.transient(self)
+        
+        # Apply theme
+        log_window.configure(bg=self.theme_colors['bg'])
+        
+        # Header frame
+        header_frame = tk.Frame(log_window, bg=self.theme_colors['header_bg'])
+        header_frame.pack(fill="x", padx=10, pady=10)
+        
+        # Title
+        tk.Label(
+            header_frame,
+            text="Application Logs",
+            font=("Arial", 16, "bold"),
+            bg=self.theme_colors['header_bg'],
+            fg=self.theme_colors['header_fg']
+        ).pack(side="left", padx=10)
+        
+        # Log file path label
+        tk.Label(
+            header_frame,
+            text=f"Log file: {LOG_FILE_PATH}",
+            font=("Arial", 9),
+            bg=self.theme_colors['header_bg'],
+            fg=self.theme_colors['header_fg']
+        ).pack(side="left", padx=10)
+        
+        # Create text widget with scrollbar
+        text_frame = tk.Frame(log_window, bg=self.theme_colors['bg'])
+        text_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        # Scrollbar
+        scrollbar = tk.Scrollbar(text_frame)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Text widget
+        log_text = tk.Text(
+            text_frame,
+            wrap="word",
+            yscrollcommand=scrollbar.set,
+            bg=self.theme_colors['entry_bg'],
+            fg=self.theme_colors['fg'],
+            font=("Courier", 9),
+            relief=tk.FLAT,
+            padx=10,
+            pady=10
+        )
+        log_text.pack(side="left", fill="both", expand=True)
+        scrollbar.config(command=log_text.yview)
+        
+        # Read and display log contents
+        def load_logs():
+            try:
+                if LOG_FILE_PATH.exists():
+                    with open(LOG_FILE_PATH, 'r', encoding='utf-8') as f:
+                        log_contents = f.read()
+                    log_text.delete(1.0, tk.END)
+                    log_text.insert(1.0, log_contents)
+                    # Scroll to bottom
+                    log_text.see(tk.END)
+                else:
+                    log_text.delete(1.0, tk.END)
+                    log_text.insert(1.0, "Log file not found.")
+            except Exception as e:
+                log_text.delete(1.0, tk.END)
+                log_text.insert(1.0, f"Error reading log file: {str(e)}")
+        
+        # Button frame
+        button_frame = tk.Frame(log_window, bg=self.theme_colors['bg'])
+        button_frame.pack(fill="x", padx=10, pady=(0, 10))
+        
+        # Refresh button
+        refresh_btn = tk.Button(
+            button_frame,
+            text="🔄 Refresh",
+            font=("Arial", 11),
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg'],
+            command=load_logs,
+            width=12
+        )
+        refresh_btn.pack(side="left", padx=5)
+        
+        # Open log folder button
+        def open_log_folder():
+            try:
+                log_folder = LOG_FILE_PATH.parent
+                if platform.system() == 'Windows':
+                    os.startfile(log_folder)
+                elif platform.system() == 'Darwin':  # macOS
+                    subprocess.Popen(['open', log_folder])
+                else:  # Linux
+                    subprocess.Popen(['xdg-open', log_folder])
+                logger.info(f"Opened log folder: {log_folder}")
+            except Exception as e:
+                logger.error(f"Failed to open log folder: {str(e)}")
+                messagebox.showerror("Error", f"Could not open log folder: {str(e)}")
+        
+        open_folder_btn = tk.Button(
+            button_frame,
+            text="📁 Open Log Folder",
+            font=("Arial", 11),
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg'],
+            command=open_log_folder,
+            width=15
+        )
+        open_folder_btn.pack(side="left", padx=5)
+        
+        # Clear logs button
+        def clear_logs():
+            result = messagebox.askyesno(
+                "Clear Logs",
+                "Are you sure you want to clear all logs?\n\nThis action cannot be undone.",
+                parent=log_window
+            )
+            if result:
+                try:
+                    # Clear the log file
+                    with open(LOG_FILE_PATH, 'w', encoding='utf-8') as f:
+                        f.write("")
+                    logger.info("Log file cleared by user")
+                    load_logs()
+                    messagebox.showinfo("Success", "Logs cleared successfully.", parent=log_window)
+                except Exception as e:
+                    logger.error(f"Failed to clear logs: {str(e)}")
+                    messagebox.showerror("Error", f"Could not clear logs: {str(e)}", parent=log_window)
+        
+        clear_btn = tk.Button(
+            button_frame,
+            text="🗑️ Clear Logs",
+            font=("Arial", 11),
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg'],
+            command=clear_logs,
+            width=12
+        )
+        clear_btn.pack(side="left", padx=5)
+        
+        # Close button
+        close_btn = tk.Button(
+            button_frame,
+            text="Close",
+            font=("Arial", 11),
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg'],
+            command=log_window.destroy,
+            width=12
+        )
+        close_btn.pack(side="right", padx=5)
+        
+        # Load logs initially
+        load_logs()
     
     def apply_theme(self):
         """Apply the current theme to all root-level widgets and recursively to children"""
