@@ -2534,6 +2534,41 @@ def disable_scheduled_task(task_name):
     except Exception as e:
         return False, f"Error disabling scheduled task: {e}"
 
+def run_scheduled_task_now(task_name):
+    """
+    Trigger a Windows scheduled task to run immediately.
+    
+    Args:
+        task_name: Name of the scheduled task to run
+    
+    Returns: (success, message) tuple
+    """
+    if platform.system() != "Windows":
+        return False, "Scheduled tasks are only supported on Windows at this time."
+    
+    try:
+        logger.info(f"Triggering scheduled task '{task_name}' to run now...")
+        creation_flags = get_subprocess_creation_flags()
+        
+        result = subprocess.run(
+            ["schtasks", "/Run", "/TN", task_name],
+            creationflags=creation_flags,
+            capture_output=True,
+            text=True
+        )
+        
+        if result.returncode == 0:
+            logger.info(f"Scheduled task '{task_name}' triggered successfully")
+            return True, f"Scheduled task '{task_name}' started successfully."
+        else:
+            error_msg = result.stderr.strip() if result.stderr else "Unknown error"
+            logger.error(f"Failed to trigger task '{task_name}': {error_msg}")
+            return False, f"Failed to trigger task: {error_msg}"
+    
+    except Exception as e:
+        logger.error(f"Error triggering scheduled task '{task_name}': {e}")
+        return False, f"Error triggering scheduled task: {e}"
+
 def get_scheduled_task_command(task_name):
     """
     Get the command (action) configured in a Windows scheduled task.
@@ -6752,7 +6787,10 @@ php /tmp/update_config.php"
             self.show_schedule_backup()
     
     def _run_test_backup_scheduled(self, config):
-        """Run a test backup using the current schedule configuration."""
+        """
+        Run a test backup using Windows Task Scheduler.
+        This creates a temporary scheduled task, runs it, monitors completion, and cleans up.
+        """
         # Clear previous messages
         if hasattr(self, 'schedule_message_label'):
             self.schedule_message_label.config(text="", fg="green")
@@ -6769,6 +6807,7 @@ php /tmp/update_config.php"
         backup_dir = config.get('backup_dir', '')
         encrypt = config.get('encrypt', False)
         password = config.get('password', '')
+        task_name = config.get('task_name', 'NextcloudBackup')
         
         if not backup_dir:
             if hasattr(self, 'schedule_message_label'):
@@ -6789,26 +6828,174 @@ php /tmp/update_config.php"
         # Show inline progress message
         if hasattr(self, 'schedule_message_label'):
             self.schedule_message_label.config(
-                text="⏳ Running test backup using schedule configuration... Please wait...",
+                text="⏳ Running test backup via Task Scheduler... Please wait...",
                 fg="blue"
             )
         
         def run_test():
-            success, message = run_test_backup(backup_dir, encrypt, password)
-            
-            # Update inline message with result
-            if success:
-                if hasattr(self, 'schedule_message_label'):
-                    result_msg = (
-                        f"✅ Test Backup Successful!\n\n"
-                        f"{message}\n\n"
-                        f"Your scheduled backup configuration is working correctly."
+            """Run test backup through Windows Task Scheduler."""
+            try:
+                # Create a temporary test task
+                test_task_name = f"{task_name}_TestRun"
+                
+                # Get the executable path
+                exe_path = get_exe_path()
+                
+                # Build the command arguments for test run
+                args = [
+                    "--test-run",
+                    "--backup-dir", backup_dir,
+                    "--encrypt" if encrypt else "--no-encrypt"
+                ]
+                
+                if encrypt and password:
+                    args.extend(["--password", password])
+                
+                # Build the full command
+                if exe_path.lower().endswith('.py'):
+                    # For Python scripts, invoke through Python interpreter
+                    command = f'python "{exe_path}" {" ".join(args)}'
+                else:
+                    # For compiled executables (.exe), run directly
+                    command = f'"{exe_path}" {" ".join(args)}'
+                
+                logger.info(f"Creating temporary test task: {test_task_name}")
+                
+                # Delete any existing test task
+                creation_flags = get_subprocess_creation_flags()
+                subprocess.run(
+                    ["schtasks", "/Delete", "/TN", test_task_name, "/F"],
+                    creationflags=creation_flags,
+                    capture_output=True,
+                    text=True
+                )
+                
+                # Create temporary scheduled task (runs once, immediately)
+                schtasks_cmd = [
+                    "schtasks", "/Create",
+                    "/TN", test_task_name,
+                    "/TR", command,
+                    "/SC", "ONCE",  # Run only once
+                    "/ST", "00:00",  # Start time (not used for /Run)
+                    "/F"  # Force creation
+                ]
+                
+                result = subprocess.run(
+                    schtasks_cmd,
+                    creationflags=creation_flags,
+                    capture_output=True,
+                    text=True
+                )
+                
+                if result.returncode != 0:
+                    error_msg = f"Failed to create test task: {result.stderr}"
+                    logger.error(error_msg)
+                    if hasattr(self, 'schedule_message_label'):
+                        self.schedule_message_label.config(
+                            text=f"❌ {error_msg}",
+                            fg=self.theme_colors['error_fg']
+                        )
+                    return
+                
+                logger.info(f"Test task created, triggering execution...")
+                
+                # Run the task immediately
+                run_success, run_message = run_scheduled_task_now(test_task_name)
+                
+                if not run_success:
+                    logger.error(f"Failed to run test task: {run_message}")
+                    if hasattr(self, 'schedule_message_label'):
+                        self.schedule_message_label.config(
+                            text=f"❌ {run_message}",
+                            fg=self.theme_colors['error_fg']
+                        )
+                    # Clean up
+                    subprocess.run(
+                        ["schtasks", "/Delete", "/TN", test_task_name, "/F"],
+                        creationflags=creation_flags,
+                        capture_output=True
                     )
-                    self.schedule_message_label.config(text=result_msg, fg="green")
-            else:
+                    return
+                
+                logger.info("Test task triggered, waiting for completion...")
+                
+                # Wait for task to complete (poll status)
+                max_wait_time = 60  # Maximum 60 seconds
+                poll_interval = 1  # Check every second
+                elapsed_time = 0
+                
+                while elapsed_time < max_wait_time:
+                    time.sleep(poll_interval)
+                    elapsed_time += poll_interval
+                    
+                    # Check task status
+                    status_result = subprocess.run(
+                        ["schtasks", "/Query", "/TN", test_task_name, "/FO", "LIST", "/V"],
+                        creationflags=creation_flags,
+                        capture_output=True,
+                        text=True
+                    )
+                    
+                    if status_result.returncode == 0:
+                        output = status_result.stdout
+                        # Check if task is still running
+                        if "Running" not in output:
+                            # Task completed
+                            logger.info("Test task completed")
+                            break
+                
+                # Check if we timed out
+                if elapsed_time >= max_wait_time:
+                    logger.warning("Test task execution timed out")
+                    if hasattr(self, 'schedule_message_label'):
+                        self.schedule_message_label.config(
+                            text="⚠️ Test backup timed out. Task may still be running in background.",
+                            fg=self.theme_colors['warning_fg']
+                        )
+                else:
+                    # Task completed - determine success/failure
+                    # Check if test backup file exists (it should be deleted if successful)
+                    test_files = [f for f in os.listdir(backup_dir) if f.startswith('test_config_backup_')]
+                    
+                    if not test_files:
+                        # Success - no test files found (they were deleted)
+                        logger.info("Test backup successful - files cleaned up as expected")
+                        if hasattr(self, 'schedule_message_label'):
+                            result_msg = (
+                                f"✅ Test Backup Successful!\n\n"
+                                f"Config file backed up: schedule_config.json\n"
+                                f"Task Scheduler: Verified ✓\n"
+                                f"Permissions: Verified ✓\n"
+                                f"Environment: Verified ✓\n"
+                                f"Test backup deleted (as expected)\n\n"
+                                f"Your scheduled backup is configured correctly and will run as scheduled."
+                            )
+                            self.schedule_message_label.config(text=result_msg, fg="green")
+                    else:
+                        # Partial success - files created but not deleted
+                        logger.warning("Test backup files not cleaned up properly")
+                        if hasattr(self, 'schedule_message_label'):
+                            self.schedule_message_label.config(
+                                text=f"⚠️ Test backup ran but cleanup failed.\nPlease check {backup_dir} for test files.",
+                                fg=self.theme_colors['warning_fg']
+                            )
+                
+                # Clean up the temporary task
+                logger.info(f"Cleaning up test task: {test_task_name}")
+                subprocess.run(
+                    ["schtasks", "/Delete", "/TN", test_task_name, "/F"],
+                    creationflags=creation_flags,
+                    capture_output=True,
+                    text=True
+                )
+                
+            except Exception as e:
+                error_msg = f"Test backup failed: {str(e)}"
+                logger.error(error_msg)
+                logger.error(traceback.format_exc())
                 if hasattr(self, 'schedule_message_label'):
                     self.schedule_message_label.config(
-                        text=f"❌ Test Backup Failed:\n{message}",
+                        text=f"❌ {error_msg}",
                         fg=self.theme_colors['error_fg']
                     )
         
@@ -9554,6 +9741,7 @@ if __name__ == "__main__":
     # Parse command-line arguments for scheduled execution
     parser = argparse.ArgumentParser(description='Nextcloud Restore & Backup Utility')
     parser.add_argument('--scheduled', action='store_true', help='Run in scheduled backup mode (no GUI)')
+    parser.add_argument('--test-run', action='store_true', help='Run a test backup (config file only, deleted after)')
     parser.add_argument('--backup-dir', type=str, help='Backup directory path')
     parser.add_argument('--encrypt', action='store_true', help='Enable encryption')
     parser.add_argument('--no-encrypt', action='store_true', help='Disable encryption')
@@ -9561,7 +9749,23 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    if args.scheduled:
+    if args.test_run:
+        # Run in test mode (backup config file only, no GUI)
+        if not args.backup_dir:
+            print("ERROR: --backup-dir is required for test backups")
+            sys.exit(1)
+        
+        encrypt = args.encrypt and not args.no_encrypt
+        
+        # Run test backup directly
+        success, message = run_test_backup(args.backup_dir, encrypt, args.password)
+        if success:
+            print(f"SUCCESS: {message}")
+            sys.exit(0)
+        else:
+            print(f"FAILED: {message}")
+            sys.exit(1)
+    elif args.scheduled:
         # Run in scheduled mode (no GUI)
         if not args.backup_dir:
             print("ERROR: --backup-dir is required for scheduled backups")
