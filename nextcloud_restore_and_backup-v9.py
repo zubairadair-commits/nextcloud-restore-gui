@@ -6250,6 +6250,22 @@ php /tmp/update_config.php"
             btn_frame = tk.Frame(status_frame, bg=self.theme_colors['info_bg'])
             btn_frame.pack(pady=10)
             
+            # Test Run button (enabled when schedule is active)
+            test_run_btn = tk.Button(
+                btn_frame,
+                text="🧪 Test Run",
+                font=("Arial", 11),
+                bg="#3498db",
+                fg="white",
+                command=lambda: self._run_test_backup_scheduled(config)
+            )
+            test_run_btn.pack(side="left", padx=5)
+            
+            # Add tooltip for Test Run button
+            ToolTip(test_run_btn, 
+                   "Click to immediately run a backup using the current schedule configuration.\n"
+                   "This will verify that your scheduled backup is working correctly.")
+            
             tk.Button(
                 btn_frame, 
                 text="Disable Schedule", 
@@ -6275,6 +6291,26 @@ php /tmp/update_config.php"
                 bg=self.theme_colors['info_bg'], 
                 fg=self.theme_colors['error_fg']
             ).pack(pady=5)
+            
+            # Add disabled Test Run button when no schedule exists
+            btn_frame = tk.Frame(status_frame, bg=self.theme_colors['info_bg'])
+            btn_frame.pack(pady=10)
+            
+            # Disabled Test Run button
+            test_run_btn = tk.Button(
+                btn_frame,
+                text="🧪 Test Run",
+                font=("Arial", 11),
+                bg="#d3d3d3",  # Gray background when disabled
+                fg="#808080",  # Gray text when disabled
+                state=tk.DISABLED
+            )
+            test_run_btn.pack(side="left", padx=5)
+            
+            # Add tooltip explaining why it's disabled
+            ToolTip(test_run_btn, 
+                   "Test Run is disabled because no backup schedule is configured.\n"
+                   "Please create a schedule first to enable this feature.")
         
         # Configuration section
         config_frame = tk.Frame(frame, bg=self.theme_colors['bg'])
@@ -6451,27 +6487,9 @@ php /tmp/update_config.php"
         )
         self.schedule_message_label.pack(pady=10, fill="x")
         
-        # Buttons frame
-        buttons_frame = tk.Frame(config_frame, bg=self.theme_colors['bg'])
-        buttons_frame.pack(pady=20)
-        
-        # Test Run button
-        tk.Button(
-            buttons_frame,
-            text="🧪 Test Run",
-            font=("Arial", 12, "bold"),
-            bg="#3498db",
-            fg="white",
-            command=lambda: self._run_test_backup(
-                backup_dir_var.get(),
-                encrypt_var.get(),
-                password_var.get()
-            )
-        ).pack(side="left", padx=5)
-        
         # Create schedule button
         tk.Button(
-            buttons_frame,
+            config_frame,
             text="Create/Update Schedule",
             font=("Arial", 12, "bold"),
             bg="#27ae60",
@@ -6483,7 +6501,7 @@ php /tmp/update_config.php"
                 encrypt_var.get(),
                 password_var.get()
             )
-        ).pack(side="left", padx=5)
+        ).pack(pady=20)
         
         # Last Run Status section (if schedule exists)
         if status and status.get('exists'):
@@ -6730,6 +6748,71 @@ php /tmp/update_config.php"
             if hasattr(self, 'schedule_message_label'):
                 self.schedule_message_label.config(text=f"❌ Failed to delete schedule:\n{message}", fg=self.theme_colors['error_fg'])
             self.show_schedule_backup()
+    
+    def _run_test_backup_scheduled(self, config):
+        """Run a test backup using the current schedule configuration."""
+        # Clear previous messages
+        if hasattr(self, 'schedule_message_label'):
+            self.schedule_message_label.config(text="", fg="green")
+        
+        if not config:
+            if hasattr(self, 'schedule_message_label'):
+                self.schedule_message_label.config(
+                    text="❌ No schedule configuration found. Please create a schedule first.",
+                    fg=self.theme_colors['error_fg']
+                )
+            return
+        
+        # Get configuration from schedule
+        backup_dir = config.get('backup_dir', '')
+        encrypt = config.get('encrypt', False)
+        password = config.get('password', '')
+        
+        if not backup_dir:
+            if hasattr(self, 'schedule_message_label'):
+                self.schedule_message_label.config(
+                    text="❌ Backup directory not configured in schedule.",
+                    fg=self.theme_colors['error_fg']
+                )
+            return
+        
+        if not os.path.isdir(backup_dir):
+            if hasattr(self, 'schedule_message_label'):
+                self.schedule_message_label.config(
+                    text=f"❌ Backup directory does not exist: {backup_dir}",
+                    fg=self.theme_colors['error_fg']
+                )
+            return
+        
+        # Show inline progress message
+        if hasattr(self, 'schedule_message_label'):
+            self.schedule_message_label.config(
+                text="⏳ Running test backup using schedule configuration... Please wait...",
+                fg="blue"
+            )
+        
+        def run_test():
+            success, message = run_test_backup(backup_dir, encrypt, password)
+            
+            # Update inline message with result
+            if success:
+                if hasattr(self, 'schedule_message_label'):
+                    result_msg = (
+                        f"✅ Test Backup Successful!\n\n"
+                        f"{message}\n\n"
+                        f"Your scheduled backup configuration is working correctly."
+                    )
+                    self.schedule_message_label.config(text=result_msg, fg="green")
+            else:
+                if hasattr(self, 'schedule_message_label'):
+                    self.schedule_message_label.config(
+                        text=f"❌ Test Backup Failed:\n{message}",
+                        fg=self.theme_colors['error_fg']
+                    )
+        
+        # Run test in thread
+        thread = threading.Thread(target=run_test, daemon=True)
+        thread.start()
     
     def _run_test_backup(self, backup_dir, encrypt, password):
         """Run a test backup to verify configuration."""
