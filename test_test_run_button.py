@@ -144,9 +144,9 @@ def test_test_run_button_tooltip():
 
 
 def test_test_run_uses_schedule_config():
-    """Test that Test Run uses schedule configuration."""
+    """Test that Test Run uses schedule configuration via Task Scheduler."""
     print("=" * 70)
-    print("TEST 4: Test Run Uses Schedule Configuration")
+    print("TEST 4: Test Run Uses Schedule Configuration via Task Scheduler")
     print("=" * 70)
     print()
     
@@ -175,14 +175,23 @@ def test_test_run_uses_schedule_config():
     assert "config.get('encrypt'" in method_content, \
         "Should get encrypt setting from config"
     
-    assert 'run_test_backup(' in method_content, \
-        "Should call run_test_backup function"
+    # Updated: Check for Task Scheduler integration instead of direct call
+    assert 'schtasks", "/Create"' in method_content or 'schtasks' in method_content, \
+        "Should use Windows Task Scheduler (schtasks)"
+    
+    assert '--test-run' in method_content, \
+        "Should create task with --test-run flag"
+    
+    assert 'run_scheduled_task_now' in method_content or 'schtasks", "/Run"' in method_content, \
+        "Should trigger task via scheduler"
     
     print("  ✓ _run_test_backup_scheduled method exists")
     print("  ✓ Method accepts schedule config parameter")
     print("  ✓ Method extracts backup_dir from config")
     print("  ✓ Method extracts encrypt setting from config")
-    print("  ✓ Method calls run_test_backup with config values")
+    print("  ✓ Method uses Windows Task Scheduler (schtasks)")
+    print("  ✓ Creates temporary task with --test-run flag")
+    print("  ✓ Triggers task via scheduler (validates real environment)")
     print()
     return True
 
