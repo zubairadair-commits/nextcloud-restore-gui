@@ -6439,6 +6439,18 @@ php /tmp/update_config.php"
             )
             warning_label.pack(pady=10)
         
+        # Inline notification/message area
+        self.schedule_message_label = tk.Label(
+            config_frame, 
+            text="", 
+            font=("Arial", 11), 
+            bg=self.theme_colors['bg'],
+            fg="green",
+            wraplength=600,
+            justify=tk.LEFT
+        )
+        self.schedule_message_label.pack(pady=10, fill="x")
+        
         # Buttons frame
         buttons_frame = tk.Frame(config_frame, bg=self.theme_colors['bg'])
         buttons_frame.pack(pady=20)
@@ -6589,39 +6601,29 @@ php /tmp/update_config.php"
         """Create or update a scheduled backup with validation."""
         task_name = "NextcloudBackup"
         
+        # Clear any previous messages
+        if hasattr(self, 'schedule_message_label'):
+            self.schedule_message_label.config(text="", fg="green")
+        
         # Run validation checks
         logger.info("Running pre-creation validation checks...")
         validation_results = validate_scheduled_task_setup(
             task_name, frequency, time, backup_dir, encrypt, password
         )
         
-        # Show validation results in a dialog
+        # Show validation results inline
         if not validation_results['all_valid']:
             error_msg = "❌ Setup Validation Failed\n\n"
             error_msg += "The following issues were found:\n\n"
             for error in validation_results['errors']:
                 error_msg += f"• {error}\n"
-            error_msg += "\n\nPlease fix these issues before creating the scheduled backup."
+            error_msg += "\nPlease fix these issues before creating the scheduled backup."
             
-            # Show detailed validation results
-            details = "\n\nDetailed Validation Results:\n"
-            for key, value in validation_results.items():
-                if key not in ['all_valid', 'errors'] and isinstance(value, tuple):
-                    details += f"\n{value[1]}"
-            
-            messagebox.showerror("Validation Failed", error_msg + details)
+            if hasattr(self, 'schedule_message_label'):
+                self.schedule_message_label.config(text=error_msg, fg=self.theme_colors['error_fg'])
             return
         
-        # All validations passed, show success message
-        validation_msg = "✅ All Validation Checks Passed\n\n"
-        for key, value in validation_results.items():
-            if key not in ['all_valid', 'errors'] and isinstance(value, tuple):
-                validation_msg += f"{value[1]}\n"
-        
-        # Ask user to confirm creation
-        confirm_msg = validation_msg + "\n\nProceed with creating the scheduled task?"
-        if not messagebox.askyesno("Validation Successful", confirm_msg):
-            return
+        # All validations passed - proceed with creation directly (no confirmation pop-up)
         
         # Create the scheduled task
         success, message = create_scheduled_task(
@@ -6647,23 +6649,28 @@ php /tmp/update_config.php"
             }
             
             if save_schedule_config(config):
-                messagebox.showinfo(
-                    "Success", 
+                success_msg = (
                     f"✅ Scheduled backup created successfully!\n\n"
                     f"Frequency: {frequency}\n"
                     f"Time: {time}\n"
                     f"Backup Directory: {backup_dir}\n\n"
-                    f"Your backups will run automatically according to this schedule.\n\n"
+                    f"Your backups will run automatically according to this schedule.\n"
                     f"You can now use the Test Run button to verify your setup."
                 )
+                if hasattr(self, 'schedule_message_label'):
+                    self.schedule_message_label.config(text=success_msg, fg="green")
                 self.show_schedule_backup()  # Stay on schedule page to allow testing
             else:
-                messagebox.showwarning(
-                    "Warning", 
-                    "Task created but configuration could not be saved."
-                )
+                warning_msg = "⚠️ Task created but configuration could not be saved."
+                if hasattr(self, 'schedule_message_label'):
+                    self.schedule_message_label.config(text=warning_msg, fg=self.theme_colors['warning_fg'])
+                self.show_schedule_backup()
         else:
-            messagebox.showerror("Error", f"Failed to create scheduled task:\n{message}")
+            error_msg = f"❌ Failed to create scheduled task:\n{message}"
+            if hasattr(self, 'schedule_message_label'):
+                self.schedule_message_label.config(text=error_msg, fg=self.theme_colors['error_fg'])
+            else:
+                self.show_schedule_backup()
     
     def _disable_schedule(self, task_name):
         """Disable the scheduled backup."""
@@ -6676,21 +6683,37 @@ php /tmp/update_config.php"
                 config['enabled'] = False
                 save_schedule_config(config)
             
-            messagebox.showinfo("Success", "Scheduled backup has been disabled.")
+            # Show inline success message
             self.show_schedule_backup()  # Refresh the UI
+            if hasattr(self, 'schedule_message_label'):
+                self.schedule_message_label.config(text="✅ Scheduled backup has been disabled.", fg="green")
         else:
-            messagebox.showerror("Error", f"Failed to disable schedule:\n{message}")
+            # Show inline error message
+            self.show_schedule_backup()
+            if hasattr(self, 'schedule_message_label'):
+                self.schedule_message_label.config(text=f"❌ Failed to disable schedule:\n{message}", fg=self.theme_colors['error_fg'])
     
     def _delete_schedule(self, task_name):
         """Delete the scheduled backup."""
-        confirm = messagebox.askyesno(
-            "Confirm Delete", 
-            "Are you sure you want to delete the scheduled backup?\n\n"
-            "This will remove the scheduled task completely."
-        )
+        # Show inline confirmation request
+        if hasattr(self, 'schedule_message_label'):
+            self.schedule_message_label.config(
+                text="⚠️ Are you sure? Click Delete Schedule again to confirm deletion. This will remove the scheduled task completely.",
+                fg=self.theme_colors['warning_fg']
+            )
         
-        if not confirm:
+        # Use a simple confirmation approach - user needs to click twice
+        if not hasattr(self, '_delete_confirm_pending'):
+            self._delete_confirm_pending = False
+        
+        if not self._delete_confirm_pending:
+            self._delete_confirm_pending = True
+            # After 5 seconds, reset the confirmation
+            self.after(5000, lambda: setattr(self, '_delete_confirm_pending', False))
             return
+        
+        # Reset confirmation flag
+        self._delete_confirm_pending = False
         
         success, message = delete_scheduled_task(task_name)
         
@@ -6700,59 +6723,49 @@ php /tmp/update_config.php"
             if os.path.exists(config_path):
                 os.remove(config_path)
             
-            messagebox.showinfo("Success", "Scheduled backup has been deleted.")
+            # Return to landing page since no schedule exists now
             self.show_landing()
         else:
-            messagebox.showerror("Error", f"Failed to delete schedule:\n{message}")
+            # Stay on page and show error
+            if hasattr(self, 'schedule_message_label'):
+                self.schedule_message_label.config(text=f"❌ Failed to delete schedule:\n{message}", fg=self.theme_colors['error_fg'])
+            self.show_schedule_backup()
     
     def _run_test_backup(self, backup_dir, encrypt, password):
         """Run a test backup to verify configuration."""
+        # Clear previous messages
+        if hasattr(self, 'schedule_message_label'):
+            self.schedule_message_label.config(text="", fg="green")
+        
         if not backup_dir:
-            messagebox.showerror("Error", "Please select a backup directory first.")
+            if hasattr(self, 'schedule_message_label'):
+                self.schedule_message_label.config(text="❌ Please select a backup directory first.", fg=self.theme_colors['error_fg'])
             return
         
         if not os.path.isdir(backup_dir):
-            messagebox.showerror("Error", "Invalid backup directory.")
+            if hasattr(self, 'schedule_message_label'):
+                self.schedule_message_label.config(text="❌ Invalid backup directory.", fg=self.theme_colors['error_fg'])
             return
         
         if encrypt and not password:
-            messagebox.showerror("Error", "Please provide an encryption password or disable encryption.")
+            if hasattr(self, 'schedule_message_label'):
+                self.schedule_message_label.config(text="❌ Please provide an encryption password or disable encryption.", fg=self.theme_colors['error_fg'])
             return
         
-        # Show progress dialog
-        progress_window = tk.Toplevel(self.root)
-        progress_window.title("Test Backup")
-        progress_window.geometry("400x150")
-        progress_window.transient(self.root)
-        progress_window.grab_set()
-        
-        # Center the window
-        progress_window.update_idletasks()
-        x = (progress_window.winfo_screenwidth() // 2) - (400 // 2)
-        y = (progress_window.winfo_screenheight() // 2) - (150 // 2)
-        progress_window.geometry(f"400x150+{x}+{y}")
-        
-        tk.Label(
-            progress_window,
-            text="Running test backup...",
-            font=("Arial", 12)
-        ).pack(pady=20)
-        
-        progress_label = tk.Label(
-            progress_window,
-            text="Please wait...",
-            font=("Arial", 10)
-        )
-        progress_label.pack(pady=10)
+        # Show inline progress message
+        if hasattr(self, 'schedule_message_label'):
+            self.schedule_message_label.config(text="⏳ Running test backup... Please wait...", fg="blue")
         
         def run_test():
             success, message = run_test_backup(backup_dir, encrypt, password)
-            progress_window.destroy()
             
+            # Update inline message with result
             if success:
-                messagebox.showinfo("Test Backup Successful", message)
+                if hasattr(self, 'schedule_message_label'):
+                    self.schedule_message_label.config(text=f"✅ Test Backup Successful!\n{message}", fg="green")
             else:
-                messagebox.showerror("Test Backup Failed", message)
+                if hasattr(self, 'schedule_message_label'):
+                    self.schedule_message_label.config(text=f"❌ Test Backup Failed:\n{message}", fg=self.theme_colors['error_fg'])
         
         # Run test in thread
         thread = threading.Thread(target=run_test, daemon=True)
@@ -6835,41 +6848,24 @@ php /tmp/update_config.php"
     def _verify_scheduled_backup(self, backup_dir, task_name):
         """Verify that scheduled backup is working correctly."""
         if not backup_dir:
-            messagebox.showerror("Error", "No backup directory configured.")
+            if hasattr(self, 'schedule_message_label'):
+                self.schedule_message_label.config(text="❌ No backup directory configured.", fg=self.theme_colors['error_fg'])
             return
         
-        # Show progress dialog
-        progress_window = tk.Toplevel(self.root)
-        progress_window.title("Verifying Scheduled Backup")
-        progress_window.geometry("400x150")
-        progress_window.transient(self.root)
-        progress_window.grab_set()
-        
-        # Center the window
-        progress_window.update_idletasks()
-        x = (progress_window.winfo_screenwidth() // 2) - (200)
-        y = (progress_window.winfo_screenheight() // 2) - (75)
-        progress_window.geometry(f"400x150+{x}+{y}")
-        
-        tk.Label(
-            progress_window,
-            text="Verifying scheduled backup...",
-            font=("Arial", 12)
-        ).pack(pady=20)
-        
-        progress_label = tk.Label(
-            progress_window,
-            text="Checking backup files and logs...",
-            font=("Arial", 10)
-        )
-        progress_label.pack(pady=10)
+        # Show inline progress message
+        if hasattr(self, 'schedule_message_label'):
+            self.schedule_message_label.config(text="⏳ Verifying scheduled backup... Checking backup files and logs...", fg="blue")
         
         def run_verification():
             verification = verify_scheduled_backup_ran(backup_dir, task_name)
-            progress_window.destroy()
             
-            # Show results
-            messagebox.showinfo("Verification Results", verification['message'])
+            # Show results inline
+            if hasattr(self, 'schedule_message_label'):
+                icon = "✅" if verification.get('backup_file_exists', False) else "⚠️"
+                self.schedule_message_label.config(
+                    text=f"{icon} Verification Results:\n{verification['message']}", 
+                    fg="green" if verification.get('backup_file_exists', False) else self.theme_colors['warning_fg']
+                )
         
         # Run verification in thread
         thread = threading.Thread(target=run_verification, daemon=True)
