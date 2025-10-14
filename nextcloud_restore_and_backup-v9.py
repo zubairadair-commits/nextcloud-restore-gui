@@ -6653,9 +6653,10 @@ php /tmp/update_config.php"
                     f"Frequency: {frequency}\n"
                     f"Time: {time}\n"
                     f"Backup Directory: {backup_dir}\n\n"
-                    f"Your backups will run automatically according to this schedule."
+                    f"Your backups will run automatically according to this schedule.\n\n"
+                    f"You can now use the Test Run button to verify your setup."
                 )
-                self.show_landing()
+                self.show_schedule_backup()  # Stay on schedule page to allow testing
             else:
                 messagebox.showwarning(
                     "Warning", 
