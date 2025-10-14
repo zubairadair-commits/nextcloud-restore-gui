@@ -1942,6 +1942,258 @@ def get_exe_path():
         # Running as script
         return os.path.abspath(sys.argv[0])
 
+def validate_scheduled_task_setup(task_name, schedule_type, schedule_time, backup_dir, encrypt, password=""):
+    """
+    Validate all aspects of scheduled task setup before creating it.
+    Returns a dict with validation results for each check.
+    
+    Args:
+        task_name: Name for the scheduled task
+        schedule_type: 'daily', 'weekly', 'monthly', or 'custom'
+        schedule_time: Time in HH:MM format
+        backup_dir: Directory to save backups
+        encrypt: Boolean for encryption
+        password: Encryption password (optional)
+    
+    Returns: dict with validation results
+        {
+            'exe_path_exists': (bool, message),
+            'start_dir_valid': (bool, message),
+            'arguments_valid': (bool, message),
+            'backup_dir_writable': (bool, message),
+            'log_file_writable': (bool, message),
+            'task_fields_valid': (bool, message),
+            'all_valid': bool,
+            'errors': [list of error messages]
+        }
+    """
+    results = {
+        'all_valid': True,
+        'errors': []
+    }
+    
+    # 1. Check backup script or EXE path exists
+    try:
+        exe_path = get_exe_path()
+        if os.path.exists(exe_path):
+            results['exe_path_exists'] = (True, f"✓ Executable path exists: {exe_path}")
+            logger.info(f"VALIDATION: Executable path verified: {exe_path}")
+        else:
+            results['exe_path_exists'] = (False, f"✗ Executable path not found: {exe_path}")
+            results['all_valid'] = False
+            results['errors'].append(f"Executable path not found: {exe_path}")
+            logger.error(f"VALIDATION FAILED: Executable path not found: {exe_path}")
+    except Exception as e:
+        results['exe_path_exists'] = (False, f"✗ Error checking executable path: {e}")
+        results['all_valid'] = False
+        results['errors'].append(f"Error checking executable path: {e}")
+        logger.error(f"VALIDATION FAILED: Error checking executable path: {e}")
+    
+    # 2. Validate 'Start in' directory (parent directory of executable)
+    try:
+        exe_path = get_exe_path()
+        start_dir = os.path.dirname(exe_path)
+        if os.path.isdir(start_dir):
+            results['start_dir_valid'] = (True, f"✓ Start directory is valid: {start_dir}")
+            logger.info(f"VALIDATION: Start directory verified: {start_dir}")
+        else:
+            results['start_dir_valid'] = (False, f"✗ Start directory not found: {start_dir}")
+            results['all_valid'] = False
+            results['errors'].append(f"Start directory not found: {start_dir}")
+            logger.error(f"VALIDATION FAILED: Start directory not found: {start_dir}")
+    except Exception as e:
+        results['start_dir_valid'] = (False, f"✗ Error checking start directory: {e}")
+        results['all_valid'] = False
+        results['errors'].append(f"Error checking start directory: {e}")
+        logger.error(f"VALIDATION FAILED: Error checking start directory: {e}")
+    
+    # 3. Validate arguments for scheduled task
+    try:
+        args = [
+            "--scheduled",
+            "--backup-dir", backup_dir,
+            "--encrypt" if encrypt else "--no-encrypt"
+        ]
+        if encrypt and password:
+            args.extend(["--password", password])
+        
+        # Verify all required arguments are present
+        has_scheduled = "--scheduled" in args
+        has_backup_dir = "--backup-dir" in args and backup_dir in args
+        has_encrypt_flag = "--encrypt" in args or "--no-encrypt" in args
+        
+        if has_scheduled and has_backup_dir and has_encrypt_flag:
+            results['arguments_valid'] = (True, f"✓ Task arguments are correct: {' '.join(args[:4])}")
+            logger.info(f"VALIDATION: Task arguments verified: {args}")
+        else:
+            missing = []
+            if not has_scheduled:
+                missing.append("--scheduled")
+            if not has_backup_dir:
+                missing.append("--backup-dir")
+            if not has_encrypt_flag:
+                missing.append("encryption flag")
+            
+            results['arguments_valid'] = (False, f"✗ Missing required arguments: {', '.join(missing)}")
+            results['all_valid'] = False
+            results['errors'].append(f"Missing required arguments: {', '.join(missing)}")
+            logger.error(f"VALIDATION FAILED: Missing required arguments: {missing}")
+    except Exception as e:
+        results['arguments_valid'] = (False, f"✗ Error validating arguments: {e}")
+        results['all_valid'] = False
+        results['errors'].append(f"Error validating arguments: {e}")
+        logger.error(f"VALIDATION FAILED: Error validating arguments: {e}")
+    
+    # 4. Check backup destination is writable
+    try:
+        if not os.path.exists(backup_dir):
+            results['backup_dir_writable'] = (False, f"✗ Backup directory does not exist: {backup_dir}")
+            results['all_valid'] = False
+            results['errors'].append(f"Backup directory does not exist: {backup_dir}")
+            logger.error(f"VALIDATION FAILED: Backup directory does not exist: {backup_dir}")
+        elif not os.path.isdir(backup_dir):
+            results['backup_dir_writable'] = (False, f"✗ Backup path is not a directory: {backup_dir}")
+            results['all_valid'] = False
+            results['errors'].append(f"Backup path is not a directory: {backup_dir}")
+            logger.error(f"VALIDATION FAILED: Backup path is not a directory: {backup_dir}")
+        else:
+            # Try to create a test file
+            test_file = os.path.join(backup_dir, '.nextcloud_backup_test')
+            try:
+                with open(test_file, 'w') as f:
+                    f.write('test')
+                os.remove(test_file)
+                results['backup_dir_writable'] = (True, f"✓ Backup directory is writable: {backup_dir}")
+                logger.info(f"VALIDATION: Backup directory is writable: {backup_dir}")
+            except Exception as write_error:
+                results['backup_dir_writable'] = (False, f"✗ Backup directory is not writable: {write_error}")
+                results['all_valid'] = False
+                results['errors'].append(f"Backup directory is not writable: {write_error}")
+                logger.error(f"VALIDATION FAILED: Backup directory is not writable: {write_error}")
+    except Exception as e:
+        results['backup_dir_writable'] = (False, f"✗ Error checking backup directory: {e}")
+        results['all_valid'] = False
+        results['errors'].append(f"Error checking backup directory: {e}")
+        logger.error(f"VALIDATION FAILED: Error checking backup directory: {e}")
+    
+    # 5. Check log file location is writable and can write test entry
+    try:
+        log_file = LOG_FILE_PATH
+        log_dir = os.path.dirname(log_file)
+        
+        if not os.path.exists(log_dir):
+            # Try to create the log directory
+            try:
+                os.makedirs(log_dir, exist_ok=True)
+                results['log_file_writable'] = (True, f"✓ Log directory created: {log_dir}")
+                logger.info(f"VALIDATION: Log directory created: {log_dir}")
+            except Exception as mkdir_error:
+                results['log_file_writable'] = (False, f"✗ Cannot create log directory: {mkdir_error}")
+                results['all_valid'] = False
+                results['errors'].append(f"Cannot create log directory: {mkdir_error}")
+                logger.error(f"VALIDATION FAILED: Cannot create log directory: {mkdir_error}")
+        else:
+            # Try to write a test log entry
+            try:
+                logger.info("VALIDATION: Testing log file write capability")
+                results['log_file_writable'] = (True, f"✓ Log file is writable: {log_file}")
+            except Exception as write_error:
+                results['log_file_writable'] = (False, f"✗ Cannot write to log file: {write_error}")
+                results['all_valid'] = False
+                results['errors'].append(f"Cannot write to log file: {write_error}")
+                logger.error(f"VALIDATION FAILED: Cannot write to log file: {write_error}")
+    except Exception as e:
+        results['log_file_writable'] = (False, f"✗ Error checking log file: {e}")
+        results['all_valid'] = False
+        results['errors'].append(f"Error checking log file: {e}")
+        logger.error(f"VALIDATION FAILED: Error checking log file: {e}")
+    
+    # 6. Validate Task Scheduler entry fields
+    try:
+        # Validate schedule_type
+        valid_schedule_types = ['daily', 'weekly', 'monthly']
+        if schedule_type not in valid_schedule_types:
+            results['task_fields_valid'] = (False, f"✗ Invalid schedule type: {schedule_type}. Must be one of: {', '.join(valid_schedule_types)}")
+            results['all_valid'] = False
+            results['errors'].append(f"Invalid schedule type: {schedule_type}")
+            logger.error(f"VALIDATION FAILED: Invalid schedule type: {schedule_type}")
+        else:
+            # Validate time format
+            try:
+                datetime.strptime(schedule_time, "%H:%M")
+                # Validate task name
+                if not task_name or len(task_name.strip()) == 0:
+                    results['task_fields_valid'] = (False, f"✗ Task name cannot be empty")
+                    results['all_valid'] = False
+                    results['errors'].append("Task name cannot be empty")
+                    logger.error("VALIDATION FAILED: Task name cannot be empty")
+                else:
+                    results['task_fields_valid'] = (True, f"✓ Task fields are valid (name: {task_name}, type: {schedule_type}, time: {schedule_time})")
+                    logger.info(f"VALIDATION: Task fields verified: {task_name}, {schedule_type}, {schedule_time}")
+            except ValueError:
+                results['task_fields_valid'] = (False, f"✗ Invalid time format: {schedule_time}. Must be HH:MM (e.g., 02:00)")
+                results['all_valid'] = False
+                results['errors'].append(f"Invalid time format: {schedule_time}")
+                logger.error(f"VALIDATION FAILED: Invalid time format: {schedule_time}")
+    except Exception as e:
+        results['task_fields_valid'] = (False, f"✗ Error validating task fields: {e}")
+        results['all_valid'] = False
+        results['errors'].append(f"Error validating task fields: {e}")
+        logger.error(f"VALIDATION FAILED: Error validating task fields: {e}")
+    
+    # Log overall validation result
+    if results['all_valid']:
+        logger.info("VALIDATION: All checks passed successfully")
+    else:
+        logger.error(f"VALIDATION FAILED: {len(results['errors'])} error(s) found")
+    
+    return results
+
+def run_test_backup(backup_dir, encrypt, password=""):
+    """
+    Run a test backup to verify the configuration works.
+    Returns (success, message) tuple.
+    """
+    logger.info("TEST RUN: Starting test backup")
+    
+    try:
+        # Create a test backup directory
+        test_backup_name = f"test_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.tar.gz"
+        test_backup_path = os.path.join(backup_dir, test_backup_name)
+        
+        # Create a minimal test backup (just a small test file)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Create a test file
+            test_file = os.path.join(temp_dir, "test.txt")
+            with open(test_file, 'w') as f:
+                f.write(f"Test backup created at {datetime.now().isoformat()}\n")
+                f.write("This is a test backup to verify scheduled backup configuration.\n")
+            
+            # Create tar.gz archive
+            with tarfile.open(test_backup_path, 'w:gz') as tar:
+                tar.add(test_file, arcname='test.txt')
+        
+        # Verify the backup was created
+        if os.path.exists(test_backup_path):
+            file_size = os.path.getsize(test_backup_path)
+            logger.info(f"TEST RUN: Test backup created successfully: {test_backup_path} ({file_size} bytes)")
+            
+            # Clean up test backup
+            try:
+                os.remove(test_backup_path)
+                logger.info("TEST RUN: Test backup cleaned up")
+            except:
+                pass  # Ignore cleanup errors
+            
+            return True, f"✓ Test backup successful!\n\nTest file created: {test_backup_name}\nSize: {file_size} bytes\nLocation: {backup_dir}\n\nYour scheduled backup configuration is working correctly."
+        else:
+            logger.error("TEST RUN: Test backup file was not created")
+            return False, "Test backup failed: Backup file was not created."
+    
+    except Exception as e:
+        logger.error(f"TEST RUN: Test backup failed with error: {e}")
+        return False, f"Test backup failed: {e}"
+
 def create_scheduled_task(task_name, schedule_type, schedule_time, backup_dir, encrypt, password=""):
     """
     Create a Windows scheduled task for automatic backups.
@@ -2130,6 +2382,132 @@ def enable_scheduled_task(task_name):
     
     except Exception as e:
         return False, f"Error enabling scheduled task: {e}"
+
+def get_last_backup_info(backup_dir):
+    """
+    Get information about the most recent backup in the directory.
+    Returns dict with backup info or None if no backups found.
+    """
+    try:
+        if not os.path.exists(backup_dir) or not os.path.isdir(backup_dir):
+            return None
+        
+        # Find all backup files (tar.gz)
+        backup_files = []
+        for filename in os.listdir(backup_dir):
+            if filename.endswith('.tar.gz') and not filename.startswith('test_backup_'):
+                filepath = os.path.join(backup_dir, filename)
+                if os.path.isfile(filepath):
+                    backup_files.append({
+                        'name': filename,
+                        'path': filepath,
+                        'size': os.path.getsize(filepath),
+                        'modified': os.path.getmtime(filepath)
+                    })
+        
+        if not backup_files:
+            return None
+        
+        # Get the most recent backup
+        latest_backup = max(backup_files, key=lambda x: x['modified'])
+        
+        # Format the time
+        modified_time = datetime.fromtimestamp(latest_backup['modified'])
+        size_mb = latest_backup['size'] / (1024 * 1024)
+        
+        return {
+            'name': latest_backup['name'],
+            'path': latest_backup['path'],
+            'size': latest_backup['size'],
+            'size_mb': size_mb,
+            'modified': modified_time,
+            'age_hours': (datetime.now() - modified_time).total_seconds() / 3600
+        }
+    except Exception as e:
+        logger.error(f"Error getting last backup info: {e}")
+        return None
+
+def get_recent_log_entries(num_lines=50):
+    """
+    Get recent log entries from the log file.
+    Returns list of log lines or empty list if error.
+    """
+    try:
+        log_file = LOG_FILE_PATH
+        if not os.path.exists(log_file):
+            return []
+        
+        with open(log_file, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        
+        # Return last num_lines
+        return lines[-num_lines:] if len(lines) > num_lines else lines
+    except Exception as e:
+        logger.error(f"Error reading log file: {e}")
+        return []
+
+def verify_scheduled_backup_ran(backup_dir, task_name):
+    """
+    Verify that a scheduled backup actually ran by checking:
+    1. Backup file exists in the directory
+    2. Log file contains recent backup entries
+    
+    Returns dict with verification results.
+    """
+    results = {
+        'backup_file_exists': False,
+        'log_entry_exists': False,
+        'backup_info': None,
+        'recent_logs': [],
+        'success': False,
+        'message': ''
+    }
+    
+    try:
+        # Check for backup file
+        backup_info = get_last_backup_info(backup_dir)
+        if backup_info:
+            results['backup_file_exists'] = True
+            results['backup_info'] = backup_info
+            
+            # Check if backup is recent (within last 48 hours)
+            if backup_info['age_hours'] < 48:
+                results['message'] += f"✓ Recent backup found: {backup_info['name']}\n"
+                results['message'] += f"  Created: {backup_info['modified'].strftime('%Y-%m-%d %H:%M:%S')}\n"
+                results['message'] += f"  Size: {backup_info['size_mb']:.2f} MB\n"
+            else:
+                results['message'] += f"⚠ Last backup is {backup_info['age_hours']:.1f} hours old\n"
+        else:
+            results['message'] += "✗ No backup files found in directory\n"
+        
+        # Check log file for recent scheduled backup entries
+        log_entries = get_recent_log_entries(100)
+        scheduled_entries = [line for line in log_entries if 'SCHEDULED' in line or 'scheduled' in line]
+        
+        if scheduled_entries:
+            results['log_entry_exists'] = True
+            results['recent_logs'] = scheduled_entries[-10:]  # Last 10 scheduled entries
+            results['message'] += f"✓ Found {len(scheduled_entries)} scheduled backup log entries\n"
+        else:
+            results['message'] += "⚠ No scheduled backup entries found in recent logs\n"
+        
+        # Determine overall success
+        results['success'] = results['backup_file_exists'] and results['log_entry_exists']
+        
+        if results['success']:
+            results['message'] += "\n✓ Verification successful: Scheduled backup is working correctly"
+        elif results['backup_file_exists']:
+            results['message'] += "\n⚠ Backup file exists but no recent log entries found"
+        else:
+            results['message'] += "\n✗ Verification failed: No recent backup found"
+        
+        logger.info(f"VERIFICATION: Scheduled backup verification completed. Success: {results['success']}")
+        
+    except Exception as e:
+        results['message'] = f"Error during verification: {e}"
+        logger.error(f"VERIFICATION: Error during verification: {e}")
+    
+    return results
 
 def disable_scheduled_task(task_name):
     """Disable a Windows scheduled task."""
@@ -6061,11 +6439,29 @@ php /tmp/update_config.php"
             )
             warning_label.pack(pady=10)
         
+        # Buttons frame
+        buttons_frame = tk.Frame(config_frame, bg=self.theme_colors['bg'])
+        buttons_frame.pack(pady=20)
+        
+        # Test Run button
+        tk.Button(
+            buttons_frame,
+            text="🧪 Test Run",
+            font=("Arial", 12, "bold"),
+            bg="#3498db",
+            fg="white",
+            command=lambda: self._run_test_backup(
+                backup_dir_var.get(),
+                encrypt_var.get(),
+                password_var.get()
+            )
+        ).pack(side="left", padx=5)
+        
         # Create schedule button
         tk.Button(
-            config_frame,
+            buttons_frame,
             text="Create/Update Schedule",
-            font=("Arial", 13, "bold"),
+            font=("Arial", 12, "bold"),
             bg="#27ae60",
             fg="white",
             command=lambda: self._create_schedule(
@@ -6075,7 +6471,71 @@ php /tmp/update_config.php"
                 encrypt_var.get(),
                 password_var.get()
             )
-        ).pack(pady=20)
+        ).pack(side="left", padx=5)
+        
+        # Last Run Status section (if schedule exists)
+        if status and status.get('exists'):
+            last_run_frame = tk.Frame(config_frame, bg=self.theme_colors['info_bg'], relief="ridge", borderwidth=2)
+            last_run_frame.pack(pady=10, fill="x")
+            
+            tk.Label(
+                last_run_frame,
+                text="📊 Last Run Status",
+                font=("Arial", 12, "bold"),
+                bg=self.theme_colors['info_bg'],
+                fg=self.theme_colors['info_fg']
+            ).pack(pady=5)
+            
+            # Get task status
+            last_run_time = status.get('last_run', 'Never')
+            next_run_time = status.get('next_run', 'Unknown')
+            task_status = status.get('status', 'Unknown')
+            
+            status_text = f"Status: {task_status}\n"
+            status_text += f"Last Run: {last_run_time}\n"
+            status_text += f"Next Run: {next_run_time}\n"
+            
+            # Check for recent backups
+            verification = verify_scheduled_backup_ran(backup_dir, task_name)
+            if verification['backup_file_exists']:
+                backup_info = verification['backup_info']
+                status_text += f"\n✓ Recent Backup Found:\n"
+                status_text += f"  File: {backup_info['name']}\n"
+                status_text += f"  Created: {backup_info['modified'].strftime('%Y-%m-%d %H:%M:%S')}\n"
+                status_text += f"  Size: {backup_info['size_mb']:.2f} MB\n"
+                status_text += f"  Age: {backup_info['age_hours']:.1f} hours ago"
+            else:
+                status_text += "\n⚠ No recent backup files found"
+            
+            tk.Label(
+                last_run_frame,
+                text=status_text,
+                font=("Arial", 10),
+                bg=self.theme_colors['info_bg'],
+                fg=self.theme_colors['entry_fg'],
+                justify=tk.LEFT
+            ).pack(pady=5, padx=10)
+            
+            # View Logs button
+            tk.Button(
+                last_run_frame,
+                text="📄 View Recent Logs",
+                font=("Arial", 10),
+                bg=self.theme_colors['button_bg'],
+                fg=self.theme_colors['button_fg'],
+                command=lambda: self._show_recent_logs(backup_dir)
+            ).pack(pady=5)
+        
+        # Verify Backup button (if schedule exists)
+        if status and status.get('exists'):
+            tk.Button(
+                config_frame,
+                text="🔍 Verify Scheduled Backup",
+                font=("Arial", 11),
+                bg="#9b59b6",
+                fg="white",
+                command=lambda: self._verify_scheduled_backup(backup_dir, task_name)
+            ).pack(pady=10)
         
         # Cloud Storage Setup Guide (collapsible)
         help_frame = tk.Frame(config_frame, bg=self.theme_colors['info_bg'], relief="groove", borderwidth=2)
@@ -6126,29 +6586,44 @@ php /tmp/update_config.php"
             var.set(directory)
     
     def _create_schedule(self, backup_dir, frequency, time, encrypt, password):
-        """Create or update a scheduled backup."""
-        # Validate inputs
-        if not backup_dir:
-            messagebox.showerror("Error", "Please select a backup directory.")
+        """Create or update a scheduled backup with validation."""
+        task_name = "NextcloudBackup"
+        
+        # Run validation checks
+        logger.info("Running pre-creation validation checks...")
+        validation_results = validate_scheduled_task_setup(
+            task_name, frequency, time, backup_dir, encrypt, password
+        )
+        
+        # Show validation results in a dialog
+        if not validation_results['all_valid']:
+            error_msg = "❌ Setup Validation Failed\n\n"
+            error_msg += "The following issues were found:\n\n"
+            for error in validation_results['errors']:
+                error_msg += f"• {error}\n"
+            error_msg += "\n\nPlease fix these issues before creating the scheduled backup."
+            
+            # Show detailed validation results
+            details = "\n\nDetailed Validation Results:\n"
+            for key, value in validation_results.items():
+                if key not in ['all_valid', 'errors'] and isinstance(value, tuple):
+                    details += f"\n{value[1]}"
+            
+            messagebox.showerror("Validation Failed", error_msg + details)
             return
         
-        if not os.path.isdir(backup_dir):
-            messagebox.showerror("Error", "Invalid backup directory.")
-            return
+        # All validations passed, show success message
+        validation_msg = "✅ All Validation Checks Passed\n\n"
+        for key, value in validation_results.items():
+            if key not in ['all_valid', 'errors'] and isinstance(value, tuple):
+                validation_msg += f"{value[1]}\n"
         
-        # Validate time format
-        try:
-            time_obj = datetime.strptime(time, "%H:%M")
-        except ValueError:
-            messagebox.showerror("Error", "Invalid time format. Please use HH:MM (e.g., 02:00)")
-            return
-        
-        if encrypt and not password:
-            messagebox.showerror("Error", "Please provide an encryption password or disable encryption.")
+        # Ask user to confirm creation
+        confirm_msg = validation_msg + "\n\nProceed with creating the scheduled task?"
+        if not messagebox.askyesno("Validation Successful", confirm_msg):
             return
         
         # Create the scheduled task
-        task_name = "NextcloudBackup"
         success, message = create_scheduled_task(
             task_name, 
             frequency, 
@@ -6174,7 +6649,7 @@ php /tmp/update_config.php"
             if save_schedule_config(config):
                 messagebox.showinfo(
                     "Success", 
-                    f"Scheduled backup created successfully!\n\n"
+                    f"✅ Scheduled backup created successfully!\n\n"
                     f"Frequency: {frequency}\n"
                     f"Time: {time}\n"
                     f"Backup Directory: {backup_dir}\n\n"
@@ -6228,6 +6703,176 @@ php /tmp/update_config.php"
             self.show_landing()
         else:
             messagebox.showerror("Error", f"Failed to delete schedule:\n{message}")
+    
+    def _run_test_backup(self, backup_dir, encrypt, password):
+        """Run a test backup to verify configuration."""
+        if not backup_dir:
+            messagebox.showerror("Error", "Please select a backup directory first.")
+            return
+        
+        if not os.path.isdir(backup_dir):
+            messagebox.showerror("Error", "Invalid backup directory.")
+            return
+        
+        if encrypt and not password:
+            messagebox.showerror("Error", "Please provide an encryption password or disable encryption.")
+            return
+        
+        # Show progress dialog
+        progress_window = tk.Toplevel(self.root)
+        progress_window.title("Test Backup")
+        progress_window.geometry("400x150")
+        progress_window.transient(self.root)
+        progress_window.grab_set()
+        
+        # Center the window
+        progress_window.update_idletasks()
+        x = (progress_window.winfo_screenwidth() // 2) - (400 // 2)
+        y = (progress_window.winfo_screenheight() // 2) - (150 // 2)
+        progress_window.geometry(f"400x150+{x}+{y}")
+        
+        tk.Label(
+            progress_window,
+            text="Running test backup...",
+            font=("Arial", 12)
+        ).pack(pady=20)
+        
+        progress_label = tk.Label(
+            progress_window,
+            text="Please wait...",
+            font=("Arial", 10)
+        )
+        progress_label.pack(pady=10)
+        
+        def run_test():
+            success, message = run_test_backup(backup_dir, encrypt, password)
+            progress_window.destroy()
+            
+            if success:
+                messagebox.showinfo("Test Backup Successful", message)
+            else:
+                messagebox.showerror("Test Backup Failed", message)
+        
+        # Run test in thread
+        thread = threading.Thread(target=run_test, daemon=True)
+        thread.start()
+    
+    def _show_recent_logs(self, backup_dir):
+        """Show recent log entries related to scheduled backups."""
+        # Create a new window for logs
+        log_window = tk.Toplevel(self.root)
+        log_window.title("Recent Backup Logs")
+        log_window.geometry("800x600")
+        log_window.transient(self.root)
+        
+        # Center the window
+        log_window.update_idletasks()
+        x = (log_window.winfo_screenwidth() // 2) - (400)
+        y = (log_window.winfo_screenheight() // 2) - (300)
+        log_window.geometry(f"800x600+{x}+{y}")
+        
+        # Title
+        tk.Label(
+            log_window,
+            text="📄 Recent Scheduled Backup Logs",
+            font=("Arial", 14, "bold"),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg']
+        ).pack(pady=10)
+        
+        # Text widget with scrollbar
+        text_frame = tk.Frame(log_window)
+        text_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        scrollbar = tk.Scrollbar(text_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        text_widget = tk.Text(
+            text_frame,
+            wrap=tk.WORD,
+            yscrollcommand=scrollbar.set,
+            font=("Courier", 9),
+            bg=self.theme_colors['entry_bg'],
+            fg=self.theme_colors['entry_fg']
+        )
+        text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=text_widget.yview)
+        
+        # Get recent log entries
+        log_entries = get_recent_log_entries(200)
+        
+        if log_entries:
+            # Filter for scheduled backup entries
+            scheduled_entries = [line for line in log_entries if 'SCHEDULED' in line or 'scheduled' in line or 'VALIDATION' in line or 'TEST RUN' in line]
+            
+            if scheduled_entries:
+                text_widget.insert(tk.END, f"Found {len(scheduled_entries)} relevant log entries:\n\n")
+                text_widget.insert(tk.END, "=" * 80 + "\n\n")
+                for entry in scheduled_entries:
+                    text_widget.insert(tk.END, entry)
+            else:
+                text_widget.insert(tk.END, "No scheduled backup log entries found.\n\n")
+                text_widget.insert(tk.END, "Showing all recent logs:\n\n")
+                text_widget.insert(tk.END, "=" * 80 + "\n\n")
+                for entry in log_entries[-50:]:  # Last 50 entries
+                    text_widget.insert(tk.END, entry)
+        else:
+            text_widget.insert(tk.END, "No log entries found.")
+        
+        text_widget.config(state=tk.DISABLED)
+        
+        # Close button
+        tk.Button(
+            log_window,
+            text="Close",
+            font=("Arial", 11),
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg'],
+            command=log_window.destroy
+        ).pack(pady=10)
+    
+    def _verify_scheduled_backup(self, backup_dir, task_name):
+        """Verify that scheduled backup is working correctly."""
+        if not backup_dir:
+            messagebox.showerror("Error", "No backup directory configured.")
+            return
+        
+        # Show progress dialog
+        progress_window = tk.Toplevel(self.root)
+        progress_window.title("Verifying Scheduled Backup")
+        progress_window.geometry("400x150")
+        progress_window.transient(self.root)
+        progress_window.grab_set()
+        
+        # Center the window
+        progress_window.update_idletasks()
+        x = (progress_window.winfo_screenwidth() // 2) - (200)
+        y = (progress_window.winfo_screenheight() // 2) - (75)
+        progress_window.geometry(f"400x150+{x}+{y}")
+        
+        tk.Label(
+            progress_window,
+            text="Verifying scheduled backup...",
+            font=("Arial", 12)
+        ).pack(pady=20)
+        
+        progress_label = tk.Label(
+            progress_window,
+            text="Checking backup files and logs...",
+            font=("Arial", 10)
+        )
+        progress_label.pack(pady=10)
+        
+        def run_verification():
+            verification = verify_scheduled_backup_ran(backup_dir, task_name)
+            progress_window.destroy()
+            
+            # Show results
+            messagebox.showinfo("Verification Results", verification['message'])
+        
+        # Run verification in thread
+        thread = threading.Thread(target=run_verification, daemon=True)
+        thread.start()
     
     def run_scheduled_backup(self, backup_dir, encrypt, password):
         """
