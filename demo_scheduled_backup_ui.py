@@ -86,28 +86,72 @@ class ScheduledBackupDemo(tk.Tk):
         self.geometry("800x900")
         self.configure(bg="#f0f0f0")
         
-        # Create main frame
-        main_frame = tk.Frame(self, bg="#f0f0f0")
-        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        # Create main container for padding
+        container = tk.Frame(self, bg="#f0f0f0")
+        container.pack(fill="both", expand=True, padx=20, pady=20)
         
-        # Title
+        # Title (outside scrollable area for better UX)
         title = tk.Label(
-            main_frame,
+            container,
             text="Schedule Backup Configuration",
             font=("Arial", 18, "bold"),
             bg="#f0f0f0",
             fg="#333333"
         )
-        title.pack(pady=10)
+        title.pack(pady=(0, 10))
+        
+        # Create scrollable canvas for all content
+        canvas = tk.Canvas(container, bg="#f0f0f0", highlightthickness=0)
+        scrollbar = tk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg="#f0f0f0")
+        
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        
+        canvas_window = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        
+        def configure_scroll(event=None):
+            """Update scroll region when content changes"""
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            # Make scrollable_frame width match canvas width
+            canvas_width = canvas.winfo_width()
+            if canvas_width > 1:
+                canvas.itemconfig(canvas_window, width=canvas_width)
+        
+        scrollable_frame.bind("<Configure>", configure_scroll)
+        canvas.bind("<Configure>", configure_scroll)
+        
+        # Add mouse wheel scrolling support for Windows
+        def on_mouse_wheel(event):
+            """Handle mouse wheel scrolling"""
+            # Windows and macOS use event.delta
+            if event.delta:
+                canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            # Linux uses event.num (Button-4 = scroll up, Button-5 = scroll down)
+            elif event.num == 5:
+                canvas.yview_scroll(1, "units")
+            elif event.num == 4:
+                canvas.yview_scroll(-1, "units")
+        
+        canvas.bind_all("<MouseWheel>", on_mouse_wheel)  # Windows/Mac
+        canvas.bind_all("<Button-4>", on_mouse_wheel)    # Linux scroll up
+        canvas.bind_all("<Button-5>", on_mouse_wheel)    # Linux scroll down
+        
+        # Store references for potential cleanup
+        self.canvas = canvas
+        self.scrollbar = scrollbar
+        self.scrollable_frame = scrollable_frame
         
         # Current Status section
-        self.create_status_section(main_frame)
+        self.create_status_section(scrollable_frame)
         
         # Configuration section
-        self.create_config_section(main_frame)
+        self.create_config_section(scrollable_frame)
         
         # Setup Guide section
-        self.create_setup_guide(main_frame)
+        self.create_setup_guide(scrollable_frame)
         
     def create_status_section(self, parent):
         """Create the current status display."""
