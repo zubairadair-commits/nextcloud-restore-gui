@@ -6450,8 +6450,25 @@ php /tmp/update_config.php"
             cloud_info_frame = tk.Frame(config_frame, bg=self.theme_colors['bg'])
             cloud_info_frame.pack(pady=5, fill="x")
             
-            tk.Label(cloud_info_frame, text="📁 Detected Cloud Sync Folders:", font=("Arial", 9, "italic"),
-                    bg=self.theme_colors['bg'], fg=self.theme_colors['hint_fg']).pack(anchor="w")
+            # Header with info icon
+            cloud_header_frame = tk.Frame(cloud_info_frame, bg=self.theme_colors['bg'])
+            cloud_header_frame.pack(anchor="w", pady=(0, 5))
+            
+            tk.Label(cloud_header_frame, text="📁 Detected Cloud Sync Folders:", font=("Arial", 9, "italic"),
+                    bg=self.theme_colors['bg'], fg=self.theme_colors['hint_fg']).pack(side="left")
+            
+            # Add info icon that opens the Cloud Storage Setup Guide
+            info_icon = tk.Label(
+                cloud_header_frame,
+                text=" ℹ️",
+                font=("Arial", 10),
+                bg=self.theme_colors['bg'],
+                fg=self.theme_colors['info_fg'],
+                cursor="hand2"
+            )
+            info_icon.pack(side="left", padx=5)
+            info_icon.bind("<Button-1>", lambda e: self._show_cloud_storage_guide())
+            ToolTip(info_icon, "Click for Cloud Storage Setup Guide")
             
             for cloud_name, cloud_path in cloud_folders.items():
                 cloud_btn_frame = tk.Frame(cloud_info_frame, bg=self.theme_colors['bg'])
@@ -6584,59 +6601,6 @@ php /tmp/update_config.php"
             )
         ).pack(pady=20)
         
-        # Last Run Status section (if schedule exists)
-        if status and status.get('exists'):
-            last_run_frame = tk.Frame(config_frame, bg=self.theme_colors['info_bg'], relief="ridge", borderwidth=2)
-            last_run_frame.pack(pady=10, fill="x")
-            
-            tk.Label(
-                last_run_frame,
-                text="📊 Last Run Status",
-                font=("Arial", 12, "bold"),
-                bg=self.theme_colors['info_bg'],
-                fg=self.theme_colors['info_fg']
-            ).pack(pady=5)
-            
-            # Get task status
-            last_run_time = status.get('last_run', 'Never')
-            next_run_time = status.get('next_run', 'Unknown')
-            task_status = status.get('status', 'Unknown')
-            
-            status_text = f"Status: {task_status}\n"
-            status_text += f"Last Run: {last_run_time}\n"
-            status_text += f"Next Run: {next_run_time}\n"
-            
-            # Check for recent backups
-            verification = verify_scheduled_backup_ran(backup_dir, task_name)
-            if verification['backup_file_exists']:
-                backup_info = verification['backup_info']
-                status_text += f"\n✓ Recent Backup Found:\n"
-                status_text += f"  File: {backup_info['name']}\n"
-                status_text += f"  Created: {backup_info['modified'].strftime('%Y-%m-%d %H:%M:%S')}\n"
-                status_text += f"  Size: {backup_info['size_mb']:.2f} MB\n"
-                status_text += f"  Age: {backup_info['age_hours']:.1f} hours ago"
-            else:
-                status_text += "\n⚠ No recent backup files found"
-            
-            tk.Label(
-                last_run_frame,
-                text=status_text,
-                font=("Arial", 10),
-                bg=self.theme_colors['info_bg'],
-                fg=self.theme_colors['entry_fg'],
-                justify=tk.LEFT
-            ).pack(pady=5, padx=10)
-            
-            # View Logs button
-            tk.Button(
-                last_run_frame,
-                text="📄 View Recent Logs",
-                font=("Arial", 10),
-                bg=self.theme_colors['button_bg'],
-                fg=self.theme_colors['button_fg'],
-                command=lambda: self._show_recent_logs(backup_dir)
-            ).pack(pady=5)
-        
         # Verify Backup button (if schedule exists)
         if status and status.get('exists'):
             tk.Button(
@@ -6648,18 +6612,63 @@ php /tmp/update_config.php"
                 command=lambda: self._verify_scheduled_backup(backup_dir, task_name)
             ).pack(pady=10)
         
-        # Cloud Storage Setup Guide (collapsible)
-        help_frame = tk.Frame(config_frame, bg=self.theme_colors['info_bg'], relief="groove", borderwidth=2)
-        help_frame.pack(pady=10, fill="x")
+        # Apply theme recursively to all widgets in the panel
+        self.apply_theme_recursive(frame)
+    
+    def _browse_backup_dir(self, var):
+        """Browse for backup directory."""
+        directory = filedialog.askdirectory(title="Select backup destination folder")
+        if directory:
+            var.set(directory)
+    
+    def _show_cloud_storage_guide(self):
+        """Show the Cloud Storage Setup Guide in a dialog window."""
+        dialog = tk.Toplevel(self)
+        dialog.title("Cloud Storage Setup Guide")
+        dialog.geometry("600x500")
+        dialog.configure(bg=self.theme_colors['bg'])
         
-        tk.Label(
-            help_frame,
+        # Make it modal
+        dialog.transient(self)
+        dialog.grab_set()
+        
+        # Center the dialog
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() // 2) - (600 // 2)
+        y = (dialog.winfo_screenheight() // 2) - (500 // 2)
+        dialog.geometry(f"600x500+{x}+{y}")
+        
+        # Main frame with scrollbar
+        main_frame = tk.Frame(dialog, bg=self.theme_colors['bg'])
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Header
+        header_label = tk.Label(
+            main_frame,
             text="💡 Cloud Storage Setup Guide",
-            font=("Arial", 12, "bold"),
-            bg=self.theme_colors['info_bg'],
-            fg=self.theme_colors['info_fg']
-        ).pack(pady=5)
+            font=("Arial", 14, "bold"),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg']
+        )
+        header_label.pack(pady=(0, 10))
         
+        # Content frame with scrollbar
+        canvas = tk.Canvas(main_frame, bg=self.theme_colors['bg'], highlightthickness=0)
+        scrollbar = tk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg=self.theme_colors['bg'])
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Content text
         help_text = (
             "To sync backups to cloud storage:\n\n"
             "OneDrive:\n"
@@ -6678,23 +6687,30 @@ php /tmp/update_config.php"
             "Large backups may take time to sync depending on your internet speed."
         )
         
-        tk.Label(
-            help_frame,
+        content_label = tk.Label(
+            scrollable_frame,
             text=help_text,
-            font=("Arial", 9),
-            bg=self.theme_colors['info_bg'],
+            font=("Arial", 10),
+            bg=self.theme_colors['bg'],
             fg=self.theme_colors['entry_fg'],
-            justify=tk.LEFT
-        ).pack(pady=5, padx=10)
+            justify=tk.LEFT,
+            wraplength=550
+        )
+        content_label.pack(pady=10, padx=10)
         
-        # Apply theme recursively to all widgets in the panel
-        self.apply_theme_recursive(frame)
-    
-    def _browse_backup_dir(self, var):
-        """Browse for backup directory."""
-        directory = filedialog.askdirectory(title="Select backup destination folder")
-        if directory:
-            var.set(directory)
+        # Close button
+        close_btn = tk.Button(
+            main_frame,
+            text="Close",
+            font=("Arial", 11),
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg'],
+            command=dialog.destroy
+        )
+        close_btn.pack(pady=(10, 0))
+        
+        # Apply theme
+        self.apply_theme_recursive(dialog)
     
     def _create_schedule(self, backup_dir, frequency, time, encrypt, password):
         """Create or update a scheduled backup with validation."""
