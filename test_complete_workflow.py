@@ -38,14 +38,19 @@ def test_workflow_task_creation():
     create_task_end = content.find('\ndef ', create_task_start + 1)
     create_task_func = content[create_task_start:create_task_end]
     
-    # Verify task includes required flags
-    assert '"/RL", "HIGHEST"' in create_task_func or '"/RL","HIGHEST"' in create_task_func, \
-        "Task should include /RL HIGHEST flag"
-    print("   ✓ Task includes /RL HIGHEST flag")
+    # Verify task includes required flags (only essential flags)
+    assert '"/F"' in create_task_func, \
+        "Task should include /F flag"
+    print("   ✓ Task includes /F flag")
     
-    assert '"/Z"' in create_task_func, \
-        "Task should include /Z flag"
-    print("   ✓ Task includes /Z flag")
+    # Verify /RL HIGHEST and /Z are NOT present (reverted)
+    assert '"/RL"' not in create_task_func, \
+        "Task should NOT include /RL flag (reverted)"
+    print("   ✓ /RL flag not present (reverted)")
+    
+    assert '"/Z"' not in create_task_func, \
+        "Task should NOT include /Z flag (reverted)"
+    print("   ✓ /Z flag not present (reverted)")
     
     # Verify schtasks command is built correctly
     assert 'schtasks_cmd = [' in create_task_func, \
@@ -55,7 +60,7 @@ def test_workflow_task_creation():
     print("   ✓ Task creation command properly constructed")
     
     print("\n✅ WORKFLOW TEST 1 PASSED")
-    print("   Result: Task created with highest privileges and missed task handling")
+    print("   Result: Task created with essential flags only")
 
 def test_workflow_scheduled_execution():
     """Test the scheduled backup execution workflow."""
@@ -208,13 +213,13 @@ def test_complete_workflow():
     # Step 1: User creates scheduled backup
     print("\n📅 DAY 1 - 10:00 AM")
     print("   User: Creates scheduled backup (daily at 2:00 AM)")
-    print("   System: Applies /RL HIGHEST and /Z flags automatically")
-    print("   Result: Task scheduled with enhanced reliability")
+    print("   System: Creates scheduled task with essential flags only")
+    print("   Result: Task scheduled successfully")
     
     # Step 2: First scheduled backup runs
     print("\n📅 DAY 2 - 2:00 AM")
     print("   System: Scheduled task triggers")
-    print("   System: Runs backup with highest privileges")
+    print("   System: Runs backup")
     print("   System: Adds backup to history database")
     print("   Result: Backup created and tracked")
     
@@ -229,15 +234,14 @@ def test_complete_workflow():
     # Step 4: Computer off during scheduled time
     print("\n📅 DAY 3 - 2:00 AM")
     print("   System: Computer is OFF (missed scheduled time)")
-    print("   Result: Backup not created (yet)")
+    print("   Result: Backup not created")
     
-    # Step 5: Missed task runs when computer turns on
-    print("\n📅 DAY 3 - 8:00 AM")
-    print("   System: Computer turns ON")
-    print("   System: Task Scheduler detects missed schedule")
-    print("   System: Runs task immediately (thanks to /Z flag)")
+    # Step 5: Next scheduled backup
+    print("\n📅 DAY 4 - 2:00 AM")
+    print("   System: Computer is ON")
+    print("   System: Task Scheduler runs scheduled backup")
     print("   System: Adds backup to history database")
-    print("   Result: Backup created, no gap in coverage")
+    print("   Result: Backup created successfully")
     
     # Step 6: User verifies
     print("\n📅 DAY 3 - 10:00 AM")
