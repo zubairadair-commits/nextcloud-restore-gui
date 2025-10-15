@@ -13,10 +13,13 @@ def simulate_command_construction(exe_path, backup_dir, encrypt, password=""):
     Simulate the command construction logic from create_scheduled_task.
     This mirrors the actual implementation.
     """
+    # Ensure backup_dir is safely quoted (prevents argument splitting with spaces)
+    backup_dir_quoted = f'"{backup_dir.strip("\"")}"'
+    
     # Build the command arguments for scheduled execution
     args = [
         "--scheduled",
-        "--backup-dir", backup_dir,
+        "--backup-dir", backup_dir_quoted,
         "--encrypt" if encrypt else "--no-encrypt"
     ]
     
@@ -137,6 +140,8 @@ def test_executable_with_spaces():
     
     # Verify paths are quoted
     assert f'"{exe_path}"' in command, "Exe path should be quoted"
+    # Verify backup_dir is quoted
+    assert f'--backup-dir "{backup_dir}"' in command, "Backup dir should be quoted"
     
     print("\n  ✓ PASSED: Paths with spaces are properly quoted")
     return True
@@ -162,6 +167,8 @@ def test_python_script_with_spaces():
     # Verify
     assert 'python' in command.lower(), "Command should use Python interpreter"
     assert f'"{exe_path}"' in command, "Script path should be quoted"
+    # Verify backup_dir is quoted
+    assert f'--backup-dir "{backup_dir}"' in command, "Backup dir should be quoted"
     
     print("\n  ✓ PASSED: Script path with spaces is properly quoted")
     return True

@@ -2217,10 +2217,13 @@ def create_scheduled_task(task_name, schedule_type, schedule_time, backup_dir, e
         # Get the executable path
         exe_path = get_exe_path()
         
+        # Ensure backup_dir is safely quoted (prevents argument splitting with spaces)
+        backup_dir_quoted = f'"{backup_dir.strip("\"")}"'
+        
         # Build the command arguments for scheduled execution
         args = [
             "--scheduled",
-            "--backup-dir", backup_dir,
+            "--backup-dir", backup_dir_quoted,
             "--encrypt" if encrypt else "--no-encrypt"
         ]
         
@@ -6841,10 +6844,13 @@ php /tmp/update_config.php"
                 # Get the executable path
                 exe_path = get_exe_path()
                 
+                # Ensure backup_dir is safely quoted (prevents argument splitting with spaces)
+                backup_dir_quoted = f'"{backup_dir.strip("\"")}"'
+                
                 # Build the command arguments for test run
                 args = [
                     "--test-run",
-                    "--backup-dir", backup_dir,
+                    "--backup-dir", backup_dir_quoted,
                     "--encrypt" if encrypt else "--no-encrypt"
                 ]
                 
