@@ -6238,6 +6238,45 @@ php /tmp/update_config.php"
             fg=self.theme_colors['fg']
         ).pack(pady=15)
         
+        # Create scrollable canvas for all content
+        canvas = tk.Canvas(frame, bg=self.theme_colors['bg'], highlightthickness=0)
+        scrollbar = tk.Scrollbar(frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg=self.theme_colors['bg'])
+        
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        
+        canvas_window = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        
+        def configure_scroll(event=None):
+            """Update scroll region when content changes"""
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            # Make scrollable_frame width match canvas width
+            canvas_width = canvas.winfo_width()
+            if canvas_width > 1:
+                canvas.itemconfig(canvas_window, width=canvas_width)
+        
+        scrollable_frame.bind("<Configure>", configure_scroll)
+        canvas.bind("<Configure>", configure_scroll)
+        
+        # Add mouse wheel scrolling support
+        def on_mouse_wheel(event):
+            """Handle mouse wheel scrolling"""
+            # Windows and macOS use event.delta
+            if event.delta:
+                canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            # Linux uses event.num (Button-4 = scroll up, Button-5 = scroll down)
+            elif event.num == 5:
+                canvas.yview_scroll(1, "units")
+            elif event.num == 4:
+                canvas.yview_scroll(-1, "units")
+        
+        canvas.bind_all("<MouseWheel>", on_mouse_wheel)  # Windows/Mac
+        canvas.bind_all("<Button-4>", on_mouse_wheel)    # Linux scroll up
+        canvas.bind_all("<Button-5>", on_mouse_wheel)    # Linux scroll down
+        
         # Load existing config
         config = load_schedule_config()
         
@@ -6245,7 +6284,7 @@ php /tmp/update_config.php"
         task_name = config.get('task_name', 'NextcloudBackup') if config else 'NextcloudBackup'
         status = get_scheduled_task_status(task_name)
         
-        status_frame = tk.Frame(frame, bg=self.theme_colors['info_bg'], relief="ridge", borderwidth=2)
+        status_frame = tk.Frame(scrollable_frame, bg=self.theme_colors['info_bg'], relief="ridge", borderwidth=2)
         status_frame.pack(pady=10, fill="x", padx=40)
         
         tk.Label(
@@ -6353,7 +6392,7 @@ php /tmp/update_config.php"
                    "Please create a schedule first to enable this feature.")
         
         # Configuration section
-        config_frame = tk.Frame(frame, bg=self.theme_colors['bg'])
+        config_frame = tk.Frame(scrollable_frame, bg=self.theme_colors['bg'])
         config_frame.pack(pady=20, fill="x", padx=40)
         
         tk.Label(
@@ -6832,7 +6871,7 @@ php /tmp/update_config.php"
         if hasattr(self, 'schedule_message_label'):
             self.schedule_message_label.config(
                 text="⏳ Running test backup via Task Scheduler... Please wait...",
-                fg="blue"
+                fg="#FFD700"
             )
         
         def run_test():
@@ -7032,7 +7071,7 @@ php /tmp/update_config.php"
         
         # Show inline progress message
         if hasattr(self, 'schedule_message_label'):
-            self.schedule_message_label.config(text="⏳ Running test backup... Please wait...", fg="blue")
+            self.schedule_message_label.config(text="⏳ Running test backup... Please wait...", fg="#FFD700")
         
         def run_test():
             success, message = run_test_backup(backup_dir, encrypt, password)
