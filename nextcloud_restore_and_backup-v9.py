@@ -2261,16 +2261,19 @@ def create_scheduled_task(task_name, schedule_type, schedule_time, backup_dir, e
         )
         
         # Create new task
+        # Note: /SC (schedule type) must come BEFORE /ST (start time) per schtasks requirements
         schtasks_cmd = [
             "schtasks", "/Create",
             "/TN", task_name,
-            "/TR", command,
+            "/TR", command
+        ]
+        schtasks_cmd.extend(schedule_args)  # Add /SC and /D parameters
+        schtasks_cmd.extend([
             "/ST", schedule_time,
             "/RL", "HIGHEST",  # Run with highest privileges
-            "/Z"  # Run task as soon as possible after scheduled start is missed
-        ]
-        schtasks_cmd.extend(schedule_args)
-        schtasks_cmd.append("/F")  # Force creation, overwrite if exists
+            "/Z",  # Run task as soon as possible after scheduled start is missed
+            "/F"  # Force creation, overwrite if exists
+        ])
         
         result = subprocess.run(
             schtasks_cmd,
