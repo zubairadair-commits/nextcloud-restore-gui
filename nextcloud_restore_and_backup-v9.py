@@ -2265,7 +2265,9 @@ def create_scheduled_task(task_name, schedule_type, schedule_time, backup_dir, e
             "schtasks", "/Create",
             "/TN", task_name,
             "/TR", command,
-            "/ST", schedule_time
+            "/ST", schedule_time,
+            "/RL", "HIGHEST",  # Run with highest privileges
+            "/Z"  # Run task as soon as possible after scheduled start is missed
         ]
         schtasks_cmd.extend(schedule_args)
         schtasks_cmd.append("/F")  # Force creation, overwrite if exists
@@ -7334,6 +7336,17 @@ php /tmp/update_config.php"
 
             print(f"Step 10/10: Backup complete!")
             print(f"Backup saved to: {final_file}")
+            
+            # Add backup to history
+            folders_list = ['config', 'data'] + [f for f in copied_folders if f not in ['config', 'data']]
+            backup_id = self.backup_history.add_backup(
+                backup_path=final_file,
+                database_type=dbtype,
+                folders=folders_list,
+                encrypted=bool(encrypt and encryption_password),
+                notes="Scheduled backup"
+            )
+            print(f"Backup added to history with ID: {backup_id}")
             
         except Exception as e:
             tb = traceback.format_exc()
