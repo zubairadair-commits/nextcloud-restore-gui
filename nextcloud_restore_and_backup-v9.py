@@ -2270,8 +2270,6 @@ def create_scheduled_task(task_name, schedule_type, schedule_time, backup_dir, e
         schtasks_cmd.extend(schedule_args)  # Add /SC and /D parameters
         schtasks_cmd.extend([
             "/ST", schedule_time,
-            "/RL", "HIGHEST",  # Run with highest privileges
-            "/Z",  # Run task as soon as possible after scheduled start is missed
             "/F"  # Force creation, overwrite if exists
         ])
         

@@ -2,8 +2,8 @@
 """
 Test script for scheduled backup enhancements.
 Validates:
-1. Task creation includes /RL HIGHEST flag (run with highest privileges)
-2. Task creation includes /Z flag (run missed tasks ASAP)
+1. Task creation does NOT include /RL HIGHEST flag (reverted)
+2. Task creation does NOT include /Z flag (reverted)
 3. Scheduled backup adds to backup history
 """
 
@@ -12,8 +12,8 @@ import os
 import re
 
 def test_scheduled_task_flags():
-    """Test that scheduled task creation includes the required flags."""
-    print("Testing scheduled task creation flags...")
+    """Test that scheduled task creation does NOT include /RL and /Z flags (reverted)."""
+    print("Testing scheduled task creation flags (reverted)...")
     
     main_file = "nextcloud_restore_and_backup-v9.py"
     assert os.path.exists(main_file), f"{main_file} should exist"
@@ -28,24 +28,26 @@ def test_scheduled_task_flags():
     # Extract the function content (next 300 lines should be enough)
     function_content = content[function_start:function_start+10000]
     
-    # Check for /RL HIGHEST flag
-    assert '"/RL", "HIGHEST"' in function_content or '"/RL","HIGHEST"' in function_content, \
-        "Task creation should include /RL HIGHEST flag for highest privileges"
-    print("  ✓ /RL HIGHEST flag found (run with highest privileges)")
+    # Check that /RL HIGHEST flag is NOT present (reverted)
+    assert '"/RL"' not in function_content, \
+        "Task creation should NOT include /RL flag (reverted)"
+    print("  ✓ /RL flag not present (reverted)")
     
-    # Check for /Z flag
-    assert '"/Z"' in function_content, \
-        "Task creation should include /Z flag to run missed tasks ASAP"
-    print("  ✓ /Z flag found (run missed tasks as soon as possible)")
+    # Check that /Z flag is NOT present (reverted)
+    assert '"/Z"' not in function_content, \
+        "Task creation should NOT include /Z flag (reverted)"
+    print("  ✓ /Z flag not present (reverted)")
     
-    # Verify the flags are in the schtasks_cmd list before schedule_args
-    # This ensures proper command structure
-    pattern = r'schtasks_cmd\s*=\s*\[[^\]]+"/RL",\s*"HIGHEST"[^\]]+"/Z"[^\]]*\]'
-    assert re.search(pattern, function_content, re.DOTALL), \
-        "Flags should be properly structured in schtasks_cmd list"
-    print("  ✓ Flags are properly structured in command list")
+    # Verify essential flags are present
+    assert '"/F"' in function_content, \
+        "Task creation should include /F flag"
+    print("  ✓ /F flag found (force creation)")
     
-    print("✅ Scheduled task flags test PASSED\n")
+    assert '"/ST"' in function_content, \
+        "Task creation should include /ST flag"
+    print("  ✓ /ST flag found (start time)")
+    
+    print("✅ Scheduled task flags test PASSED (reverted)\n")
 
 def test_scheduled_backup_history():
     """Test that scheduled backup adds to backup history."""

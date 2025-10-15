@@ -2,7 +2,7 @@
 """
 Integration test for scheduled backup enhancements.
 Tests the complete workflow including:
-1. Creating scheduled task with highest privileges and missed task flags
+1. Creating scheduled task with essential flags only (reverted /RL and /Z)
 2. Verifying backup history is updated after scheduled backup
 3. Checking that backup history is displayed correctly
 """
@@ -29,26 +29,24 @@ def test_integration_workflow():
     create_task_end = content.find('\ndef ', create_task_start + 1)
     create_task_section = content[create_task_start:create_task_end]
     
-    # Check command structure: should have /RL HIGHEST and /Z before schedule_args
+    # Check command structure: should NOT have /RL HIGHEST and /Z (reverted)
     schtasks_cmd_pattern = r'schtasks_cmd\s*=\s*\[(.*?)\].*?schtasks_cmd\.extend\(schedule_args\)'
     match = re.search(schtasks_cmd_pattern, create_task_section, re.DOTALL)
     assert match, "schtasks_cmd structure not found"
     
     cmd_list = match.group(1)
-    assert '"/RL"' in cmd_list and '"HIGHEST"' in cmd_list, "Missing /RL HIGHEST flag"
-    assert '"/Z"' in cmd_list, "Missing /Z flag"
+    # Verify /RL and /Z are NOT present (reverted)
+    assert '"/RL"' not in create_task_section, "/RL flag should not be present (reverted)"
+    assert '"/Z"' not in create_task_section, "/Z flag should not be present (reverted)"
     
-    # Verify order: flags should come after /ST schedule_time
-    st_pos = cmd_list.find('"/ST"')
-    rl_pos = cmd_list.find('"/RL"')
-    z_pos = cmd_list.find('"/Z"')
-    
-    assert st_pos != -1 and rl_pos != -1 and z_pos != -1, "Flags not properly positioned"
-    assert st_pos < rl_pos < z_pos, "Flags should be in correct order after /ST"
+    # Verify essential flags are present
+    assert '"/F"' in create_task_section, "/F flag should be present"
+    assert '"/ST"' in create_task_section, "/ST flag should be present"
     
     print("   ✓ Task creation command properly structured")
-    print("   ✓ /RL HIGHEST flag positioned correctly")
-    print("   ✓ /Z flag positioned correctly")
+    print("   ✓ /RL flag not present (reverted)")
+    print("   ✓ /Z flag not present (reverted)")
+    print("   ✓ Essential flags /F and /ST present")
     
     # Test 2: Verify scheduled backup adds to history with proper timing
     print("\n2. Verifying scheduled backup history integration...")
@@ -152,17 +150,16 @@ def test_documentation_and_comments():
     create_task_end = content.find('\ndef ', create_task_start + 1)
     create_task_section = content[create_task_start:create_task_end]
     
-    # Check for /RL HIGHEST comment
-    if '# Run with highest privileges' in create_task_section:
-        print("   ✓ /RL HIGHEST flag documented")
+    # Verify /RL HIGHEST and /Z comments are NOT present (reverted)
+    if '# Run with highest privileges' not in create_task_section:
+        print("   ✓ /RL HIGHEST comment not present (reverted)")
     else:
-        print("   ⚠ Consider adding comment for /RL HIGHEST flag")
+        print("   ⚠ /RL HIGHEST comment still present (should be removed)")
     
-    # Check for /Z comment
-    if 'missed' in create_task_section.lower() and 'soon as possible' in create_task_section.lower():
-        print("   ✓ /Z flag documented")
+    if not ('missed' in create_task_section.lower() and 'soon as possible' in create_task_section.lower()):
+        print("   ✓ /Z comment not present (reverted)")
     else:
-        print("   ⚠ Consider adding comment for /Z flag")
+        print("   ⚠ /Z comment still present (should be removed)")
     
     print("✅ Documentation test PASSED")
 
