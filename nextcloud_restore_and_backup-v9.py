@@ -175,6 +175,10 @@ class BackupHistoryManager:
     
     def add_backup(self, backup_path, database_type=None, folders=None, encrypted=False, notes=""):
         """Add a new backup record"""
+        logger.info(f"BACKUP HISTORY: Adding backup to database: {backup_path}")
+        logger.info(f"BACKUP HISTORY: Database location: {self.db_path}")
+        logger.info(f"BACKUP HISTORY: Database type: {database_type}, Encrypted: {encrypted}, Notes: {notes}")
+        
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
@@ -196,6 +200,8 @@ class BackupHistoryManager:
         backup_id = cursor.lastrowid
         conn.commit()
         conn.close()
+        
+        logger.info(f"BACKUP HISTORY: Successfully added backup with ID {backup_id} (size: {size_bytes} bytes)")
         
         return backup_id
     
@@ -2777,6 +2783,11 @@ class NextcloudRestoreWizard(tk.Tk):
         # Store scheduled mode flag
         self.scheduled_mode = scheduled_mode
         
+        # Initialize BackupHistoryManager before any early returns
+        # This is essential for both GUI and scheduled mode backups
+        self.backup_history = BackupHistoryManager()
+        logger.info(f"Backup history manager initialized. Database: {self.backup_history.db_path}")
+        
         # If in scheduled mode, skip all GUI initialization
         if scheduled_mode:
             return
@@ -2905,8 +2916,7 @@ class NextcloudRestoreWizard(tk.Tk):
         self.original_domains = None  # Store original domains for restore defaults
         self.domain_status_cache = {}  # Cache domain status checks
         
-        # Backup history and service health
-        self.backup_history = BackupHistoryManager()
+        # Service health state (backup_history is initialized earlier for both GUI and scheduled mode)
         self.last_health_check = None
         self.health_check_cache = None
         
@@ -3924,6 +3934,7 @@ class NextcloudRestoreWizard(tk.Tk):
             summary += f"\n\nBackup saved to:\n{final_file}"
 
             # Add backup to history
+            logger.info(f"GUI BACKUP: Adding to history - File: {final_file}")
             folders_list = ['config', 'data'] + [f for f in copied_folders if f not in ['config', 'data']]
             backup_id = self.backup_history.add_backup(
                 backup_path=final_file,
@@ -3932,6 +3943,7 @@ class NextcloudRestoreWizard(tk.Tk):
                 encrypted=bool(encrypt and encryption_password),
                 notes=""
             )
+            logger.info(f"GUI BACKUP: Successfully added to history with ID {backup_id}")
             
             # Run backup verification
             self.set_progress(10, "Verifying backup integrity...")
@@ -7357,6 +7369,8 @@ php /tmp/update_config.php"
             print(f"Backup saved to: {final_file}")
             
             # Add backup to history
+            print("Adding backup to history database...")
+            logger.info(f"SCHEDULED BACKUP: Adding to history - File: {final_file}")
             folders_list = ['config', 'data'] + [f for f in copied_folders if f not in ['config', 'data']]
             backup_id = self.backup_history.add_backup(
                 backup_path=final_file,
@@ -7365,7 +7379,9 @@ php /tmp/update_config.php"
                 encrypted=bool(encrypt and encryption_password),
                 notes="Scheduled backup"
             )
-            print(f"Backup added to history with ID: {backup_id}")
+            print(f"✓ Backup added to history with ID: {backup_id}")
+            print(f"  Database location: {self.backup_history.db_path}")
+            logger.info(f"SCHEDULED BACKUP: Successfully added to history with ID {backup_id}")
             
         except Exception as e:
             tb = traceback.format_exc()
