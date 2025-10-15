@@ -2275,6 +2275,7 @@ def create_scheduled_task(task_name, schedule_type, schedule_time, backup_dir, e
             "/F"  # Force creation, overwrite if exists
         ])
         
+        print("Scheduled Task Command:", schtasks_cmd)
         result = subprocess.run(
             schtasks_cmd,
             creationflags=creation_flags,
@@ -6946,6 +6947,7 @@ php /tmp/update_config.php"
                     "/F"  # Force creation
                 ]
                 
+                print("Scheduled Task Command:", schtasks_cmd)
                 result = subprocess.run(
                     schtasks_cmd,
                     creationflags=creation_flags,
