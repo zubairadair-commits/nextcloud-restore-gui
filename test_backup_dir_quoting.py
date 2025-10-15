@@ -14,7 +14,7 @@ def simulate_command_construction_fixed(exe_path, backup_dir, encrypt, password=
     This is what the implementation should do after the fix.
     """
     # Ensure backup_dir is safely quoted
-    backup_dir_quoted = f'"{backup_dir.strip("\"")}"'
+    backup_dir_quoted = '"' + backup_dir.strip('"') + '"'
     
     # Build the command arguments for scheduled execution
     args = [

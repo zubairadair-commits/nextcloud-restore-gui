@@ -14,7 +14,7 @@ def simulate_command_construction(exe_path, backup_dir, encrypt, password=""):
     This mirrors the actual implementation.
     """
     # Ensure backup_dir is safely quoted (prevents argument splitting with spaces)
-    backup_dir_quoted = f'"{backup_dir.strip("\"")}"'
+    backup_dir_quoted = '"' + backup_dir.strip('"') + '"'
     
     # Build the command arguments for scheduled execution
     args = [

@@ -2218,7 +2218,7 @@ def create_scheduled_task(task_name, schedule_type, schedule_time, backup_dir, e
         exe_path = get_exe_path()
         
         # Ensure backup_dir is safely quoted (prevents argument splitting with spaces)
-        backup_dir_quoted = f'"{backup_dir.strip("\"")}"'
+        backup_dir_quoted = '"' + backup_dir.strip('"') + '"'
         
         # Build the command arguments for scheduled execution
         args = [
@@ -6845,7 +6845,7 @@ php /tmp/update_config.php"
                 exe_path = get_exe_path()
                 
                 # Ensure backup_dir is safely quoted (prevents argument splitting with spaces)
-                backup_dir_quoted = f'"{backup_dir.strip("\"")}"'
+                backup_dir_quoted = '"' + backup_dir.strip('"') + '"'
                 
                 # Build the command arguments for test run
                 args = [
