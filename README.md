@@ -40,29 +40,25 @@ Traditional Nextcloud backup and restore requires:
 
 ## Screenshots - See How Easy It Is!
 
-### Main Landing Page
+### 1. Main Landing Page
 ![Landing Page](assets/01_landing.png)
-**The starting point** - Choose whether to backup or restore with simple, large buttons. No confusion, just click what you need!
 
-### Restore Wizard - Page 1: Select Your Backup
+**Your starting point** - The clean, intuitive interface welcomes you with two simple choices: Backup or Restore. Large, clear buttons make it easy to get started immediately. No technical jargon, no confusion - just click what you need and the app handles the rest!
+
+### 2. Restore Wizard - Step 1: Select Your Backup
 ![Restore Wizard Page 1](assets/04_wizard_page1.png)
-**Step 1 of the restore process** - Simply browse to your backup file and enter your password if you encrypted it. The wizard guides you every step of the way.
 
-### Restore Wizard - Page 2: Configure Your Nextcloud
+**The first step of restoration** - Browse to select your backup file, enter the encryption password if your backup is encrypted, and click Next. The wizard provides clear instructions and validates your input to prevent errors. You're guided through each field with helpful labels and tooltips.
+
+### 3. Restore Wizard - Step 2: Configure Your Nextcloud
 ![Restore Wizard Page 2](assets/05_wizard_page2.png)
-**Step 2 of the restore process** - Enter your domain and admin details. Clear labels and helpful tooltips make it easy to know what to enter.
 
-### Restore Wizard - Page 3: Advanced Options (Optional)
+**Set up your Nextcloud instance** - Enter your domain name, admin username, and password. The interface provides clear labels for each field, making it obvious what information is needed. Beginners get helpful guidance, while the clean layout keeps everything organized and easy to understand.
+
+### 4. Restore Wizard - Step 3: Advanced Options
 ![Restore Wizard Page 3](assets/06_wizard_page3.png)
-**Step 3 of the restore process** - Optional advanced settings for power users. Beginners can safely skip these and use the defaults.
 
-### Restore in Progress
-![Restore Complete](assets/07_wizard_complete.png)
-**Watch the progress** - Real-time status updates show you exactly what's happening. No need to guess if it's working!
-
-### Backup Wizard
-![Backup Wizard](assets/02_restore_wizard.png)
-**Creating backups is just as easy** - Select your backup location, choose whether to encrypt, and click backup. Done!
+**Fine-tune your configuration (optional)** - Advanced users can customize database settings, ports, and other technical details. However, beginners can safely use the pre-configured defaults and skip this step entirely. The app intelligently handles these settings for you, but the options are there if you need them.
 
 ## Repository Structure
 
