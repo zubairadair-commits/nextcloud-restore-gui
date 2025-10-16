@@ -1,0 +1,15 @@
+# Python GUI framework
+# tkinter is included with Python standard library
+
+# No additional dependencies required for basic functionality
+# The application uses only Python standard library modules:
+# - tkinter (GUI)
+# - subprocess (system commands)
+# - sqlite3 (database)
+# - json (configuration)
+# - logging (logging)
+# - pathlib (file paths)
+# - datetime (timestamps)
+
+# Optional dependencies for testing:
+pytest>=7.0.0

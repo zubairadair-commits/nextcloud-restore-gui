@@ -24,3 +24,6 @@ Thumbs.db
 # Log files
 *.log
 nextcloud_restore_gui.log
+
+# Configuration files (keep only example)
+config/config.json
