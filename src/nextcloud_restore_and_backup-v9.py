@@ -255,6 +255,17 @@ class BackupHistoryManager:
         conn.close()
         
         return result
+    
+    def delete_backup(self, backup_id):
+        """Delete a backup record from the database"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('DELETE FROM backups WHERE id = ?', (backup_id,))
+        
+        conn.commit()
+        conn.close()
+        logger.info(f"BACKUP HISTORY: Deleted backup record with ID {backup_id}")
 
 # --- Service Health Check Functions ---
 def find_tailscale_exe():
@@ -9560,7 +9571,20 @@ Would you like to open the detailed guide?
         # Get backup history
         backups = self.backup_history.get_all_backups()
         
-        if not backups:
+        # Filter out backups whose files no longer exist and clean up database
+        existing_backups = []
+        for backup in backups:
+            backup_id = backup[0]
+            backup_path = backup[1]
+            
+            if os.path.exists(backup_path):
+                existing_backups.append(backup)
+            else:
+                # Remove missing backup from database
+                logger.info(f"BACKUP HISTORY: Removing missing backup from history: {backup_path}")
+                self.backup_history.delete_backup(backup_id)
+        
+        if not existing_backups:
             no_backups_label = tk.Label(
                 content_frame,
                 text="No backup history found.\n\nBackups created using this tool will appear here.",
@@ -9572,7 +9596,7 @@ Would you like to open the detailed guide?
             no_backups_label.pack(pady=50)
         else:
             # Display each backup
-            for backup in backups:
+            for backup in existing_backups:
                 self._create_backup_item(content_frame, backup)
     
     def _create_backup_item(self, parent, backup_data):
