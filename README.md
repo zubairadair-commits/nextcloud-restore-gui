@@ -8,6 +8,7 @@ A Python GUI utility for backing up and restoring Nextcloud instances with suppo
 - **Database Backup**: Automated database backup and restoration
 - **File Backup**: Comprehensive file and directory backup capabilities
 - **Cloud Storage**: Manage cloud storage backups efficiently
+- **Tailscale Integration**: Secure remote access to your Nextcloud instance from anywhere using Tailscale VPN
 - **GUI Interface**: User-friendly graphical interface built with Python tkinter
 - **Automation**: Automated backup/restore processes with minimal user intervention
 - **Cross-Platform**: Works on Windows and other operating systems
@@ -40,52 +41,19 @@ nextcloud-restore-gui/
 └── requirements.txt             # Python dependencies
 ```
 
-## Installation
+## Download & Run
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/zubairadair-commits/nextcloud-restore-gui.git
-   cd nextcloud-restore-gui
-   ```
+**Getting Started is Easy!**
 
-2. Install dependencies (if requirements.txt is available):
-   ```bash
-   pip install -r requirements.txt
-   ```
+1. **Download** the latest release from the [Releases page](https://github.com/zubairadair-commits/nextcloud-restore-gui/releases)
+2. **Run** the downloaded EXE file
+3. **Follow** the intuitive wizard to backup or restore your Nextcloud instance
 
-## Usage
-
-Run the main application from the repository root:
-```bash
-python src/nextcloud_restore_and_backup-v9.py
-```
-
-Or from the src directory:
-```bash
-cd src
-python nextcloud_restore_and_backup-v9.py
-```
-
-## Configuration
-
-Copy the example configuration file to create your own:
-```bash
-cp config/config.example.json config/config.json
-```
-
-Edit `config/config.json` with your specific settings.
-
-## Testing
-
-Run tests from the project root:
-```bash
-python -m pytest tests/
-```
-
-Or run individual test files:
-```bash
-python tests/test_*.py
-```
+The application includes:
+- ✅ Automated setup and configuration
+- ✅ Built-in Tailscale integration for secure remote access
+- ✅ Step-by-step wizard interface
+- ✅ No manual installation or dependencies required
 
 ## Documentation
 
@@ -95,6 +63,33 @@ Comprehensive documentation is available in the `docs/` directory:
 - Visual mockups and comparisons
 - Developer guides
 - User guides
+
+## For Developers
+
+If you want to contribute to the project or run from source:
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/zubairadair-commits/nextcloud-restore-gui.git
+   cd nextcloud-restore-gui
+   ```
+
+2. Install dependencies (optional - only needed for testing):
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. Run from source:
+   ```bash
+   python src/nextcloud_restore_and_backup-v9.py
+   ```
+
+4. Run tests:
+   ```bash
+   python -m pytest tests/
+   ```
+
+For more details, see the `docs/DEVELOPER_GUIDE.md` file.
 
 ## Contributing
 
