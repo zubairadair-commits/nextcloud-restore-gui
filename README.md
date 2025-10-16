@@ -2,7 +2,7 @@
 
 **The easiest way to backup and restore your Nextcloud instance - no technical knowledge required!**
 
-This beginner-friendly application was designed to make Nextcloud backup and restore operations **simple and stress-free**. Whether you're a complete beginner or an experienced user, this tool handles all the complexity for you, including:
+This beginner-friendly application was designed to make Nextcloud backup and restore operations **simple and stress-free**. Whether you're a complete beginner or an experienced user, this tool handles everything for you:
 
 ✅ **Automated Docker Installation** - No need to install Docker manually  
 ✅ **Encryption Tools Setup** - Automatically installs GPG/encryption software when needed  
@@ -37,28 +37,6 @@ Traditional Nextcloud backup and restore requires:
 - **Scheduled Backups**: Set up automatic backups on a schedule
 - **User-Friendly GUI**: Intuitive graphical interface - no command-line needed
 - **Cross-Platform**: Works on Windows, Linux, and other operating systems
-
-## Screenshots - See How Easy It Is!
-
-### 1. Main Landing Page
-![Landing Page](assets/01_landing.png)
-
-**Your starting point** - The clean, intuitive interface welcomes you with two simple choices: Backup or Restore. Large, clear buttons make it easy to get started immediately. No technical jargon, no confusion - just click what you need and the app handles the rest!
-
-### 2. Restore Wizard - Step 1: Select Your Backup
-![Restore Wizard Page 1](assets/04_wizard_page1.png)
-
-**The first step of restoration** - Browse to select your backup file, enter the encryption password if your backup is encrypted, and click Next. The wizard provides clear instructions and validates your input to prevent errors. You're guided through each field with helpful labels and tooltips.
-
-### 3. Restore Wizard - Step 2: Configure Your Nextcloud
-![Restore Wizard Page 2](assets/05_wizard_page2.png)
-
-**Set up your Nextcloud instance** - Enter your domain name, admin username, and password. The interface provides clear labels for each field, making it obvious what information is needed. Beginners get helpful guidance, while the clean layout keeps everything organized and easy to understand.
-
-### 4. Restore Wizard - Step 3: Advanced Options
-![Restore Wizard Page 3](assets/06_wizard_page3.png)
-
-**Fine-tune your configuration (optional)** - Advanced users can customize database settings, ports, and other technical details. However, beginners can safely use the pre-configured defaults and skip this step entirely. The app intelligently handles these settings for you, but the options are there if you need them.
 
 ## Getting Started - It's Really This Simple!
 
