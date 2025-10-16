@@ -60,34 +60,6 @@ Traditional Nextcloud backup and restore requires:
 
 **Fine-tune your configuration (optional)** - Advanced users can customize database settings, ports, and other technical details. However, beginners can safely use the pre-configured defaults and skip this step entirely. The app intelligently handles these settings for you, but the options are there if you need them.
 
-## Repository Structure
-
-The repository is organized into a clear, professional folder structure:
-
-```
-nextcloud-restore-gui/
-├── src/                          # Source code
-│   └── nextcloud_restore_and_backup-v9.py  # Main application
-├── tests/                        # Test scripts and demos (91 files)
-│   ├── test_*.py                # Test files
-│   ├── demo_*.py                # Demo scripts
-│   ├── validate_*.py            # Validation scripts
-│   └── *.sh                     # Test shell scripts
-├── docs/                         # Documentation (267 files)
-│   ├── *.md                     # Markdown documentation files
-│   └── *.txt                    # Text documentation files
-├── config/                       # Configuration files
-│   └── config.example.json      # Example configuration template
-├── assets/                       # Images and static files (35 files)
-│   ├── *.png                    # Screenshots and images
-│   ├── *.html                   # UI mockups
-│   └── *.service                # Service files
-├── .gitignore                   # Git ignore rules
-├── LICENSE                      # MIT License
-├── README.md                    # This file
-└── requirements.txt             # Python dependencies
-```
-
 ## Getting Started - It's Really This Simple!
 
 **Total Time: Less than 5 minutes from download to your first backup or restore!**
