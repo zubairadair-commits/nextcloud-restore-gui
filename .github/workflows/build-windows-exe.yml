@@ -25,7 +25,7 @@ jobs:
 
       - name: Build EXE with PyInstaller
         run: |
-          pyinstaller --onefile src/nextcloud_restore_and_backup-v9.py
+          pyinstaller --onefile --windowed src/nextcloud_restore_and_backup-v9.py
 
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v1
