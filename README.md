@@ -1,6 +1,16 @@
 # Nextcloud Restore GUI
 
-A GUI application for backing up and restoring Nextcloud instances.
+A Python GUI utility for backing up and restoring Nextcloud instances with support for database backup, file backup, and cloud storage management. This automation tool provides an easy-to-use interface for Nextcloud backup and restore operations on Windows and other platforms.
+
+## Features
+
+- **Nextcloud Backup & Restore**: Complete backup and restore functionality for Nextcloud instances
+- **Database Backup**: Automated database backup and restoration
+- **File Backup**: Comprehensive file and directory backup capabilities
+- **Cloud Storage**: Manage cloud storage backups efficiently
+- **GUI Interface**: User-friendly graphical interface built with Python tkinter
+- **Automation**: Automated backup/restore processes with minimal user intervention
+- **Cross-Platform**: Works on Windows and other operating systems
 
 ## Repository Structure
 
@@ -89,6 +99,10 @@ Comprehensive documentation is available in the `docs/` directory:
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+## Keywords
+
+nextcloud, backup, restore, nextcloud-backup, nextcloud-restore, database-backup, file-backup, cloud-storage, python, gui, automation, utility, cloud-app, windows
 
 ## License
 
