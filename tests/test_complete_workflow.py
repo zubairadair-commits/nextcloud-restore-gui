@@ -14,7 +14,7 @@ def test_workflow_task_creation():
     print("TEST 1: SCHEDULED TASK CREATION WORKFLOW")
     print("=" * 70)
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -68,7 +68,7 @@ def test_workflow_scheduled_execution():
     print("TEST 2: SCHEDULED BACKUP EXECUTION WORKFLOW")
     print("=" * 70)
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -124,7 +124,7 @@ def test_workflow_history_viewing():
     print("TEST 3: BACKUP HISTORY VIEWING WORKFLOW")
     print("=" * 70)
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     

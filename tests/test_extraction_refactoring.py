@@ -63,7 +63,7 @@ def test_extract_config_php_only():
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         
         # Read the file and check for function
-        with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
             content = f.read()
         
         if 'def extract_config_php_only(' not in content:
@@ -100,7 +100,7 @@ def test_early_detect_refactored():
     print("="*60)
     
     try:
-        with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
             content = f.read()
         
         # Find the method
@@ -158,7 +158,7 @@ def test_auto_extract_backup_unchanged():
     print("="*60)
     
     try:
-        with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
             content = f.read()
         
         if 'def auto_extract_backup(' not in content:
@@ -208,7 +208,7 @@ def test_comments_and_documentation():
     print("="*60)
     
     try:
-        with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
             content = f.read()
         
         # Check for key documentation patterns
@@ -250,8 +250,8 @@ def test_syntax():
     print("="*60)
     
     try:
-        with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
-            compile(f.read(), 'nextcloud_restore_and_backup-v9.py', 'exec')
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
+            compile(f.read(), '../src/nextcloud_restore_and_backup-v9.py', 'exec')
         print("✅ Python syntax is valid")
         return True
     except SyntaxError as e:

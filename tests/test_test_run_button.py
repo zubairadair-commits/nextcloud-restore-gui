@@ -22,7 +22,7 @@ def test_test_run_button_in_status_section():
     print("=" * 70)
     print()
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -62,7 +62,7 @@ def test_test_run_button_enabled_state():
     print("=" * 70)
     print()
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r', encoding='utf-8') as f:
         content = f.read()
     
@@ -110,7 +110,7 @@ def test_test_run_button_tooltip():
     print("=" * 70)
     print()
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -150,7 +150,7 @@ def test_test_run_uses_schedule_config():
     print("=" * 70)
     print()
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -203,7 +203,7 @@ def test_inline_feedback_for_test_run():
     print("=" * 70)
     print()
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -250,7 +250,7 @@ def test_test_run_button_positioning():
     print("=" * 70)
     print()
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r', encoding='utf-8') as f:
         content = f.read()
     
@@ -297,7 +297,7 @@ def test_no_test_run_in_configure_section():
     print("=" * 70)
     print()
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     

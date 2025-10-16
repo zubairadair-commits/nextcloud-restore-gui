@@ -14,7 +14,7 @@ def test_code_structure():
     print("Testing code structure...")
     
     # Check if the main file exists
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     assert os.path.exists(main_file), f"{main_file} should exist"
     print(f"  ✓ {main_file} exists")
     

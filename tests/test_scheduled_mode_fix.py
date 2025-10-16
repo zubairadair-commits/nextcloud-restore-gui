@@ -15,7 +15,7 @@ def test_scheduled_mode_implementation():
     print("=" * 70)
     print()
     
-    script_path = os.path.join(os.path.dirname(__file__), 'nextcloud_restore_and_backup-v9.py')
+    script_path = os.path.join(os.path.dirname(__file__), '../src/nextcloud_restore_and_backup-v9.py')
     
     with open(script_path, 'r') as f:
         content = f.read()
@@ -98,7 +98,7 @@ def test_code_patterns():
     print("=" * 70)
     print()
     
-    script_path = os.path.join(os.path.dirname(__file__), 'nextcloud_restore_and_backup-v9.py')
+    script_path = os.path.join(os.path.dirname(__file__), '../src/nextcloud_restore_and_backup-v9.py')
     
     with open(script_path, 'r') as f:
         lines = f.readlines()

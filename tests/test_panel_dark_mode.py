@@ -17,7 +17,7 @@ def test_start_new_instance_theme():
     print("TEST 1: Start New Nextcloud Instance - Theme Colors")
     print("="*70)
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Find show_port_entry method
@@ -64,7 +64,7 @@ def test_launch_nextcloud_instance_theme():
     print("TEST 2: Launch Nextcloud Instance Progress - Theme Colors")
     print("="*70)
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Find launch_nextcloud_instance method
@@ -109,7 +109,7 @@ def test_schedule_backup_theme():
     print("TEST 3: Schedule Automatic Backups - Theme Colors")
     print("="*70)
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Find show_schedule_backup method
@@ -156,7 +156,7 @@ def test_all_panels_apply_theme_recursive():
     print("TEST 4: All Panels Apply Theme Recursively")
     print("="*70)
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Check that key methods apply theme recursively or to their frames

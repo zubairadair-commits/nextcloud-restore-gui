@@ -22,7 +22,7 @@ def test_theme_button_has_padding():
     print("TEST 1: Theme Toggle Button Padding and Sizing")
     print("="*70)
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Find the header_theme_btn creation with context
@@ -60,7 +60,7 @@ def test_wizard_frame_uses_theme():
     print("TEST 2: Wizard Frame Uses Theme Colors")
     print("="*70)
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Find the wizard_scrollable_frame creation
@@ -92,7 +92,7 @@ def test_wizard_page_widgets_use_theme():
     print("TEST 3: Wizard Page Widgets Use Theme Colors")
     print("="*70)
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Find show_wizard_page method
@@ -126,7 +126,7 @@ def test_wizard_page1_uses_theme():
     print("TEST 4: Wizard Page 1 Entry Fields Use Theme Colors")
     print("="*70)
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Find create_wizard_page1 method
@@ -160,7 +160,7 @@ def test_tailscale_windows_check():
     print("TEST 5: Tailscale Health Check Supports Windows")
     print("="*70)
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Find check_service_health function
@@ -198,7 +198,7 @@ def test_info_frame_theme():
     print("TEST 6: Info Frames Use Theme Colors")
     print("="*70)
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Find create_wizard_page2 method

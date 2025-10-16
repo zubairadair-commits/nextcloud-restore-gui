@@ -107,7 +107,7 @@ def test_backup_history_ui_integration():
     """Test that show_backup_history calls get_all_backups."""
     print("\nTesting backup history UI integration...")
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     

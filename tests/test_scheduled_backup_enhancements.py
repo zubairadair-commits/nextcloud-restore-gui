@@ -15,7 +15,7 @@ def test_scheduled_task_flags():
     """Test that scheduled task creation does NOT include /RL and /Z flags (reverted)."""
     print("Testing scheduled task creation flags (reverted)...")
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     assert os.path.exists(main_file), f"{main_file} should exist"
     
     with open(main_file, 'r') as f:
@@ -53,7 +53,7 @@ def test_scheduled_backup_history():
     """Test that scheduled backup adds to backup history."""
     print("Testing scheduled backup history tracking...")
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     
     with open(main_file, 'r') as f:
         content = f.read()
@@ -99,7 +99,7 @@ def test_code_integrity():
     """Test that the modified code doesn't break existing functionality."""
     print("Testing code integrity...")
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     
     with open(main_file, 'r') as f:
         content = f.read()

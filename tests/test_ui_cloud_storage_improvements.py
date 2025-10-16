@@ -23,7 +23,7 @@ def test_code_structure():
     print("=" * 70)
     print()
     
-    main_file = 'nextcloud_restore_and_backup-v9.py'
+    main_file = '../src/nextcloud_restore_and_backup-v9.py'
     
     with open(main_file, 'r') as f:
         content = f.read()
@@ -158,7 +158,7 @@ def test_dialog_functionality():
     
     try:
         # Read the code
-        method_code = open('nextcloud_restore_and_backup-v9.py').read()
+        method_code = open('../src/nextcloud_restore_and_backup-v9.py').read()
         method_start = method_code.find('def _show_cloud_storage_guide(self):')
         
         if method_start == -1:
@@ -229,7 +229,7 @@ def test_integration():
     print("=" * 70)
     print()
     
-    main_file = 'nextcloud_restore_and_backup-v9.py'
+    main_file = '../src/nextcloud_restore_and_backup-v9.py'
     
     with open(main_file, 'r') as f:
         content = f.read()

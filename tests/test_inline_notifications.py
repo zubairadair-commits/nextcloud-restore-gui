@@ -22,7 +22,7 @@ def test_inline_message_label_added():
     print("=" * 70)
     print()
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -55,7 +55,7 @@ def test_no_messagebox_in_create_schedule():
     print("=" * 70)
     print()
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -107,7 +107,7 @@ def test_test_run_uses_inline_messages():
     print("=" * 70)
     print()
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -142,7 +142,7 @@ def test_disable_schedule_uses_inline_messages():
     print("=" * 70)
     print()
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -183,7 +183,7 @@ def test_verify_backup_uses_inline_messages():
     print("=" * 70)
     print()
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -218,7 +218,7 @@ def test_inline_notifications_are_non_intrusive():
     print("=" * 70)
     print()
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     

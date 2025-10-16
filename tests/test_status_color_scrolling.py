@@ -16,7 +16,7 @@ def test_status_text_color():
     print("=" * 70)
     print()
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     checks = []
@@ -55,7 +55,7 @@ def test_mouse_wheel_scrolling():
     print("=" * 70)
     print()
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Find show_schedule_backup method

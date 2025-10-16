@@ -12,7 +12,7 @@ import shutil
 
 def validate_code_patterns():
     """Validate that the code contains the correct patterns"""
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Find the extract_config_php_only function

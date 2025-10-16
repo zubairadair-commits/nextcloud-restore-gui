@@ -37,7 +37,7 @@ def test_parse_config_php_dbtype():
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     
     # We can't import directly due to tkinter, so we'll read and extract the function
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -64,7 +64,7 @@ def test_check_database_dump_utility_logic():
     """Test check_database_dump_utility function logic."""
     print("\nTesting check_database_dump_utility logic...")
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -98,7 +98,7 @@ def test_backup_flow_logic():
     """Test that backup flow correctly handles SQLite."""
     print("\nTesting backup flow logic...")
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -129,7 +129,7 @@ def test_no_utility_prompts_for_sqlite():
     """Test that no utility prompts occur for SQLite."""
     print("\nTesting that no utility prompts occur for SQLite...")
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     

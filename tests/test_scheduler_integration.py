@@ -20,7 +20,7 @@ def test_test_run_argument_exists():
     print("=" * 70)
     print()
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -46,7 +46,7 @@ def test_run_scheduled_task_now_function():
     print("=" * 70)
     print()
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -78,7 +78,7 @@ def test_temporary_task_creation():
     print("=" * 70)
     print()
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -122,7 +122,7 @@ def test_visual_feedback_symbols():
     print("=" * 70)
     print()
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -164,7 +164,7 @@ def test_scheduler_integration_messaging():
     print("=" * 70)
     print()
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -195,7 +195,7 @@ def test_config_only_backup():
     print("=" * 70)
     print()
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     

@@ -15,7 +15,7 @@ def test_integration_workflow():
     """Test the complete integration of scheduled backup enhancements."""
     print("Testing integrated workflow...")
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -141,7 +141,7 @@ def test_documentation_and_comments():
     """Test that changes are properly documented."""
     print("\nTesting documentation...")
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     

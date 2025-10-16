@@ -15,7 +15,7 @@ def test_content_width():
     """Verify content width increased from 700px to 850px"""
     print("Testing content width enhancement...")
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Check for the new 850px width
@@ -33,7 +33,7 @@ def test_window_geometry():
     """Verify window geometry increased from 700x900 to 900x900"""
     print("\nTesting window geometry...")
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Check for the new 900x900 geometry
@@ -51,7 +51,7 @@ def test_minimum_size():
     """Verify minimum window size increased from 600x700 to 700x700"""
     print("\nTesting minimum window size...")
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Check for the new minsize
@@ -69,7 +69,7 @@ def test_input_field_widths():
     """Verify input fields have been widened"""
     print("\nTesting input field widths...")
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     issues = []
@@ -102,7 +102,7 @@ def test_grid_column_minsize():
     """Verify grid columns have minimum width for better layout"""
     print("\nTesting grid column minimum sizes...")
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Check for minsize parameter in grid_columnconfigure
@@ -122,7 +122,7 @@ def test_button_widths():
     """Verify navigation buttons have been widened"""
     print("\nTesting button widths...")
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     passed = []
@@ -164,7 +164,7 @@ def test_improved_padding():
     """Verify improved padding on frames"""
     print("\nTesting improved padding...")
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     passed = []
@@ -206,8 +206,8 @@ def test_syntax():
     """Verify Python syntax is valid"""
     print("\nChecking Python syntax...")
     try:
-        with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
-            compile(f.read(), 'nextcloud_restore_and_backup-v9.py', 'exec')
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
+            compile(f.read(), '../src/nextcloud_restore_and_backup-v9.py', 'exec')
         print("✅ Python syntax is valid")
         return True
     except SyntaxError as e:

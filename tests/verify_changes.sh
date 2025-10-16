@@ -68,7 +68,7 @@ echo ""
 # Test 5: Syntax Check
 echo "Test 5: Python Syntax Check"
 echo "----------------------------------------------------------------------"
-if python -m py_compile nextcloud_restore_and_backup-v9.py 2>&1; then
+if python -m py_compile ../src/nextcloud_restore_and_backup-v9.py 2>&1; then
     echo -e "${GREEN}✅ PASS${NC} - Python syntax is valid"
 else
     echo -e "${RED}❌ FAIL${NC} - Python syntax error detected"
@@ -81,7 +81,7 @@ echo "Test 6: Code Change Verification"
 echo "----------------------------------------------------------------------"
 
 # Check for dark mode default
-if grep -q "self.current_theme = 'dark'" nextcloud_restore_and_backup-v9.py; then
+if grep -q "self.current_theme = 'dark'" ../src/nextcloud_restore_and_backup-v9.py; then
     echo -e "${GREEN}✅ PASS${NC} - Dark mode is set as default"
 else
     echo -e "${RED}❌ FAIL${NC} - Dark mode not set as default"
@@ -89,8 +89,8 @@ else
 fi
 
 # Check for config backup in run_test_backup
-if grep -q "get_schedule_config_path()" nextcloud_restore_and_backup-v9.py && \
-   grep -q "arcname='schedule_config.json'" nextcloud_restore_and_backup-v9.py; then
+if grep -q "get_schedule_config_path()" ../src/nextcloud_restore_and_backup-v9.py && \
+   grep -q "arcname='schedule_config.json'" ../src/nextcloud_restore_and_backup-v9.py; then
     echo -e "${GREEN}✅ PASS${NC} - Config backup functionality implemented"
 else
     echo -e "${RED}❌ FAIL${NC} - Config backup functionality not properly implemented"
@@ -98,8 +98,8 @@ else
 fi
 
 # Check for immediate deletion
-if grep -q "os.remove(test_backup_path)" nextcloud_restore_and_backup-v9.py && \
-   grep -q "deleted after successful test" nextcloud_restore_and_backup-v9.py; then
+if grep -q "os.remove(test_backup_path)" ../src/nextcloud_restore_and_backup-v9.py && \
+   grep -q "deleted after successful test" ../src/nextcloud_restore_and_backup-v9.py; then
     echo -e "${GREEN}✅ PASS${NC} - Immediate backup deletion implemented"
 else
     echo -e "${RED}❌ FAIL${NC} - Immediate backup deletion not properly implemented"

@@ -38,7 +38,7 @@ def test_syntax():
     print("\nTesting Python syntax...")
     import py_compile
     try:
-        py_compile.compile('nextcloud_restore_and_backup-v9.py', doraise=True)
+        py_compile.compile('../src/nextcloud_restore_and_backup-v9.py', doraise=True)
         print("  ✓ Syntax check passed")
         return True
     except py_compile.PyCompileError as e:
@@ -49,7 +49,7 @@ def test_tooltip_class():
     """Test ToolTip class exists and has required methods"""
     print("\nTesting ToolTip class...")
     try:
-        with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
             content = f.read()
         
         required_methods = [
@@ -78,7 +78,7 @@ def test_backup_history_manager():
     """Test BackupHistoryManager class"""
     print("\nTesting BackupHistoryManager class...")
     try:
-        with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
             content = f.read()
         
         required_methods = [
@@ -108,7 +108,7 @@ def test_health_check_function():
     """Test service health check function exists"""
     print("\nTesting health check functions...")
     try:
-        with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
             content = f.read()
         
         required_functions = [
@@ -136,7 +136,7 @@ def test_backup_verification():
     """Test backup verification function"""
     print("\nTesting backup verification...")
     try:
-        with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
             content = f.read()
         
         if 'def verify_backup_integrity(backup_path, password=None):' in content:
@@ -170,7 +170,7 @@ def test_ui_methods():
     """Test new UI methods exist"""
     print("\nTesting new UI methods...")
     try:
-        with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
             content = f.read()
         
         required_methods = [
@@ -204,7 +204,7 @@ def test_tooltips_added():
     """Test that tooltips were added to UI elements"""
     print("\nTesting tooltip integration...")
     try:
-        with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
             content = f.read()
         
         # Count tooltip instances
@@ -224,7 +224,7 @@ def test_selective_backup_integration():
     """Test selective backup integration"""
     print("\nTesting selective backup integration...")
     try:
-        with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
             content = f.read()
         
         checks = [
@@ -251,7 +251,7 @@ def test_backup_history_tracking():
     """Test backup history is tracked in backup process"""
     print("\nTesting backup history tracking integration...")
     try:
-        with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
             content = f.read()
         
         # Check backup process includes history tracking
@@ -285,7 +285,7 @@ def test_responsive_layout():
     """Test responsive layout features"""
     print("\nTesting responsive layout features...")
     try:
-        with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
             content = f.read()
         
         checks = [
@@ -314,7 +314,7 @@ def test_database_schema():
     """Test backup history database schema"""
     print("\nTesting database schema...")
     try:
-        with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
             content = f.read()
         
         required_fields = [

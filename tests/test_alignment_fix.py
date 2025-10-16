@@ -13,7 +13,7 @@ def test_alignment_fix():
     """
     print("Testing page alignment fix...")
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Find all pack() calls in wizard page methods
@@ -97,8 +97,8 @@ def test_syntax():
     """
     print("\nChecking Python syntax...")
     try:
-        with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
-            compile(f.read(), 'nextcloud_restore_and_backup-v9.py', 'exec')
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
+            compile(f.read(), '../src/nextcloud_restore_and_backup-v9.py', 'exec')
         print("✅ Python syntax is valid")
         return True
     except SyntaxError as e:
@@ -111,7 +111,7 @@ def test_no_hardcoded_padx():
     """
     print("\nChecking for removed padx parameters...")
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Check wizard page methods specifically

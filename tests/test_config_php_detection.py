@@ -139,7 +139,7 @@ def test_validation_in_extraction():
     print("the extracted file contains $CONFIG and dbtype markers.")
     
     # Read the source file
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Find the extract_config_php_only function

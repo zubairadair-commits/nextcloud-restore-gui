@@ -54,7 +54,7 @@ def check_files_exist():
     print()
     
     files_to_check = [
-        ('Main Application', 'nextcloud_restore_and_backup-v9.py'),
+        ('Main Application', '../src/nextcloud_restore_and_backup-v9.py'),
         ('Test: Persistent Logging', 'test_persistent_logging.py'),
         ('Test: Log Rotation', 'test_log_rotation.py'),
         ('Test: Diagnostic Logging', 'test_diagnostic_logging.py'),
@@ -123,7 +123,7 @@ def check_code_changes():
     print()
     
     try:
-        with open('nextcloud_restore_and_backup-v9.py', 'r', encoding='utf-8') as f:
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r', encoding='utf-8') as f:
             code = f.read()
         
         checks = {

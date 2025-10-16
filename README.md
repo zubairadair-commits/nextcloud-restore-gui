@@ -40,9 +40,15 @@ nextcloud-restore-gui/
 
 ## Usage
 
-Run the main application:
+Run the main application from the repository root:
 ```bash
 python src/nextcloud_restore_and_backup-v9.py
+```
+
+Or from the src directory:
+```bash
+cd src
+python nextcloud_restore_and_backup-v9.py
 ```
 
 ## Configuration

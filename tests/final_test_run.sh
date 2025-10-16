@@ -53,7 +53,7 @@ echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "TEST 4: Python Syntax Validation"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-if python3 -m py_compile nextcloud_restore_and_backup-v9.py 2>/dev/null; then
+if python3 -m py_compile ../src/nextcloud_restore_and_backup-v9.py 2>/dev/null; then
     echo "✅ PASSED - Python syntax validation"
     passed_tests=$((passed_tests + 1))
 else

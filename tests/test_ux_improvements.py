@@ -23,7 +23,7 @@ def test_syntax():
     
     try:
         import py_compile
-        py_compile.compile('nextcloud_restore_and_backup-v9.py', doraise=True)
+        py_compile.compile('../src/nextcloud_restore_and_backup-v9.py', doraise=True)
         print("✓ Python syntax is valid")
         return True
     except py_compile.PyCompileError as e:
@@ -37,7 +37,7 @@ def test_function_exists():
     print("=" * 70)
     
     try:
-        with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
             content = f.read()
         
         functions_to_check = [
@@ -74,7 +74,7 @@ def test_backup_flow_integration():
     print("=" * 70)
     
     try:
-        with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
             content = f.read()
         
         # Check for key integration points
@@ -111,7 +111,7 @@ def test_container_startup_improvements():
     print("=" * 70)
     
     try:
-        with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
             content = f.read()
         
         # Check for progress indicators in launch_nextcloud_instance
@@ -150,7 +150,7 @@ def test_link_availability_feature():
     print("=" * 70)
     
     try:
-        with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
             content = f.read()
         
         # Check for link availability features

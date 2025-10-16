@@ -39,7 +39,7 @@ def test_path_extraction():
         print(f"    Expected: {expected}")
         
         # Check if function exists in the main file
-        with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
             content = f.read()
         
         if 'def extract_path_from_task_command' in content:
@@ -55,7 +55,7 @@ def test_scheduled_task_query():
     """Test that we can query scheduled task commands."""
     print("\nTesting scheduled task query functionality...")
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     checks = [
@@ -78,7 +78,7 @@ def test_repair_functionality():
     """Test that the repair functionality exists and has correct logic."""
     print("\nTesting scheduled task repair functionality...")
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     checks = [
@@ -105,7 +105,7 @@ def test_startup_integration():
     """Test that repair is integrated into app startup."""
     print("\nTesting startup integration...")
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Find the __init__ method of NextcloudRestoreWizard
@@ -148,7 +148,7 @@ def test_user_notification():
     """Test that user is notified when repair occurs."""
     print("\nTesting user notification on repair...")
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Look for notification logic in the startup check method
@@ -182,7 +182,7 @@ def test_py_vs_exe_detection():
     """Test that both .py and .exe paths are handled correctly."""
     print("\nTesting .py vs .exe detection in repair...")
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # The create_scheduled_task function should handle both cases

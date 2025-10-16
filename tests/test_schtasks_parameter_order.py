@@ -15,7 +15,7 @@ def test_create_scheduled_task_parameter_order():
     print("=" * 70)
     
     # Read the main file
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Find create_scheduled_task function
@@ -117,7 +117,7 @@ def test_run_test_backup_scheduled_parameter_order():
     print("=" * 70)
     
     # Read the main file
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Find _run_test_backup_scheduled method

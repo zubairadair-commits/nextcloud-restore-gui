@@ -17,7 +17,7 @@ def test_run_test_backup_uses_config_file():
     print("=" * 70)
     print()
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -57,7 +57,7 @@ def test_backup_immediately_deleted():
     print("=" * 70)
     print()
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -95,7 +95,7 @@ def test_dark_mode_default():
     print("=" * 70)
     print()
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -142,7 +142,7 @@ def test_theme_toggle_still_works():
     print("=" * 70)
     print()
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     

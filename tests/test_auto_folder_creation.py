@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import importlib.util
 spec = importlib.util.spec_from_file_location(
     "nextcloud_restore",
-    os.path.join(os.path.dirname(__file__), "nextcloud_restore_and_backup-v9.py")
+    os.path.join(os.path.dirname(__file__), "../src/nextcloud_restore_and_backup-v9.py")
 )
 nextcloud_restore = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(nextcloud_restore)

@@ -145,7 +145,7 @@ def test_enhanced_logging_simple():
     
     # Import the function (we'll just check the code exists)
     print("Checking that extract_config_php_only function has enhanced logging...")
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         code = f.read()
     
     # Check for all the logging enhancements
@@ -209,7 +209,7 @@ def test_enhanced_logging_with_wrong_files():
     # Verify logging for skipped files
     print()
     print("Checking that code logs reasons for skipping files...")
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         code = f.read()
     
     checks = {
@@ -250,7 +250,7 @@ def test_temp_directory_format():
     print()
     
     print("Checking temp directory creation format...")
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         code = f.read()
     
     # Check for timestamp-based temp directory
@@ -291,7 +291,7 @@ def test_cleanup_logging():
     print()
     
     print("Checking cleanup logging details...")
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         code = f.read()
     
     checks = {
@@ -329,7 +329,7 @@ def test_detection_results_summary():
     print()
     
     print("Checking detection results summary...")
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         code = f.read()
     
     checks = {

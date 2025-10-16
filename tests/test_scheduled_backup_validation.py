@@ -14,7 +14,7 @@ def test_validation_functions_exist():
     """Test that validation functions are present in the code."""
     print("Testing validation functions exist...")
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     assert os.path.exists(main_file), f"{main_file} should exist"
     
     with open(main_file, 'r') as f:
@@ -39,7 +39,7 @@ def test_validation_checks():
     """Test that all validation checks are implemented."""
     print("\nTesting validation checks...")
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -76,7 +76,7 @@ def test_validation_logging():
     """Test that validation includes logging."""
     print("\nTesting validation logging...")
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -102,7 +102,7 @@ def test_test_run_function():
     """Test that test run function is implemented."""
     print("\nTesting test run function...")
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -131,7 +131,7 @@ def test_last_run_verification():
     """Test that last run verification is implemented."""
     print("\nTesting last run verification...")
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -166,7 +166,7 @@ def test_ui_integration():
     """Test that UI has been updated with new features."""
     print("\nTesting UI integration...")
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -200,7 +200,7 @@ def test_validation_in_create_schedule():
     """Test that _create_schedule method uses validation."""
     print("\nTesting validation integration in _create_schedule...")
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -233,7 +233,7 @@ def test_error_messages():
     """Test that clear error messages are implemented."""
     print("\nTesting error messages...")
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -256,7 +256,7 @@ def test_comprehensive_checks():
     """Test that all 10 requirements from problem statement are addressed."""
     print("\nTesting comprehensive checklist implementation...")
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     

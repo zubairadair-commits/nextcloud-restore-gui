@@ -17,7 +17,7 @@ def test_timezone_function():
     print("=" * 70)
     
     try:
-        with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
             content = f.read()
         
         # Check for function definition
@@ -46,7 +46,7 @@ def test_timezone_function():
         try:
             # Import and test the function
             import importlib.util
-            spec = importlib.util.spec_from_file_location("app", "nextcloud_restore_and_backup-v9.py")
+            spec = importlib.util.spec_from_file_location("app", "../src/nextcloud_restore_and_backup-v9.py")
             module = importlib.util.module_from_spec(spec)
             
             # We can't fully load the module as it requires tkinter, but we can check syntax
@@ -70,7 +70,7 @@ def test_cloud_detection_function():
     print("=" * 70)
     
     try:
-        with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
             content = f.read()
         
         # Check for function definition
@@ -119,7 +119,7 @@ def test_ui_timezone_display():
     print("=" * 70)
     
     try:
-        with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
             content = f.read()
         
         # Check for timezone display in UI
@@ -161,7 +161,7 @@ def test_ui_cloud_storage_hints():
     print("=" * 70)
     
     try:
-        with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
             content = f.read()
         
         # Check for cloud storage UI elements
@@ -209,7 +209,7 @@ def test_cloud_status_in_schedule():
     print("=" * 70)
     
     try:
-        with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
             content = f.read()
         
         # Check for cloud sync detection in status display
@@ -245,7 +245,7 @@ def test_tooltip_usage():
     print("=" * 70)
     
     try:
-        with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
             content = f.read()
         
         # Count ToolTip instances in scheduled backup section
@@ -281,7 +281,7 @@ def test_code_quality():
     print("=" * 70)
     
     try:
-        with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
             content = f.read()
         
         # Check for proper error handling
@@ -306,7 +306,7 @@ def test_code_quality():
         # Check syntax
         import py_compile
         try:
-            py_compile.compile('nextcloud_restore_and_backup-v9.py', doraise=True)
+            py_compile.compile('../src/nextcloud_restore_and_backup-v9.py', doraise=True)
             print("  ✓ Python syntax is valid")
         except py_compile.PyCompileError as e:
             print(f"  ✗ Syntax error: {e}")

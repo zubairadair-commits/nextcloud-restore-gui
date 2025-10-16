@@ -15,7 +15,7 @@ def test_tailscale_centering():
     print("=" * 70)
     print()
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     if not os.path.exists(main_file):
         print("✗ Main file not found")
         return False

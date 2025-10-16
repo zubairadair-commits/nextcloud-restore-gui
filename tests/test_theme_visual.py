@@ -14,14 +14,14 @@ def test_theme_constants():
     """Test that theme constants are properly defined"""
     # Import the main module by importing it directly
     import importlib.util
-    spec = importlib.util.spec_from_file_location("main_module", "nextcloud_restore_and_backup-v9.py")
+    spec = importlib.util.spec_from_file_location("main_module", "../src/nextcloud_restore_and_backup-v9.py")
     main_module = importlib.util.module_from_spec(spec)
     try:
         spec.loader.exec_module(main_module)
     except ImportError as e:
         print(f"Note: Could not fully load module (tkinter not available), but can still check constants")
         # Try to extract THEMES constant from file directly
-        with open("nextcloud_restore_and_backup-v9.py", 'r') as f:
+        with open("../src/nextcloud_restore_and_backup-v9.py", 'r') as f:
             content = f.read()
             if 'THEMES = {' in content:
                 print("\n✓ THEMES constant found in source file")

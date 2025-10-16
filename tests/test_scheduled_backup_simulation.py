@@ -19,7 +19,7 @@ def test_scheduled_mode_execution():
     print("=" * 70)
     print()
     
-    script_path = os.path.join(os.path.dirname(__file__), 'nextcloud_restore_and_backup-v9.py')
+    script_path = os.path.join(os.path.dirname(__file__), '../src/nextcloud_restore_and_backup-v9.py')
     
     # Create a temporary directory for backup
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -109,7 +109,7 @@ def test_help_output():
     print("=" * 70)
     print()
     
-    script_path = os.path.join(os.path.dirname(__file__), 'nextcloud_restore_and_backup-v9.py')
+    script_path = os.path.join(os.path.dirname(__file__), '../src/nextcloud_restore_and_backup-v9.py')
     
     try:
         result = subprocess.run(

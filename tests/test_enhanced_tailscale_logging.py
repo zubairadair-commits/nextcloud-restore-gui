@@ -24,7 +24,7 @@ def test_enhanced_logging():
     total_checks = 0
     
     # Read the main file
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Test 1: Enhanced decorator with minimal error UI

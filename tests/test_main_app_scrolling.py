@@ -17,7 +17,7 @@ def test_main_app_scrolling():
     print("=" * 70)
     print()
     
-    file_path = "nextcloud_restore_and_backup-v9.py"
+    file_path = "../src/nextcloud_restore_and_backup-v9.py"
     
     if not os.path.exists(file_path):
         print(f"✗ ERROR: File not found: {file_path}")

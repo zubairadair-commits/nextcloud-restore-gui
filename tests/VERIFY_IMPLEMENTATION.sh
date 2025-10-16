@@ -37,7 +37,7 @@ check_warn() {
 }
 
 echo "1. Checking Python syntax..."
-if python3 -m py_compile nextcloud_restore_and_backup-v9.py 2>/dev/null; then
+if python3 -m py_compile ../src/nextcloud_restore_and_backup-v9.py 2>/dev/null; then
     check_pass "Main file has valid Python syntax"
 else
     check_fail "Main file has syntax errors"
@@ -54,7 +54,7 @@ FUNCTIONS=(
 )
 
 for func in "${FUNCTIONS[@]}"; do
-    if grep -q "def ${func}(" nextcloud_restore_and_backup-v9.py; then
+    if grep -q "def ${func}(" ../src/nextcloud_restore_and_backup-v9.py; then
         check_pass "Function '${func}' exists"
     else
         check_fail "Function '${func}' not found"
@@ -63,7 +63,7 @@ done
 echo ""
 
 echo "3. Checking for silent execution updates..."
-SILENT_CALLS=$(grep -c "run_docker_command_silent" nextcloud_restore_and_backup-v9.py)
+SILENT_CALLS=$(grep -c "run_docker_command_silent" ../src/nextcloud_restore_and_backup-v9.py)
 if [ "$SILENT_CALLS" -gt 5 ]; then
     check_pass "Silent execution used in $SILENT_CALLS places"
 else
@@ -112,7 +112,7 @@ fi
 echo ""
 
 echo "7. Checking for CREATE_NO_WINDOW implementation..."
-if grep -q "0x08000000" nextcloud_restore_and_backup-v9.py; then
+if grep -q "0x08000000" ../src/nextcloud_restore_and_backup-v9.py; then
     check_pass "CREATE_NO_WINDOW flag implemented"
 else
     check_fail "CREATE_NO_WINDOW flag not found"
@@ -120,13 +120,13 @@ fi
 echo ""
 
 echo "8. Checking for multi-strategy detection..."
-if grep -q "detect_db_from_container_inspection" nextcloud_restore_and_backup-v9.py; then
+if grep -q "detect_db_from_container_inspection" ../src/nextcloud_restore_and_backup-v9.py; then
     check_pass "Multi-strategy detection function exists"
 else
     check_fail "Multi-strategy detection function not found"
 fi
 
-if grep -q "Strategy 1\|Strategy 2\|Strategy 3" nextcloud_restore_and_backup-v9.py; then
+if grep -q "Strategy 1\|Strategy 2\|Strategy 3" ../src/nextcloud_restore_and_backup-v9.py; then
     check_pass "Strategy comments found in code"
 else
     check_warn "Strategy comments not found (optional)"
@@ -134,7 +134,7 @@ fi
 echo ""
 
 echo "9. Checking code statistics..."
-LINES_ADDED=$(git diff HEAD~5 --stat | grep "nextcloud_restore_and_backup-v9.py" | grep -oE '[0-9]+ insertion' | grep -oE '[0-9]+')
+LINES_ADDED=$(git diff HEAD~5 --stat | grep "../src/../src/nextcloud_restore_and_backup-v9.py" | grep -oE '[0-9]+ insertion' | grep -oE '[0-9]+')
 if [ -n "$LINES_ADDED" ] && [ "$LINES_ADDED" -gt 200 ]; then
     check_pass "Added $LINES_ADDED lines to main file (expected >200)"
 else

@@ -15,7 +15,7 @@ def simulate_sqlite_backup_flow():
     print("SIMULATING SQLITE BACKUP FLOW")
     print("=" * 70)
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -98,7 +98,7 @@ def verify_code_implementation():
     print("\n4. CODE VERIFICATION")
     print("-" * 70)
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     

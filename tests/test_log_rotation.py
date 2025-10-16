@@ -124,7 +124,7 @@ def test_production_config():
     print("=" * 70)
     print()
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r', encoding='utf-8') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r', encoding='utf-8') as f:
         code = f.read()
     
     print("Checking production logging configuration:")

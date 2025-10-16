@@ -24,7 +24,7 @@ def test_theme_compatibility():
     total_checks = 0
     
     # Read the main file
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Test 1: Loading indicator in wizard uses theme colors

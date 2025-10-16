@@ -14,7 +14,7 @@ def test_python_script_detection():
     print("Testing Python script detection...")
     
     # Read the main file
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     if not os.path.exists(main_file):
         print(f"✗ {main_file} not found")
         return False
@@ -97,7 +97,7 @@ def test_path_quoting():
     print("\nTesting path quoting for spaces...")
     
     # Read the main file
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     if not os.path.exists(main_file):
         print(f"✗ {main_file} not found")
         return False

@@ -13,7 +13,7 @@ def test_sqlite_normalization():
     print("Testing SQLite normalization...")
     
     # Read the main file
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     if not os.path.exists(main_file):
         print(f"  ✗ {main_file} not found")
         return False
@@ -41,7 +41,7 @@ def test_check_database_utility():
     """Test that check_database_dump_utility handles sqlite3."""
     print("\nTesting check_database_dump_utility...")
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -58,7 +58,7 @@ def test_backup_process_checks():
     """Test that backup processes check for both sqlite and sqlite3."""
     print("\nTesting backup process checks...")
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     
@@ -89,7 +89,7 @@ def test_no_duplicate_normalization():
     """Test that there's no redundant normalization in places we've already fixed."""
     print("\nChecking for consistency...")
     
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     with open(main_file, 'r') as f:
         content = f.read()
     

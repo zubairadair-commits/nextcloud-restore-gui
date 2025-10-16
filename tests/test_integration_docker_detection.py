@@ -166,7 +166,7 @@ def test_function_imports():
     
     # We can't import due to tkinter, but we can verify syntax
     try:
-        with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
             content = f.read()
             
             # Check for required functions
@@ -205,7 +205,7 @@ def test_integration_points():
     print("\n   Checking integration with main application methods...")
     
     try:
-        with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
             content = f.read()
             
             # Check for integration in key methods
@@ -256,7 +256,7 @@ def test_module_imports():
     print("\n   Checking for required imports...")
     
     try:
-        with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+        with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
             lines = f.readlines()[:20]  # Check first 20 lines
             content = ''.join(lines)
             

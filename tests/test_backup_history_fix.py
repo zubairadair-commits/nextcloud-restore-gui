@@ -14,7 +14,7 @@ def test_backup_history_manager_basic():
     print("Testing BackupHistoryManager basic functionality...")
     
     # Read the main file to verify BackupHistoryManager class exists
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     assert 'class BackupHistoryManager:' in content, "BackupHistoryManager class should exist"
@@ -40,7 +40,7 @@ def test_scheduled_mode_initialization():
     """Test that BackupHistoryManager is initialized in scheduled mode."""
     print("\nTesting scheduled mode initialization...")
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Find the __init__ method
@@ -72,7 +72,7 @@ def test_scheduled_backup_adds_to_history():
     """Test that scheduled backup process adds to history."""
     print("\nTesting scheduled backup adds to history...")
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Find run_backup_process_scheduled method
@@ -106,7 +106,7 @@ def test_gui_backup_adds_to_history():
     """Test that GUI backup process adds to history."""
     print("\nTesting GUI backup adds to history...")
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Find run_backup_process method (not the scheduled version)
@@ -135,7 +135,7 @@ def test_no_duplicate_initialization():
     """Test that backup_history is only initialized once."""
     print("\nTesting no duplicate initialization...")
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Find all occurrences of backup_history initialization in __init__

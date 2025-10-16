@@ -14,7 +14,7 @@ def test_schedule_args_format():
     print("Testing SCHTASKS argument format...")
     
     # Read the main file
-    main_file = "nextcloud_restore_and_backup-v9.py"
+    main_file = "../src/nextcloud_restore_and_backup-v9.py"
     if not os.path.exists(main_file):
         print(f"✗ {main_file} not found")
         return False

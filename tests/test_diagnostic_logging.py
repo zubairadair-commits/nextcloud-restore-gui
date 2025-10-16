@@ -15,7 +15,7 @@ def test_logging_infrastructure():
     print()
     
     # Read the file
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     checks_passed = 0

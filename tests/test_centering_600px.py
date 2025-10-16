@@ -16,7 +16,7 @@ def test_place_geometry():
     """Verify content frame uses place() geometry manager"""
     print("Testing place() geometry manager...")
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Check for place() with relx=0.5 and anchor="n"
@@ -31,7 +31,7 @@ def test_fixed_width_600px():
     """Verify content frame has fixed width of 600px"""
     print("\nTesting fixed width of 600px...")
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Check for width=600
@@ -46,7 +46,7 @@ def test_no_canvas_scrollbar():
     """Verify canvas and scrollbar have been removed"""
     print("\nTesting removal of canvas/scrollbar...")
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Check that canvas and scrollbar are NOT created in create_wizard
@@ -79,7 +79,7 @@ def test_child_widget_layout():
     """Verify child widgets use fill='x' with padx=40"""
     print("\nTesting child widget layout (fill='x', padx=40)...")
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Check for patterns of fill="x" with padx=40
@@ -101,7 +101,7 @@ def test_window_geometry():
     """Verify window geometry is 900x900"""
     print("\nTesting window geometry...")
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r') as f:
         content = f.read()
     
     # Check for 900x900 geometry
@@ -118,7 +118,7 @@ def test_syntax():
     
     import py_compile
     try:
-        py_compile.compile('nextcloud_restore_and_backup-v9.py', doraise=True)
+        py_compile.compile('../src/nextcloud_restore_and_backup-v9.py', doraise=True)
         print("✅ Python syntax is valid")
         return True
     except py_compile.PyCompileError as e:

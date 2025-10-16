@@ -15,7 +15,7 @@ def test_logging_imports():
     print("TEST 1: Logging Imports")
     print("=" * 70)
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r', encoding='utf-8') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r', encoding='utf-8') as f:
         code = f.read()
     
     checks = {
@@ -42,7 +42,7 @@ def test_log_file_location():
     print("TEST 2: Log File Location")
     print("=" * 70)
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r', encoding='utf-8') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r', encoding='utf-8') as f:
         code = f.read()
     
     checks = {
@@ -70,7 +70,7 @@ def test_rotation_configuration():
     print("TEST 3: Log Rotation Configuration")
     print("=" * 70)
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r', encoding='utf-8') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r', encoding='utf-8') as f:
         code = f.read()
     
     checks = {
@@ -98,7 +98,7 @@ def test_log_viewer_button():
     print("TEST 4: View Logs Button")
     print("=" * 70)
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r', encoding='utf-8') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r', encoding='utf-8') as f:
         code = f.read()
     
     checks = {
@@ -125,7 +125,7 @@ def test_log_viewer_features():
     print("TEST 5: Log Viewer Features")
     print("=" * 70)
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r', encoding='utf-8') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r', encoding='utf-8') as f:
         code = f.read()
     
     checks = {
@@ -158,7 +158,7 @@ def test_cross_platform_support():
     print("TEST 6: Cross-Platform Support")
     print("=" * 70)
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r', encoding='utf-8') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r', encoding='utf-8') as f:
         code = f.read()
     
     checks = {
@@ -186,7 +186,7 @@ def test_log_persistence():
     print("TEST 7: Log Persistence")
     print("=" * 70)
     
-    with open('nextcloud_restore_and_backup-v9.py', 'r', encoding='utf-8') as f:
+    with open('../src/nextcloud_restore_and_backup-v9.py', 'r', encoding='utf-8') as f:
         code = f.read()
     
     # Check that logs are NOT in temp directory

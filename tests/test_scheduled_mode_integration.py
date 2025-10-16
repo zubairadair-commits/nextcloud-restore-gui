@@ -15,7 +15,7 @@ def analyze_init_method():
     print("=" * 70)
     print()
     
-    script_path = os.path.join(os.path.dirname(__file__), 'nextcloud_restore_and_backup-v9.py')
+    script_path = os.path.join(os.path.dirname(__file__), '../src/nextcloud_restore_and_backup-v9.py')
     
     with open(script_path, 'r') as f:
         lines = f.readlines()
@@ -95,7 +95,7 @@ def verify_main_block():
     print("=" * 70)
     print()
     
-    script_path = os.path.join(os.path.dirname(__file__), 'nextcloud_restore_and_backup-v9.py')
+    script_path = os.path.join(os.path.dirname(__file__), '../src/nextcloud_restore_and_backup-v9.py')
     
     with open(script_path, 'r') as f:
         content = f.read()
@@ -146,7 +146,7 @@ def verify_no_gui_calls_in_scheduled_methods():
     print("=" * 70)
     print()
     
-    script_path = os.path.join(os.path.dirname(__file__), 'nextcloud_restore_and_backup-v9.py')
+    script_path = os.path.join(os.path.dirname(__file__), '../src/nextcloud_restore_and_backup-v9.py')
     
     with open(script_path, 'r') as f:
         lines = f.readlines()
