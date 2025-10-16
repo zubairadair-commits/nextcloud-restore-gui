@@ -1,0 +1,42 @@
+{
+  "backup_directory": "/path/to/backup/directory",
+  "nextcloud_data_directory": "/var/www/html/nextcloud/data",
+  "nextcloud_config_directory": "/var/www/html/nextcloud/config",
+  "database": {
+    "type": "mysql",
+    "host": "localhost",
+    "port": 3306,
+    "name": "nextcloud",
+    "user": "nextcloud_user",
+    "password": "your_password_here"
+  },
+  "docker": {
+    "enabled": false,
+    "container_name": "nextcloud",
+    "compose_file": "/path/to/docker-compose.yml"
+  },
+  "scheduled_backup": {
+    "enabled": false,
+    "frequency": "daily",
+    "time": "02:00"
+  },
+  "remote_access": {
+    "enabled": false,
+    "tailscale": {
+      "enabled": false,
+      "hostname": ""
+    }
+  },
+  "ui": {
+    "theme": "light",
+    "window_size": {
+      "width": 800,
+      "height": 600
+    }
+  },
+  "logging": {
+    "level": "INFO",
+    "max_file_size_mb": 10,
+    "backup_count": 5
+  }
+}
