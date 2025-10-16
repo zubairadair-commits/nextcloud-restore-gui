@@ -257,6 +257,82 @@ class BackupHistoryManager:
         return result
 
 # --- Service Health Check Functions ---
+def find_tailscale_exe():
+    """
+    Find tailscale.exe on Windows by checking multiple locations.
+    Returns the full path to tailscale.exe if found, None otherwise.
+    """
+    if platform.system() != "Windows":
+        return None
+    
+    # Method 1: Check if tailscale is in PATH
+    try:
+        result = subprocess.run(
+            ["where", "tailscale"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            # where command returns one or more paths, take the first one
+            path = result.stdout.strip().split('\n')[0]
+            if os.path.isfile(path):
+                return path
+    except Exception:
+        pass
+    
+    # Method 2: Check common installation directories
+    common_locations = [
+        r"C:\Program Files\Tailscale\tailscale.exe",
+        r"C:\Program Files (x86)\Tailscale\tailscale.exe",
+        os.path.expandvars(r"%ProgramFiles%\Tailscale\tailscale.exe"),
+        os.path.expandvars(r"%ProgramFiles(x86)%\Tailscale\tailscale.exe"),
+        os.path.expandvars(r"%LocalAppData%\Tailscale\tailscale.exe"),
+    ]
+    
+    for location in common_locations:
+        if os.path.isfile(location):
+            return location
+    
+    # Method 3: Try to query the Windows registry
+    try:
+        import winreg
+        
+        # Check HKEY_LOCAL_MACHINE for installation path
+        registry_paths = [
+            (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Tailscale IPN"),
+            (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Tailscale IPN"),
+            (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Tailscale IPN"),
+        ]
+        
+        for hkey, subkey in registry_paths:
+            try:
+                with winreg.OpenKey(hkey, subkey) as key:
+                    # Try to get install location or executable path
+                    try:
+                        install_dir, _ = winreg.QueryValueEx(key, "InstallDir")
+                        exe_path = os.path.join(install_dir, "tailscale.exe")
+                        if os.path.isfile(exe_path):
+                            return exe_path
+                    except FileNotFoundError:
+                        pass
+                    
+                    try:
+                        exe_path, _ = winreg.QueryValueEx(key, "ExecutablePath")
+                        if os.path.isfile(exe_path):
+                            return exe_path
+                    except FileNotFoundError:
+                        pass
+            except WindowsError:
+                pass
+    except ImportError:
+        # winreg not available (shouldn't happen on Windows, but just in case)
+        pass
+    except Exception:
+        pass
+    
+    return None
+
 def check_service_health():
     """
     Check health of various services and return status dictionary.
@@ -316,49 +392,61 @@ def check_service_health():
     # Check Tailscale
     try:
         if platform.system() == "Windows":
-            # Try Windows service check first
-            try:
-                result = subprocess.run(
-                    ['sc', 'query', 'Tailscale'],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
-                )
-                if result.returncode == 0 and 'RUNNING' in result.stdout:
-                    health_status['tailscale'] = {
-                        'status': 'healthy',
-                        'message': 'Tailscale service is running',
-                        'checked_at': datetime.now()
-                    }
-                elif result.returncode == 0 and 'STOPPED' in result.stdout:
-                    health_status['tailscale'] = {
-                        'status': 'warning',
-                        'message': 'Tailscale service is stopped',
-                        'checked_at': datetime.now()
-                    }
-                else:
-                    # Service not found, try CLI as fallback
-                    raise subprocess.SubprocessError("Service check inconclusive")
-            except (subprocess.SubprocessError, subprocess.TimeoutExpired):
-                # Fallback to CLI check
-                result = subprocess.run(
-                    ['tailscale', 'status'],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
-                )
-                if result.returncode == 0:
-                    health_status['tailscale'] = {
-                        'status': 'healthy',
-                        'message': 'Tailscale is running',
-                        'checked_at': datetime.now()
-                    }
-                else:
-                    health_status['tailscale'] = {
-                        'status': 'warning',
-                        'message': 'Tailscale not running or not installed',
-                        'checked_at': datetime.now()
-                    }
+            # Find Tailscale executable using enhanced detection
+            tailscale_path = find_tailscale_exe()
+            
+            if tailscale_path:
+                # Tailscale is installed, check if it's running
+                # Try Windows service check first
+                try:
+                    result = subprocess.run(
+                        ['sc', 'query', 'Tailscale'],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    if result.returncode == 0 and 'RUNNING' in result.stdout:
+                        health_status['tailscale'] = {
+                            'status': 'healthy',
+                            'message': 'Tailscale service is running',
+                            'checked_at': datetime.now()
+                        }
+                    elif result.returncode == 0 and 'STOPPED' in result.stdout:
+                        health_status['tailscale'] = {
+                            'status': 'warning',
+                            'message': 'Tailscale service is stopped',
+                            'checked_at': datetime.now()
+                        }
+                    else:
+                        # Service not found, try CLI as fallback
+                        raise subprocess.SubprocessError("Service check inconclusive")
+                except (subprocess.SubprocessError, subprocess.TimeoutExpired):
+                    # Fallback to CLI check using full path
+                    result = subprocess.run(
+                        [tailscale_path, 'status'],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    if result.returncode == 0:
+                        health_status['tailscale'] = {
+                            'status': 'healthy',
+                            'message': 'Tailscale is running',
+                            'checked_at': datetime.now()
+                        }
+                    else:
+                        health_status['tailscale'] = {
+                            'status': 'warning',
+                            'message': 'Tailscale not running',
+                            'checked_at': datetime.now()
+                        }
+            else:
+                # Tailscale not found
+                health_status['tailscale'] = {
+                    'status': 'warning',
+                    'message': 'Tailscale not installed',
+                    'checked_at': datetime.now()
+                }
         else:
             # Unix/Linux/Mac - use CLI directly
             result = subprocess.run(
@@ -7585,16 +7673,21 @@ php /tmp/update_config.php"
         
         logger.info("TAILSCALE WIZARD: All widgets created successfully")
     
+    def _find_tailscale_exe(self):
+        """
+        Find tailscale.exe on Windows by checking multiple locations.
+        Returns the full path to tailscale.exe if found, None otherwise.
+        Delegates to the standalone function for consistency.
+        """
+        return find_tailscale_exe()
+    
     def _check_tailscale_installed(self):
         """Check if Tailscale is installed"""
         try:
             if platform.system() == "Windows":
-                result = subprocess.run(
-                    ["where", "tailscale"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
-                )
+                # Use enhanced detection for Windows
+                tailscale_path = self._find_tailscale_exe()
+                return tailscale_path is not None
             else:
                 result = subprocess.run(
                     ["which", "tailscale"],
@@ -7602,7 +7695,7 @@ php /tmp/update_config.php"
                     text=True,
                     timeout=5
                 )
-            return result.returncode == 0
+                return result.returncode == 0
         except Exception as e:
             print(f"Error checking Tailscale installation: {e}")
             return False
@@ -7610,13 +7703,27 @@ php /tmp/update_config.php"
     def _check_tailscale_running(self):
         """Check if Tailscale is running"""
         try:
-            result = subprocess.run(
-                ["tailscale", "status"],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            return result.returncode == 0
+            # On Windows, use the full path if available
+            if platform.system() == "Windows":
+                tailscale_path = self._find_tailscale_exe()
+                if tailscale_path:
+                    result = subprocess.run(
+                        [tailscale_path, "status"],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    return result.returncode == 0
+                else:
+                    return False
+            else:
+                result = subprocess.run(
+                    ["tailscale", "status"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                return result.returncode == 0
         except Exception as e:
             print(f"Error checking Tailscale status: {e}")
             return False
@@ -8612,9 +8719,18 @@ Would you like to open the detailed guide?
         ts_hostname = None
         
         try:
+            # Get Tailscale executable path (use full path on Windows if available)
+            if platform.system() == "Windows":
+                tailscale_path = self._find_tailscale_exe()
+                if not tailscale_path:
+                    return None, None
+                tailscale_cmd = tailscale_path
+            else:
+                tailscale_cmd = "tailscale"
+            
             # Get Tailscale status
             result = subprocess.run(
-                ["tailscale", "status", "--json"],
+                [tailscale_cmd, "status", "--json"],
                 capture_output=True,
                 text=True,
                 timeout=5
