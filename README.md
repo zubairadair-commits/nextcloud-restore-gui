@@ -4,25 +4,30 @@ A GUI application for backing up and restoring Nextcloud instances.
 
 ## Repository Structure
 
+The repository is organized into a clear, professional folder structure:
+
 ```
 nextcloud-restore-gui/
 ├── src/                          # Source code
 │   └── nextcloud_restore_and_backup-v9.py  # Main application
-├── tests/                        # Test scripts and demos
+├── tests/                        # Test scripts and demos (91 files)
 │   ├── test_*.py                # Test files
 │   ├── demo_*.py                # Demo scripts
+│   ├── validate_*.py            # Validation scripts
 │   └── *.sh                     # Test shell scripts
-├── docs/                         # Documentation
+├── docs/                         # Documentation (267 files)
 │   ├── *.md                     # Markdown documentation files
 │   └── *.txt                    # Text documentation files
 ├── config/                       # Configuration files
 │   └── config.example.json      # Example configuration template
-├── assets/                       # Images and static files
+├── assets/                       # Images and static files (35 files)
 │   ├── *.png                    # Screenshots and images
 │   ├── *.html                   # UI mockups
 │   └── *.service                # Service files
 ├── .gitignore                   # Git ignore rules
-└── README.md                     # This file
+├── LICENSE                      # MIT License
+├── README.md                    # This file
+└── requirements.txt             # Python dependencies
 ```
 
 ## Installation
