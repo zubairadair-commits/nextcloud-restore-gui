@@ -27,3 +27,8 @@ nextcloud_restore_gui.log
 
 # Configuration files (keep only example)
 config/config.json
+
+# PyInstaller build artifacts
+build/
+dist/
+*.spec
