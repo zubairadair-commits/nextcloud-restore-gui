@@ -51,16 +51,21 @@ def setup_logging():
     file_handler.setLevel(logging.INFO)
     file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
     
-    # Console handler
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
-    console_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    # Console handler - only add in scheduled/test-run mode to avoid terminal window in GUI mode
+    # Check command-line arguments to determine if we're in non-GUI mode
+    is_non_gui_mode = '--scheduled' in sys.argv or '--test-run' in sys.argv
     
     # Configure root logger
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
     root_logger.addHandler(file_handler)
-    root_logger.addHandler(console_handler)
+    
+    # Only add console handler for scheduled/test-run modes
+    if is_non_gui_mode:
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        console_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+        root_logger.addHandler(console_handler)
     
     return log_file
 
@@ -9498,6 +9503,12 @@ Would you like to open the detailed guide?
     def show_backup_history(self):
         """Show backup history window with list of previous backups"""
         self.current_page = 'backup_history'
+        
+        # Unbind any previous mousewheel events to prevent binding accumulation
+        self.unbind_all("<MouseWheel>")
+        self.unbind_all("<Button-4>")
+        self.unbind_all("<Button-5>")
+        
         for widget in self.body_frame.winfo_children():
             widget.destroy()
         
@@ -9552,14 +9563,17 @@ Would you like to open the detailed guide?
         content_frame = tk.Frame(canvas, bg=self.theme_colors['bg'])
         canvas_window = canvas.create_window((0, 0), window=content_frame, anchor="nw")
         
-        # Bind resize event
-        def on_frame_configure(event):
+        # Bind resize event to update scroll region and canvas width
+        def configure_scroll(event=None):
+            """Update scroll region when content changes"""
             canvas.configure(scrollregion=canvas.bbox("all"))
-        content_frame.bind("<Configure>", on_frame_configure)
+            # Make content_frame width match canvas width
+            canvas_width = canvas.winfo_width()
+            if canvas_width > 1:
+                canvas.itemconfig(canvas_window, width=canvas_width)
         
-        def on_canvas_configure(event):
-            canvas.itemconfig(canvas_window, width=event.width)
-        canvas.bind("<Configure>", on_canvas_configure)
+        content_frame.bind("<Configure>", configure_scroll)
+        canvas.bind("<Configure>", configure_scroll)
         
         # Add mouse wheel scrolling
         def on_mousewheel(event):
