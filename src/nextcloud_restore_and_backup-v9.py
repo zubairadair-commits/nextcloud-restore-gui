@@ -283,11 +283,13 @@ def find_tailscale_exe():
     
     # Method 1: Check if tailscale is in PATH
     try:
+        creation_flags = get_subprocess_creation_flags()
         result = subprocess.run(
             ["where", "tailscale"],
             capture_output=True,
             text=True,
-            timeout=5
+            timeout=5,
+            creationflags=creation_flags
         )
         if result.returncode == 0 and result.stdout.strip():
             # where command returns one or more paths, take the first one
@@ -415,11 +417,13 @@ def check_service_health():
                 # Tailscale is installed, check if it's running
                 # Try Windows service check first
                 try:
+                    creation_flags = get_subprocess_creation_flags()
                     result = subprocess.run(
                         ['sc', 'query', 'Tailscale'],
                         capture_output=True,
                         text=True,
-                        timeout=5
+                        timeout=5,
+                        creationflags=creation_flags
                     )
                     if result.returncode == 0 and 'RUNNING' in result.stdout:
                         health_status['tailscale'] = {
@@ -438,11 +442,13 @@ def check_service_health():
                         raise subprocess.SubprocessError("Service check inconclusive")
                 except (subprocess.SubprocessError, subprocess.TimeoutExpired):
                     # Fallback to CLI check using full path
+                    creation_flags = get_subprocess_creation_flags()
                     result = subprocess.run(
                         [tailscale_path, 'status'],
                         capture_output=True,
                         text=True,
-                        timeout=5
+                        timeout=5,
+                        creationflags=creation_flags
                     )
                     if result.returncode == 0:
                         health_status['tailscale'] = {
@@ -465,11 +471,13 @@ def check_service_health():
                 }
         else:
             # Unix/Linux/Mac - use CLI directly
+            creation_flags = get_subprocess_creation_flags()
             result = subprocess.run(
                 ['tailscale', 'status'],
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=5,
+                creationflags=creation_flags
             )
             if result.returncode == 0:
                 health_status['tailscale'] = {
@@ -861,7 +869,9 @@ def detect_db_from_container_inspection(nextcloud_container, db_containers):
 
 def is_tool_installed(tool):
     try:
-        subprocess.run([tool, '--version'], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        creation_flags = get_subprocess_creation_flags()
+        subprocess.run([tool, '--version'], check=True, stdout=subprocess.PIPE, 
+                      stderr=subprocess.PIPE, creationflags=creation_flags)
         return True
     except Exception:
         return False
@@ -1042,8 +1052,9 @@ def start_docker_desktop():
     
     try:
         system = platform.system()
+        creation_flags = get_subprocess_creation_flags()
         if system == "Windows":
-            subprocess.Popen([docker_path], shell=False)
+            subprocess.Popen([docker_path], shell=False, creationflags=creation_flags)
         elif system == "Darwin":  # macOS
             subprocess.Popen(['open', '-a', 'Docker'])
         return True
@@ -1214,19 +1225,21 @@ def prompt_install_gpg(parent):
     parent.wait_window(win)
 
 def encrypt_file_gpg(unencrypted_path, encrypted_path, passphrase):
+    creation_flags = get_subprocess_creation_flags()
     result = subprocess.run([
         'gpg', '--batch', '--yes', '--passphrase', passphrase,
         '-c', '--cipher-algo', 'AES256',
         '-o', encrypted_path, unencrypted_path
-    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=creation_flags)
     if result.returncode != 0:
         raise Exception(result.stderr.decode() or "GPG encryption failed")
 
 def decrypt_file_gpg(encrypted_path, decrypted_path, passphrase):
+    creation_flags = get_subprocess_creation_flags()
     result = subprocess.run([
         'gpg', '--batch', '--yes', '--passphrase', passphrase,
         '-o', decrypted_path, '-d', encrypted_path
-    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=creation_flags)
     if result.returncode != 0:
         raise Exception(result.stderr.decode() or "GPG decryption failed")
 
@@ -1238,11 +1251,13 @@ def check_gpg_available():
         tuple: (bool, str) - (is_available, error_message)
     """
     try:
+        creation_flags = get_subprocess_creation_flags()
         result = subprocess.run(
             ['gpg', '--version'],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            timeout=5
+            timeout=5,
+            creationflags=creation_flags
         )
         if result.returncode == 0:
             logger.info("GPG is available on the system")
@@ -3222,6 +3237,11 @@ class NextcloudRestoreWizard(tk.Tk):
         self.wizard_page = 1
         self.wizard_data = {}
         
+        # Extraction and detection state tracking
+        self.extraction_attempted = False  # Track if extraction has been attempted
+        self.extraction_successful = False  # Track if extraction succeeded
+        self.current_backup_path = None  # Track which backup we extracted
+        
         # Database auto-detection
         self.detected_dbtype = None
         self.detected_db_config = None
@@ -3532,6 +3552,7 @@ class NextcloudRestoreWizard(tk.Tk):
         # Open log folder button
         def open_log_folder():
             try:
+                creation_flags = get_subprocess_creation_flags()
                 log_folder = LOG_FILE_PATH.parent
                 if platform.system() == 'Windows':
                     os.startfile(log_folder)
@@ -4646,26 +4667,35 @@ class NextcloudRestoreWizard(tk.Tk):
         # Save current page data
         self.save_wizard_page_data()
         
-        # If navigating back to Page 1 from Page 2, reset detection
+        # If navigating back to Page 1 from Page 2, reset detection state
         # This allows users to change backup file or password and re-detect
         if self.wizard_page == 2 and direction == -1:
-            # Only reset if detection was done via the "Next" button flow
-            # Don't reset if detection was done via browse_backup for unencrypted files
-            if self.detected_dbtype and self.wizard_data.get('backup_path', '').endswith('.gpg'):
-                print("Resetting detection - user navigating back to Page 1")
-                self.detected_dbtype = None
-                self.detected_db_config = None
-                self.db_auto_detected = False
+            logger.info("User navigating back to Page 1 - resetting detection state")
+            print("Resetting detection - user navigating back to Page 1")
+            
+            # Reset extraction/detection state to allow re-extraction
+            self.extraction_attempted = False
+            self.extraction_successful = False
+            self.detected_dbtype = None
+            self.detected_db_config = None
+            self.db_auto_detected = False
+            self.current_backup_path = None
         
         # If navigating from Page 1 to Page 2, perform extraction and detection
         if self.wizard_page == 1 and direction == 1:
+            logger.info("Navigation from Page 1 to Page 2: Attempting extraction and detection")
+            
             if not self.perform_extraction_and_detection():
                 # Detection failed or was cancelled - don't navigate
+                logger.warning("Extraction/detection failed - blocking navigation to Page 2")
                 return
+            
+            logger.info("Extraction and detection successful - allowing navigation to Page 2")
         
         # Navigate to new page
         new_page = self.wizard_page + direction
         if 1 <= new_page <= 3:
+            logger.info(f"Navigating to wizard page {new_page}")
             self.show_wizard_page(new_page)
     
     def save_wizard_page_data(self):
@@ -4776,17 +4806,24 @@ class NextcloudRestoreWizard(tk.Tk):
         - ONLY config.php is extracted at this stage (not the full backup)
         - This is a lightweight operation (<1 second) vs full extraction (minutes)
         - Full backup extraction is deferred until the actual restore process
+        - Extraction is attempted ONLY ONCE per backup file selection
         
         WHY THIS MATTERS:
         - SQLite users can immediately see that no database credentials are needed
         - MySQL/PostgreSQL users see the appropriate credential fields
         - GUI remains responsive - no waiting for multi-GB extraction
         - Better user experience with immediate feedback
+        - No duplicate extraction attempts on multiple navigations
         
         THREADING:
         - Detection runs in a background thread to keep GUI responsive
         - Animated spinner shows progress while detection is in progress
         - All GUI updates happen on the main thread (thread-safe)
+        
+        STATE TRACKING:
+        - extraction_attempted: True if we've tried to extract this backup
+        - extraction_successful: True if extraction and detection succeeded
+        - current_backup_path: Path of the backup we extracted (to detect changes)
         
         Returns:
             True if detection successful (or already detected), False if validation fails
@@ -4797,8 +4834,31 @@ class NextcloudRestoreWizard(tk.Tk):
         
         # Validate backup file exists
         if not backup_path or not os.path.isfile(backup_path):
-            self.error_label.config(text="Error: Please select a valid backup archive file.")
+            logger.error("No valid backup file selected")
+            self.error_label.config(text="Error: Please select a valid backup archive file.", fg="red")
             return False
+        
+        # CHECK: If we've already successfully extracted this same backup, skip re-extraction
+        if (self.extraction_successful and 
+            self.current_backup_path == backup_path and 
+            self.detected_dbtype):
+            logger.info(f"Extraction already completed for {os.path.basename(backup_path)} - skipping re-extraction")
+            print(f"✓ Database type already detected: {self.detected_dbtype}")
+            return True
+        
+        # If backup path changed, reset state
+        if self.current_backup_path and self.current_backup_path != backup_path:
+            logger.info(f"Backup path changed from {os.path.basename(self.current_backup_path)} to {os.path.basename(backup_path)} - resetting state")
+            self.extraction_attempted = False
+            self.extraction_successful = False
+            self.detected_dbtype = None
+            self.detected_db_config = None
+            self.db_auto_detected = False
+        
+        # Mark that we're attempting extraction for this backup
+        self.current_backup_path = backup_path
+        self.extraction_attempted = True
+        logger.info(f"Starting extraction and detection for backup: {os.path.basename(backup_path)}")
         
         # Early validation: Check if required extraction tools are available
         # This prevents the user from proceeding if essential tools are missing
@@ -4828,6 +4888,7 @@ class NextcloudRestoreWizard(tk.Tk):
                         "Please complete the installation and restart the application.",
                         parent=self
                     )
+                self.extraction_successful = False
                 return False
         
         # Check for tarfile module
@@ -4843,19 +4904,18 @@ class NextcloudRestoreWizard(tk.Tk):
                 
                 # Show detailed error dialog
                 action = show_extraction_error_dialog(self, 'tarfile', backup_path)
+                self.extraction_successful = False
                 return False
         
         # Validate password for encrypted backups
         if backup_path.endswith('.gpg') and not password:
-            self.error_label.config(text="Error: Please enter decryption password for encrypted backup.")
+            logger.error("Password required for encrypted backup but not provided")
+            self.error_label.config(text="Error: Please enter decryption password for encrypted backup.", fg="red")
+            self.extraction_successful = False
             return False
         
-        # If already detected, skip re-detection
-        if self.detected_dbtype:
-            print(f"Database type already detected: {self.detected_dbtype}")
-            return True
-        
         # Show progress spinner with message
+        logger.info("Starting config.php extraction and database type detection")
         self.error_label.config(text="⏳ Extracting and detecting database type...\nPlease wait, this may take a moment...", fg="blue")
         self.update_idletasks()
         
@@ -4948,12 +5008,17 @@ class NextcloudRestoreWizard(tk.Tk):
                 
                 self.error_label.config(text=error_msg, fg="red")
                 logger.error(f"Extraction failed, preventing navigation to Page 2")
+                self.extraction_successful = False
                 return False
             
             if dbtype:
+                # Mark extraction as successful
+                self.extraction_successful = True
                 self.detected_dbtype = dbtype
                 self.detected_db_config = db_config
                 self.db_auto_detected = True
+                
+                logger.info(f"✓ Database type detected successfully: {dbtype}")
                 print(f"✓ Database type detected before Page 2: {dbtype}")
                 self.error_label.config(text="✓ Database type detected successfully!", fg="green")
                 
@@ -4971,7 +5036,9 @@ class NextcloudRestoreWizard(tk.Tk):
                 
                 return True
             else:
-                # Detection failed - allow navigation but show clear warning
+                # Detection failed - show warning but allow navigation
+                # User may still be able to proceed with manual configuration
+                logger.warning("Could not detect database type from backup - config.php not found or unreadable")
                 print("⚠️ Warning: Could not detect database type from backup")
                 warning_msg = (
                     "⚠️ Warning: config.php not found or could not be read.\n"
@@ -4982,10 +5049,13 @@ class NextcloudRestoreWizard(tk.Tk):
                 self.detected_dbtype = None
                 self.detected_db_config = None
                 self.db_auto_detected = False
+                self.extraction_successful = True  # Extraction worked, just couldn't detect DB type
                 return True  # Still allow navigation - don't break workflow
         else:
             # Should not happen, but handle gracefully
+            logger.error("Detection process failed unexpectedly - no result returned")
             self.error_label.config(text="⚠️ Detection process failed unexpectedly", fg="red")
+            self.extraction_successful = False
             return False
 
     def browse_backup(self):
