@@ -1230,6 +1230,232 @@ def decrypt_file_gpg(encrypted_path, decrypted_path, passphrase):
     if result.returncode != 0:
         raise Exception(result.stderr.decode() or "GPG decryption failed")
 
+def check_gpg_available():
+    """
+    Check if GPG is available on the system.
+    
+    Returns:
+        tuple: (bool, str) - (is_available, error_message)
+    """
+    try:
+        result = subprocess.run(
+            ['gpg', '--version'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=5
+        )
+        if result.returncode == 0:
+            logger.info("GPG is available on the system")
+            return True, ""
+        else:
+            logger.warning("GPG command failed")
+            return False, "GPG command failed to execute"
+    except FileNotFoundError:
+        logger.error("GPG not found on system")
+        return False, "GPG (GNU Privacy Guard) is not installed"
+    except subprocess.TimeoutExpired:
+        logger.error("GPG check timed out")
+        return False, "GPG check timed out"
+    except Exception as e:
+        logger.error(f"Error checking GPG availability: {e}")
+        return False, f"Error checking GPG: {str(e)}"
+
+def check_tarfile_available():
+    """
+    Check if tarfile module can open tar.gz archives.
+    
+    Returns:
+        tuple: (bool, str) - (is_available, error_message)
+    """
+    try:
+        # tarfile is a standard library module, but verify it works
+        import tarfile
+        # Try to check if it supports gzip
+        if not hasattr(tarfile, 'open'):
+            return False, "tarfile module is not properly available"
+        logger.info("tarfile module is available")
+        return True, ""
+    except ImportError:
+        logger.error("tarfile module not available")
+        return False, "Python tarfile module is not available"
+    except Exception as e:
+        logger.error(f"Error checking tarfile availability: {e}")
+        return False, f"Error checking tarfile: {str(e)}"
+
+def show_extraction_error_dialog(parent, missing_tool, backup_path):
+    """
+    Show a user-friendly error dialog when extraction tools are missing.
+    
+    Args:
+        parent: Parent window for the dialog
+        missing_tool: The missing tool ('gpg', 'tarfile', etc.)
+        backup_path: Path to the backup file that failed to extract
+    
+    Returns:
+        str: User action ('install', 'cancel', 'continue')
+    """
+    result = ['cancel']  # Default to cancel
+    
+    def show_dialog():
+        win = tk.Toplevel(parent)
+        win.title("Extraction Tool Required")
+        win.geometry("550x400")
+        win.configure(bg='white')
+        
+        # Main message frame
+        msg_frame = tk.Frame(win, bg='white')
+        msg_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Title
+        title_label = tk.Label(
+            msg_frame,
+            text="⚠️ Cannot Extract Backup Archive",
+            font=("Arial", 14, "bold"),
+            bg='white',
+            fg='#d32f2f'
+        )
+        title_label.pack(pady=(0, 15))
+        
+        # Prepare message based on missing tool
+        if missing_tool == 'gpg':
+            tool_name = "GPG (GNU Privacy Guard)"
+            explanation = (
+                "Your backup file is encrypted (.gpg extension), but GPG is not installed.\n\n"
+                "GPG is required to decrypt encrypted backup archives.\n\n"
+                "Without GPG, the restore wizard cannot access the backup contents."
+            )
+            install_instructions = (
+                "📥 Installation Options:\n\n"
+                "• Click 'Install GPG' to download Gpg4win (Windows)\n"
+                "• Linux users: Run 'sudo apt install gpg' (Ubuntu/Debian)\n"
+                "  or 'sudo yum install gnupg2' (RHEL/CentOS)\n"
+                "• Mac users: Run 'brew install gnupg'"
+            )
+            can_auto_install = platform.system() == 'Windows'
+        elif missing_tool == 'tarfile':
+            tool_name = "Python tarfile module"
+            explanation = (
+                "The Python tarfile module required for extracting .tar.gz archives\n"
+                "is not available or not functioning properly.\n\n"
+                "This is unusual as tarfile is part of Python's standard library."
+            )
+            install_instructions = (
+                "📥 Troubleshooting:\n\n"
+                "• Ensure you're using a standard Python installation\n"
+                "• Try reinstalling Python from python.org\n"
+                "• Contact support if the issue persists"
+            )
+            can_auto_install = False
+        else:
+            tool_name = missing_tool
+            explanation = (
+                f"The required tool '{missing_tool}' is not available.\n\n"
+                "This tool is needed to extract your backup archive."
+            )
+            install_instructions = (
+                "📥 Please install the required tool manually and try again."
+            )
+            can_auto_install = False
+        
+        # Explanation
+        msg_label = tk.Label(
+            msg_frame,
+            text=f"Required Tool: {tool_name}\n\n{explanation}",
+            font=("Arial", 10),
+            bg='white',
+            justify="left",
+            wraplength=500
+        )
+        msg_label.pack(pady=(0, 15), anchor="w")
+        
+        # Backup file info
+        backup_info = tk.Label(
+            msg_frame,
+            text=f"Backup File: {os.path.basename(backup_path)}",
+            font=("Arial", 9),
+            bg='#f5f5f5',
+            fg='#666',
+            anchor="w",
+            padx=10,
+            pady=5
+        )
+        backup_info.pack(fill="x", pady=(0, 15))
+        
+        # Installation instructions
+        instructions_label = tk.Label(
+            msg_frame,
+            text=install_instructions,
+            font=("Arial", 9),
+            bg='#e3f2fd',
+            fg='#1565c0',
+            justify="left",
+            wraplength=500,
+            padx=10,
+            pady=10
+        )
+        instructions_label.pack(fill="x", pady=(0, 20))
+        
+        # Buttons frame
+        btn_frame = tk.Frame(msg_frame, bg='white')
+        btn_frame.pack(fill="x")
+        
+        def on_install():
+            result[0] = 'install'
+            win.destroy()
+        
+        def on_cancel():
+            result[0] = 'cancel'
+            win.destroy()
+        
+        # Show install button only for tools that can be auto-installed
+        if can_auto_install:
+            install_btn = tk.Button(
+                btn_frame,
+                text="Install GPG",
+                font=("Arial", 11, "bold"),
+                bg='#4caf50',
+                fg='white',
+                width=15,
+                command=on_install,
+                cursor="hand2"
+            )
+            install_btn.pack(side="left", padx=5)
+        
+        cancel_btn = tk.Button(
+            btn_frame,
+            text="Cancel",
+            font=("Arial", 11),
+            bg='#f5f5f5',
+            fg='#333',
+            width=15,
+            command=on_cancel,
+            cursor="hand2"
+        )
+        cancel_btn.pack(side="left", padx=5)
+        
+        # Center the window
+        win.transient(parent)
+        win.grab_set()
+        win.update_idletasks()
+        width = win.winfo_width()
+        height = win.winfo_height()
+        x = (win.winfo_screenwidth() // 2) - (width // 2)
+        y = (win.winfo_screenheight() // 2) - (height // 2)
+        win.geometry(f'+{x}+{y}')
+        
+        parent.wait_window(win)
+    
+    # Show dialog in main thread
+    parent.after(0, show_dialog)
+    # Wait for dialog to complete
+    import time
+    while result[0] == 'cancel' and parent.winfo_exists():
+        parent.update()
+        time.sleep(0.1)
+        break
+    
+    return result[0]
+
 def thread_safe_askstring(parent, title, prompt, **kwargs):
     """
     Thread-safe wrapper for simpledialog.askstring.
@@ -4468,6 +4694,77 @@ class NextcloudRestoreWizard(tk.Tk):
             if hasattr(self, 'use_existing_var'):
                 self.wizard_data['use_existing'] = self.use_existing_var.get()
     
+    def validate_extraction_tools(self, backup_path):
+        """
+        Validate that required extraction tools are available for the selected backup.
+        
+        This method performs early validation when a backup file is selected to provide
+        immediate feedback about missing dependencies before the user proceeds through
+        the wizard.
+        
+        Args:
+            backup_path: Path to the backup file selected by the user
+            
+        Returns:
+            bool: True if tools are available, False otherwise
+        """
+        logger.info(f"Validating extraction tools for backup: {backup_path}")
+        
+        # Check if file exists
+        if not os.path.isfile(backup_path):
+            logger.error(f"Backup file does not exist: {backup_path}")
+            return False
+        
+        # Determine what tools are needed based on file extension
+        is_encrypted = backup_path.endswith('.gpg')
+        is_tarball = backup_path.endswith('.tar.gz') or backup_path.endswith('.tar.gz.gpg')
+        
+        missing_tools = []
+        
+        # Check for GPG if file is encrypted
+        if is_encrypted:
+            gpg_available, gpg_error = check_gpg_available()
+            if not gpg_available:
+                logger.warning(f"GPG not available: {gpg_error}")
+                missing_tools.append(('gpg', gpg_error))
+        
+        # Check for tarfile module
+        if is_tarball:
+            tar_available, tar_error = check_tarfile_available()
+            if not tar_available:
+                logger.warning(f"tarfile not available: {tar_error}")
+                missing_tools.append(('tarfile', tar_error))
+        
+        # If tools are missing, show error and offer to install
+        if missing_tools:
+            logger.error(f"Missing extraction tools: {[tool[0] for tool in missing_tools]}")
+            
+            # Show error for the first missing tool (usually the most critical)
+            missing_tool, error_msg = missing_tools[0]
+            
+            # Show user-friendly error dialog with installation options
+            action = show_extraction_error_dialog(self, missing_tool, backup_path)
+            
+            if action == 'install':
+                # User chose to install the missing tool
+                if missing_tool == 'gpg':
+                    logger.info("User chose to install GPG")
+                    webbrowser.open(GPG_DOWNLOAD_URL)
+                    messagebox.showinfo(
+                        "Installation Started",
+                        "GPG installer has been opened in your browser.\n\n"
+                        "Please complete the installation and restart the application.",
+                        parent=self
+                    )
+                return False
+            else:
+                # User cancelled
+                logger.info("User cancelled tool installation")
+                return False
+        
+        logger.info("All required extraction tools are available")
+        return True
+    
     def perform_extraction_and_detection(self):
         """
         Perform database type detection before showing Page 2.
@@ -4502,6 +4799,51 @@ class NextcloudRestoreWizard(tk.Tk):
         if not backup_path or not os.path.isfile(backup_path):
             self.error_label.config(text="Error: Please select a valid backup archive file.")
             return False
+        
+        # Early validation: Check if required extraction tools are available
+        # This prevents the user from proceeding if essential tools are missing
+        logger.info("Checking extraction tools availability before detection")
+        is_encrypted = backup_path.endswith('.gpg')
+        is_tarball = backup_path.endswith('.tar.gz') or backup_path.endswith('.tar.gz.gpg')
+        
+        # Check for GPG if file is encrypted
+        if is_encrypted:
+            gpg_available, gpg_error = check_gpg_available()
+            if not gpg_available:
+                logger.error(f"GPG not available, cannot proceed: {gpg_error}")
+                error_msg = (
+                    f"⚠️ Cannot extract encrypted backup:\n{gpg_error}\n\n"
+                    "Please install GPG to continue with encrypted backups."
+                )
+                self.error_label.config(text=error_msg, fg="red")
+                
+                # Show detailed error dialog with installation options
+                action = show_extraction_error_dialog(self, 'gpg', backup_path)
+                if action == 'install':
+                    logger.info("User chose to install GPG")
+                    webbrowser.open(GPG_DOWNLOAD_URL)
+                    messagebox.showinfo(
+                        "Installation Started",
+                        "GPG installer has been opened in your browser.\n\n"
+                        "Please complete the installation and restart the application.",
+                        parent=self
+                    )
+                return False
+        
+        # Check for tarfile module
+        if is_tarball:
+            tar_available, tar_error = check_tarfile_available()
+            if not tar_available:
+                logger.error(f"tarfile not available, cannot proceed: {tar_error}")
+                error_msg = (
+                    f"⚠️ Cannot extract tar.gz archive:\n{tar_error}\n\n"
+                    "Please ensure Python is properly installed."
+                )
+                self.error_label.config(text=error_msg, fg="red")
+                
+                # Show detailed error dialog
+                action = show_extraction_error_dialog(self, 'tarfile', backup_path)
+                return False
         
         # Validate password for encrypted backups
         if backup_path.endswith('.gpg') and not password:
@@ -4556,8 +4898,56 @@ class NextcloudRestoreWizard(tk.Tk):
             dbtype, db_config, error = detection_result[0]
             
             if error:
-                print(f"Error during extraction and detection: {error}")
-                self.error_label.config(text=f"⚠️ Error: {str(error)}", fg="red")
+                error_str = str(error)
+                logger.error(f"Error during extraction and detection: {error_str}")
+                
+                # Provide more specific error messages based on the error type
+                if "GPG" in error_str or "gpg" in error_str:
+                    if "command not found" in error_str or "not installed" in error_str:
+                        error_msg = (
+                            "⚠️ GPG Error: GPG is not installed or not in PATH.\n\n"
+                            "GPG is required to decrypt encrypted backups.\n"
+                            "Please install GPG and try again."
+                        )
+                        # Offer to install
+                        action = show_extraction_error_dialog(self, 'gpg', backup_path)
+                        if action == 'install':
+                            webbrowser.open(GPG_DOWNLOAD_URL)
+                            messagebox.showinfo(
+                                "Installation Started",
+                                "GPG installer has been opened in your browser.\n\n"
+                                "Please complete the installation and restart the application.",
+                                parent=self
+                            )
+                    elif "Bad session key" in error_str or "decryption failed" in error_str:
+                        error_msg = (
+                            "⚠️ Decryption Error: Incorrect password.\n\n"
+                            "The password you entered is incorrect.\n"
+                            "Please go back and enter the correct password."
+                        )
+                    else:
+                        error_msg = f"⚠️ GPG Error: {error_str}"
+                elif "Invalid or corrupted archive" in error_str or "tarfile" in error_str:
+                    error_msg = (
+                        "⚠️ Archive Error: The backup file appears to be corrupted\n"
+                        "or is not a valid tar.gz archive.\n\n"
+                        "Please verify the backup file and try again."
+                    )
+                elif "Permission denied" in error_str:
+                    error_msg = (
+                        "⚠️ Permission Error: Cannot access the backup file.\n\n"
+                        "Please check file permissions and try again."
+                    )
+                elif "No space left" in error_str:
+                    error_msg = (
+                        "⚠️ Disk Space Error: Not enough space to extract backup.\n\n"
+                        "Please free up some disk space and try again."
+                    )
+                else:
+                    error_msg = f"⚠️ Extraction Error:\n{error_str}\n\nPlease check the logs for details."
+                
+                self.error_label.config(text=error_msg, fg="red")
+                logger.error(f"Extraction failed, preventing navigation to Page 2")
                 return False
             
             if dbtype:
@@ -4606,6 +4996,10 @@ class NextcloudRestoreWizard(tk.Tk):
         if path:
             self.backup_entry.delete(0, tk.END)
             self.backup_entry.insert(0, path)
+            
+            # Early validation: Check if required extraction tools are available
+            # This provides immediate feedback to the user about missing dependencies
+            self.validate_extraction_tools(path)
             
             # Note: Database type detection is deferred until after the user enters
             # the decryption password (if needed) and clicks "Next" to navigate to Page 2.
@@ -5306,15 +5700,26 @@ class NextcloudRestoreWizard(tk.Tk):
                     print("✓ Backup decrypted successfully for early detection")
                     # Use the decrypted file for extraction
                     backup_to_extract = temp_decrypted_path
+                except FileNotFoundError as decrypt_err:
+                    # GPG command not found
+                    error_msg = "GPG (GNU Privacy Guard) is not installed or not in PATH"
+                    print(f"✗ Failed to decrypt backup: {error_msg}")
+                    logger.error(f"GPG not found: {decrypt_err}")
+                    raise Exception(error_msg)
                 except Exception as decrypt_err:
                     error_msg = str(decrypt_err)
                     if "Bad session key" in error_msg or "decryption failed" in error_msg:
                         print(f"✗ Failed to decrypt backup: Incorrect password")
-                    elif "gpg: command not found" in error_msg:
+                        logger.error(f"GPG decryption failed: incorrect password")
+                        raise Exception("Incorrect decryption password")
+                    elif "gpg: command not found" in error_msg or "not found" in error_msg.lower():
                         print(f"✗ Failed to decrypt backup: GPG is not installed")
+                        logger.error(f"GPG not installed: {error_msg}")
+                        raise Exception("GPG is not installed")
                     else:
                         print(f"✗ Failed to decrypt backup: {decrypt_err}")
-                    return None, None
+                        logger.error(f"GPG decryption error: {error_msg}")
+                        raise Exception(f"GPG decryption failed: {error_msg}")
             else:
                 # Unencrypted backup - use directly
                 backup_to_extract = backup_path
@@ -5344,10 +5749,12 @@ class NextcloudRestoreWizard(tk.Tk):
             except tarfile.ReadError as extract_err:
                 print(f"✗ Failed to extract backup: Invalid or corrupted archive")
                 print(f"  Error details: {extract_err}")
-                return None, None
+                logger.error(f"tarfile ReadError: {extract_err}")
+                raise Exception(f"Invalid or corrupted archive: {extract_err}")
             except Exception as extract_err:
                 print(f"✗ Failed to extract backup: {extract_err}")
-                return None, None
+                logger.error(f"Extraction error: {extract_err}")
+                raise Exception(f"Extraction failed: {extract_err}")
             
             # Step 3: Parse the config.php file to extract database configuration
             print(f"📖 Parsing config.php to detect database type...")
