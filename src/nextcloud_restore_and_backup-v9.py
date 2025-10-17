@@ -4685,12 +4685,11 @@ class NextcloudRestoreWizard(tk.Tk):
         if self.wizard_page == 1 and direction == 1:
             logger.info("Navigation from Page 1 to Page 2: Attempting extraction and detection")
             
-            if not self.perform_extraction_and_detection():
-                # Detection failed or was cancelled - don't navigate
-                logger.warning("Extraction/detection failed - blocking navigation to Page 2")
-                return
-            
-            logger.info("Extraction and detection successful - allowing navigation to Page 2")
+            # Start non-blocking extraction and detection
+            # The actual navigation will happen in _process_detection_results
+            self.perform_extraction_and_detection()
+            # Don't navigate yet - let the background thread complete and navigate
+            return
         
         # Navigate to new page
         new_page = self.wizard_page + direction
@@ -4844,6 +4843,8 @@ class NextcloudRestoreWizard(tk.Tk):
             self.detected_dbtype):
             logger.info(f"Extraction already completed for {os.path.basename(backup_path)} - skipping re-extraction")
             print(f"✓ Database type already detected: {self.detected_dbtype}")
+            # Navigate to Page 2 immediately since extraction is already complete
+            self.show_wizard_page(2)
             return True
         
         # If backup path changed, reset state
@@ -4919,6 +4920,9 @@ class NextcloudRestoreWizard(tk.Tk):
         self.error_label.config(text="⏳ Extracting and detecting database type...\nPlease wait, this may take a moment...", fg="blue")
         self.update_idletasks()
         
+        # Disable navigation buttons to prevent user actions during detection
+        self._disable_wizard_navigation()
+        
         # Use a list to store results from background thread (mutable)
         detection_result = [None]  # Will store (dbtype, db_config, error)
         detection_complete = [False]
@@ -4937,25 +4941,46 @@ class NextcloudRestoreWizard(tk.Tk):
         detection_thread = threading.Thread(target=do_detection, daemon=True)
         detection_thread.start()
         
-        # Update progress spinner while detection is running
+        # Setup spinner animation state
         spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-        spinner_idx = 0
+        spinner_state = {'idx': 0}
         
-        while detection_thread.is_alive():
-            spinner_idx = (spinner_idx + 1) % len(spinner_chars)
-            self.error_label.config(
-                text=f"{spinner_chars[spinner_idx]} Extracting and detecting database type...\nPlease wait, this may take a moment...", 
-                fg="blue"
-            )
-            self.update_idletasks()
-            time.sleep(0.1)  # Update spinner every 100ms
+        def check_detection_progress():
+            """Non-blocking progress checker called via .after()"""
+            if detection_complete[0]:
+                # Detection finished - process results
+                self._process_detection_results(detection_result[0])
+            else:
+                # Update spinner and schedule next check
+                spinner_state['idx'] = (spinner_state['idx'] + 1) % len(spinner_chars)
+                self.error_label.config(
+                    text=f"{spinner_chars[spinner_state['idx']]} Extracting and detecting database type...\nPlease wait, this may take a moment...", 
+                    fg="blue"
+                )
+                # Schedule next check in 100ms (non-blocking)
+                self.after(100, check_detection_progress)
         
-        # Wait for thread to complete
-        detection_thread.join()
+        # Start non-blocking progress check
+        check_detection_progress()
         
-        # Process results
-        if detection_result[0]:
-            dbtype, db_config, error = detection_result[0]
+        # Return True immediately - actual navigation will be handled in check_detection_progress
+        return True
+    
+    def _process_detection_results(self, result):
+        """
+        Process detection results and navigate to Page 2 if successful.
+        This is called from the non-blocking progress checker.
+        
+        Args:
+            result: Tuple of (dbtype, db_config, error) from detection thread
+        """
+        # Re-enable navigation buttons
+        self._enable_wizard_navigation()
+        
+        backup_path = self.wizard_data.get('backup_path', '').strip()
+        
+        if result:
+            dbtype, db_config, error = result
             
             if error:
                 error_str = str(error)
@@ -5009,7 +5034,7 @@ class NextcloudRestoreWizard(tk.Tk):
                 self.error_label.config(text=error_msg, fg="red")
                 logger.error(f"Extraction failed, preventing navigation to Page 2")
                 self.extraction_successful = False
-                return False
+                return
             
             if dbtype:
                 # Mark extraction as successful
@@ -5022,6 +5047,10 @@ class NextcloudRestoreWizard(tk.Tk):
                 print(f"✓ Database type detected before Page 2: {dbtype}")
                 self.error_label.config(text="✓ Database type detected successfully!", fg="green")
                 
+                # Navigate to Page 2 now that detection is complete
+                logger.info("Detection successful - navigating to Page 2")
+                self.show_wizard_page(2)
+                
                 # Show Docker Compose suggestion dialog if full config was detected
                 # This happens immediately after config.php extraction and database detection
                 if self.detected_full_config:
@@ -5033,8 +5062,6 @@ class NextcloudRestoreWizard(tk.Tk):
                 else:
                     # Clear success message after a brief moment
                     self.after(1500, lambda: self.error_label.config(text=""))
-                
-                return True
             else:
                 # Detection failed - show warning but allow navigation
                 # User may still be able to proceed with manual configuration
@@ -5049,6 +5076,35 @@ class NextcloudRestoreWizard(tk.Tk):
                 self.detected_dbtype = None
                 self.detected_db_config = None
                 self.db_auto_detected = False
+                
+                # Clear success message after a brief moment, then allow navigation
+                self.after(1500, lambda: [
+                    self.error_label.config(text=""),
+                    self.show_wizard_page(2)
+                ])
+        else:
+            # No result - something went wrong
+            logger.error("Detection returned no result")
+            self.error_label.config(text="⚠️ Unexpected error during detection", fg="red")
+            self.extraction_successful = False
+    
+    def _disable_wizard_navigation(self):
+        """Disable wizard navigation buttons during background processing"""
+        # Find and disable navigation buttons in the wizard frame
+        for widget in self.wizard_scrollable_frame.winfo_children():
+            if isinstance(widget, tk.Frame):
+                for child in widget.winfo_children():
+                    if isinstance(child, tk.Button):
+                        child.config(state='disabled')
+    
+    def _enable_wizard_navigation(self):
+        """Re-enable wizard navigation buttons after background processing"""
+        # Find and enable navigation buttons in the wizard frame
+        for widget in self.wizard_scrollable_frame.winfo_children():
+            if isinstance(widget, tk.Frame):
+                for child in widget.winfo_children():
+                    if isinstance(child, tk.Button):
+                        child.config(state='normal')
                 self.extraction_successful = True  # Extraction worked, just couldn't detect DB type
                 return True  # Still allow navigation - don't break workflow
         else:
