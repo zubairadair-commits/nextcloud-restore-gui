@@ -283,11 +283,13 @@ def find_tailscale_exe():
     
     # Method 1: Check if tailscale is in PATH
     try:
+        creation_flags = get_subprocess_creation_flags()
         result = subprocess.run(
             ["where", "tailscale"],
             capture_output=True,
             text=True,
-            timeout=5
+            timeout=5,
+            creationflags=creation_flags
         )
         if result.returncode == 0 and result.stdout.strip():
             # where command returns one or more paths, take the first one
@@ -415,11 +417,13 @@ def check_service_health():
                 # Tailscale is installed, check if it's running
                 # Try Windows service check first
                 try:
+                    creation_flags = get_subprocess_creation_flags()
                     result = subprocess.run(
                         ['sc', 'query', 'Tailscale'],
                         capture_output=True,
                         text=True,
-                        timeout=5
+                        timeout=5,
+                        creationflags=creation_flags
                     )
                     if result.returncode == 0 and 'RUNNING' in result.stdout:
                         health_status['tailscale'] = {
@@ -438,11 +442,13 @@ def check_service_health():
                         raise subprocess.SubprocessError("Service check inconclusive")
                 except (subprocess.SubprocessError, subprocess.TimeoutExpired):
                     # Fallback to CLI check using full path
+                    creation_flags = get_subprocess_creation_flags()
                     result = subprocess.run(
                         [tailscale_path, 'status'],
                         capture_output=True,
                         text=True,
-                        timeout=5
+                        timeout=5,
+                        creationflags=creation_flags
                     )
                     if result.returncode == 0:
                         health_status['tailscale'] = {
@@ -465,11 +471,13 @@ def check_service_health():
                 }
         else:
             # Unix/Linux/Mac - use CLI directly
+            creation_flags = get_subprocess_creation_flags()
             result = subprocess.run(
                 ['tailscale', 'status'],
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=5,
+                creationflags=creation_flags
             )
             if result.returncode == 0:
                 health_status['tailscale'] = {
@@ -861,7 +869,9 @@ def detect_db_from_container_inspection(nextcloud_container, db_containers):
 
 def is_tool_installed(tool):
     try:
-        subprocess.run([tool, '--version'], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        creation_flags = get_subprocess_creation_flags()
+        subprocess.run([tool, '--version'], check=True, stdout=subprocess.PIPE, 
+                      stderr=subprocess.PIPE, creationflags=creation_flags)
         return True
     except Exception:
         return False
@@ -1042,8 +1052,9 @@ def start_docker_desktop():
     
     try:
         system = platform.system()
+        creation_flags = get_subprocess_creation_flags()
         if system == "Windows":
-            subprocess.Popen([docker_path], shell=False)
+            subprocess.Popen([docker_path], shell=False, creationflags=creation_flags)
         elif system == "Darwin":  # macOS
             subprocess.Popen(['open', '-a', 'Docker'])
         return True
@@ -1214,19 +1225,21 @@ def prompt_install_gpg(parent):
     parent.wait_window(win)
 
 def encrypt_file_gpg(unencrypted_path, encrypted_path, passphrase):
+    creation_flags = get_subprocess_creation_flags()
     result = subprocess.run([
         'gpg', '--batch', '--yes', '--passphrase', passphrase,
         '-c', '--cipher-algo', 'AES256',
         '-o', encrypted_path, unencrypted_path
-    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=creation_flags)
     if result.returncode != 0:
         raise Exception(result.stderr.decode() or "GPG encryption failed")
 
 def decrypt_file_gpg(encrypted_path, decrypted_path, passphrase):
+    creation_flags = get_subprocess_creation_flags()
     result = subprocess.run([
         'gpg', '--batch', '--yes', '--passphrase', passphrase,
         '-o', decrypted_path, '-d', encrypted_path
-    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=creation_flags)
     if result.returncode != 0:
         raise Exception(result.stderr.decode() or "GPG decryption failed")
 
@@ -1238,11 +1251,13 @@ def check_gpg_available():
         tuple: (bool, str) - (is_available, error_message)
     """
     try:
+        creation_flags = get_subprocess_creation_flags()
         result = subprocess.run(
             ['gpg', '--version'],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            timeout=5
+            timeout=5,
+            creationflags=creation_flags
         )
         if result.returncode == 0:
             logger.info("GPG is available on the system")
@@ -3532,6 +3547,7 @@ class NextcloudRestoreWizard(tk.Tk):
         # Open log folder button
         def open_log_folder():
             try:
+                creation_flags = get_subprocess_creation_flags()
                 log_folder = LOG_FILE_PATH.parent
                 if platform.system() == 'Windows':
                     os.startfile(log_folder)
