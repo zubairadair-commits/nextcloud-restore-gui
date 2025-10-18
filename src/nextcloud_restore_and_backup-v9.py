@@ -9747,29 +9747,36 @@ Would you like to open the detailed guide?
         error_message = None
         
         try:
-            # Get Tailscale executable path (use full path on Windows if available)
+            # Get Tailscale executable path
             if platform.system() == "Windows":
                 tailscale_path = self._find_tailscale_exe()
                 if not tailscale_path:
-                    return None, None, "Tailscale CLI not found. Please ensure Tailscale is installed correctly."
+                    return None, None, "Tailscale CLI not found. Please ensure Tailscale is installed and in your PATH."
                 tailscale_cmd = tailscale_path
             else:
-                tailscale_cmd = "tailscale"
+                # Use shutil.which() to reliably locate the executable
+                tailscale_cmd = shutil.which("tailscale")
+                if not tailscale_cmd:
+                    return None, None, "Tailscale CLI not found. Please ensure Tailscale is installed and in your PATH."
             
-            # Get Tailscale status
+            # Get Tailscale status with increased timeout
             try:
                 result = subprocess.run(
                     [tailscale_cmd, "status", "--json"],
                     capture_output=True,
                     text=True,
-                    timeout=5
+                    timeout=15
                 )
-            except FileNotFoundError:
-                return None, None, "Tailscale CLI not found in system PATH. Please ensure Tailscale is installed."
             except subprocess.TimeoutExpired:
-                return None, None, "Tailscale command timed out. The service may be unresponsive."
+                error_msg = "Tailscale command timed out. The service may be unresponsive."
+                logger.error(error_msg)
+                return None, None, error_msg
             
             if result.returncode != 0:
+                # Log and return full error output
+                stderr_output = result.stderr.strip()
+                logger.error(f"Tailscale command failed with code {result.returncode}: {stderr_output}")
+                
                 # Parse stderr for specific errors
                 stderr_lower = result.stderr.lower()
                 if "not running" in stderr_lower or "stopped" in stderr_lower:
@@ -9779,13 +9786,15 @@ Would you like to open the detailed guide?
                 elif "not logged in" in stderr_lower or "logged out" in stderr_lower:
                     return None, None, "Tailscale is not logged in. Please login to Tailscale first."
                 else:
-                    return None, None, f"Tailscale command failed: {result.stderr.strip() or 'Unknown error'}"
+                    return None, None, f"Tailscale command failed: {stderr_output or 'Unknown error'}"
             
             # Parse JSON output
             try:
                 status_data = json.loads(result.stdout)
             except json.JSONDecodeError as e:
-                return None, None, f"Failed to parse Tailscale status JSON: {str(e)}"
+                error_msg = f"Failed to parse Tailscale status JSON: {str(e)}"
+                logger.error(error_msg)
+                return None, None, error_msg
             
             # Get self info
             if 'Self' in status_data:
@@ -9806,8 +9815,9 @@ Would you like to open the detailed guide?
                 return None, None, "Tailscale status response missing 'Self' information."
         
         except Exception as e:
+            error_msg = f"Unexpected error: {str(e)}"
             logger.error(f"Error getting Tailscale info: {e}")
-            return None, None, f"Unexpected error: {str(e)}"
+            return None, None, error_msg
         
         return ts_ip, ts_hostname, None
     
