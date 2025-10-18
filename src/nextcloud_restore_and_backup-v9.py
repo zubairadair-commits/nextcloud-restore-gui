@@ -2113,11 +2113,12 @@ def _setup_windows_task_scheduler(tailscale_path, port, enable):
         if enable:
             # Create the task
             # Use PowerShell to create a more reliable scheduled task
+            # The task runs at logon with highest privileges and hidden window
             ps_script = f'''
 $action = New-ScheduledTaskAction -Execute '"{tailscale_path}"' -Argument 'serve --bg --https=443 http://localhost:{port}'
 $trigger = New-ScheduledTaskTrigger -AtLogon
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERNAME" -LogonType Interactive -RunLevel Highest
-$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -Hidden
 Register-ScheduledTask -TaskName '{task_name}' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force
 '''
             
@@ -8905,8 +8906,8 @@ php /tmp/update_config.php"
         
         # Get Tailscale info
         logger.info("TAILSCALE CONFIG: Retrieving Tailscale network information")
-        ts_ip, ts_hostname = self._get_tailscale_info()
-        logger.info(f"TAILSCALE CONFIG: Retrieved - IP: {ts_ip}, Hostname: {ts_hostname}")
+        ts_ip, ts_hostname, error_message = self._get_tailscale_info()
+        logger.info(f"TAILSCALE CONFIG: Retrieved - IP: {ts_ip}, Hostname: {ts_hostname}, Error: {error_message}")
         
         # Display Tailscale info
         logger.info("TAILSCALE CONFIG: Creating Tailscale info display")
@@ -8919,7 +8920,7 @@ php /tmp/update_config.php"
             font=("Arial", 12, "bold"),
             bg=self.theme_colors['info_bg'],
             fg=self.theme_colors['info_fg']
-        ).pack(pady=(10, 5), padx=10, anchor="w")
+        ).pack(pady=(15, 5), padx=15, anchor="w")
         
         if ts_ip:
             tk.Label(
@@ -8927,8 +8928,9 @@ php /tmp/update_config.php"
                 text=f"Tailscale IP: {ts_ip}",
                 font=("Arial", 11, "bold"),
                 bg=self.theme_colors['info_bg'],
-                fg=self.theme_colors['info_fg']
-            ).pack(pady=5, padx=20, anchor="w")
+                fg=self.theme_colors['info_fg'],
+                wraplength=480
+            ).pack(pady=5, padx=15, anchor="w")
         
         if ts_hostname:
             tk.Label(
@@ -8936,26 +8938,31 @@ php /tmp/update_config.php"
                 text=f"MagicDNS Name: {ts_hostname}",
                 font=("Arial", 11, "bold"),
                 bg=self.theme_colors['info_bg'],
-                fg=self.theme_colors['info_fg']
-            ).pack(pady=5, padx=20, anchor="w")
+                fg=self.theme_colors['info_fg'],
+                wraplength=480
+            ).pack(pady=5, padx=15, anchor="w")
         
-        if not ts_ip and not ts_hostname:
+        if error_message:
             tk.Label(
                 info_frame,
-                text="⚠️ Could not retrieve Tailscale information",
+                text=f"⚠️ {error_message}",
                 font=("Arial", 11),
                 bg=self.theme_colors['info_bg'],
-                fg=self.theme_colors['error_fg']
-            ).pack(pady=10, padx=20, anchor="w")
+                fg=self.theme_colors['error_fg'],
+                wraplength=480,
+                justify=tk.LEFT
+            ).pack(pady=10, padx=15, anchor="w")
         
-        tk.Label(
-            info_frame,
-            text="Use these addresses to access Nextcloud from any device on your Tailscale network.",
-            font=("Arial", 10),
-            bg=self.theme_colors['info_bg'],
-            fg=self.theme_colors['info_fg'],
-            wraplength=520
-        ).pack(pady=(5, 10), padx=20, anchor="w")
+        if ts_ip or ts_hostname:
+            tk.Label(
+                info_frame,
+                text="Use these addresses to access Nextcloud from any device on your Tailscale network.",
+                font=("Arial", 10),
+                bg=self.theme_colors['info_bg'],
+                fg=self.theme_colors['info_fg'],
+                wraplength=480,
+                justify=tk.LEFT
+            ).pack(pady=(5, 15), padx=15, anchor="w")
         
         # Custom domains section
         tk.Label(
@@ -8963,7 +8970,8 @@ php /tmp/update_config.php"
             text="Custom Domains (Optional)",
             font=("Arial", 13, "bold"),
             bg=self.theme_colors['bg'],
-            fg=self.theme_colors['fg']
+            fg=self.theme_colors['fg'],
+            wraplength=520
         ).pack(pady=(20, 5), fill="x", padx=40)
         
         tk.Label(
@@ -8971,7 +8979,9 @@ php /tmp/update_config.php"
             text="Add any custom domains you want to use to access Nextcloud:",
             font=("Arial", 10),
             bg=self.theme_colors['bg'],
-            fg=self.theme_colors['hint_fg']
+            fg=self.theme_colors['hint_fg'],
+            wraplength=520,
+            justify=tk.LEFT
         ).pack(pady=(0, 10), fill="x", padx=40)
         
         # Custom domain entry
@@ -8994,14 +9004,16 @@ php /tmp/update_config.php"
             bg=self.theme_colors['entry_bg'],
             fg=self.theme_colors['entry_fg'],
             insertbackground=self.theme_colors['entry_fg']
-        ).pack(side="left", fill="x", expand=True)
+        ).pack(side="left", fill="x", expand=True, padx=(0, 5))
         
         tk.Label(
             content,
             text="Example: mycloud.example.com",
             font=("Arial", 9),
             bg=self.theme_colors['bg'],
-            fg=self.theme_colors['hint_fg']
+            fg=self.theme_colors['hint_fg'],
+            wraplength=520,
+            justify=tk.LEFT
         ).pack(pady=(0, 15), fill="x", padx=40)
         
         # Auto-serve configuration section
@@ -9011,7 +9023,8 @@ php /tmp/update_config.php"
             text="Automatic Tailscale Serve (Optional)",
             font=("Arial", 13, "bold"),
             bg=self.theme_colors['bg'],
-            fg=self.theme_colors['fg']
+            fg=self.theme_colors['fg'],
+            wraplength=520
         ).pack(pady=(20, 5), fill="x", padx=40)
         
         # Detect Nextcloud port
@@ -9023,20 +9036,23 @@ php /tmp/update_config.php"
             text=port_info_text,
             font=("Arial", 10),
             bg=self.theme_colors['bg'],
-            fg=self.theme_colors['hint_fg']
+            fg=self.theme_colors['hint_fg'],
+            wraplength=520,
+            justify=tk.LEFT
         ).pack(pady=(0, 5), fill="x", padx=40)
         
         tk.Label(
             content,
-            text="Enable automatic 'tailscale serve' at system startup to make Nextcloud\naccessible via HTTPS on your Tailscale network.",
+            text="Enable automatic 'tailscale serve' at system startup to make Nextcloud accessible via HTTPS on your Tailscale network.",
             font=("Arial", 10),
             bg=self.theme_colors['bg'],
             fg=self.theme_colors['hint_fg'],
+            wraplength=520,
             justify=tk.LEFT
         ).pack(pady=(0, 10), fill="x", padx=40)
         
-        # Auto-serve checkbox
-        auto_serve_var = tk.BooleanVar()
+        # Auto-serve checkbox (checked by default)
+        auto_serve_var = tk.BooleanVar(value=True)
         auto_serve_check = tk.Checkbutton(
             content,
             text="Enable automatic Tailscale serve at startup",
@@ -9046,7 +9062,9 @@ php /tmp/update_config.php"
             fg=self.theme_colors['fg'],
             selectcolor=self.theme_colors['entry_bg'],
             activebackground=self.theme_colors['bg'],
-            activeforeground=self.theme_colors['fg']
+            activeforeground=self.theme_colors['fg'],
+            wraplength=520,
+            justify=tk.LEFT
         )
         auto_serve_check.pack(pady=5, fill="x", padx=40, anchor="w")
         
@@ -9071,7 +9089,7 @@ php /tmp/update_config.php"
             fg=self.theme_colors['entry_fg'],
             insertbackground=self.theme_colors['entry_fg'],
             width=10
-        ).pack(side="left")
+        ).pack(side="left", padx=(0, 5))
         
         tk.Label(
             port_override_frame,
@@ -9715,53 +9733,89 @@ Would you like to open the detailed guide?
         # Cancel - do nothing
     
     def _get_tailscale_info(self):
-        """Get Tailscale IP and hostname"""
+        """
+        Get Tailscale IP and hostname with detailed error information.
+        
+        Returns:
+            tuple: (ts_ip, ts_hostname, error_message)
+                - ts_ip: Tailscale IP address or None
+                - ts_hostname: Tailscale hostname or None
+                - error_message: Detailed error message or None if successful
+        """
         ts_ip = None
         ts_hostname = None
+        error_message = None
         
         try:
             # Get Tailscale executable path (use full path on Windows if available)
             if platform.system() == "Windows":
                 tailscale_path = self._find_tailscale_exe()
                 if not tailscale_path:
-                    return None, None
+                    return None, None, "Tailscale CLI not found. Please ensure Tailscale is installed correctly."
                 tailscale_cmd = tailscale_path
             else:
                 tailscale_cmd = "tailscale"
             
             # Get Tailscale status
-            result = subprocess.run(
-                [tailscale_cmd, "status", "--json"],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
+            try:
+                result = subprocess.run(
+                    [tailscale_cmd, "status", "--json"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+            except FileNotFoundError:
+                return None, None, "Tailscale CLI not found in system PATH. Please ensure Tailscale is installed."
+            except subprocess.TimeoutExpired:
+                return None, None, "Tailscale command timed out. The service may be unresponsive."
             
-            if result.returncode == 0:
+            if result.returncode != 0:
+                # Parse stderr for specific errors
+                stderr_lower = result.stderr.lower()
+                if "not running" in stderr_lower or "stopped" in stderr_lower:
+                    return None, None, "Tailscale service is not running. Please start Tailscale."
+                elif "permission denied" in stderr_lower or "access denied" in stderr_lower:
+                    return None, None, "Permission denied. Try running with administrator/sudo privileges."
+                elif "not logged in" in stderr_lower or "logged out" in stderr_lower:
+                    return None, None, "Tailscale is not logged in. Please login to Tailscale first."
+                else:
+                    return None, None, f"Tailscale command failed: {result.stderr.strip() or 'Unknown error'}"
+            
+            # Parse JSON output
+            try:
                 status_data = json.loads(result.stdout)
+            except json.JSONDecodeError as e:
+                return None, None, f"Failed to parse Tailscale status JSON: {str(e)}"
+            
+            # Get self info
+            if 'Self' in status_data:
+                self_data = status_data['Self']
                 
-                # Get self info
-                if 'Self' in status_data:
-                    self_data = status_data['Self']
-                    
-                    # Get Tailscale IP
-                    if 'TailscaleIPs' in self_data and self_data['TailscaleIPs']:
-                        ts_ip = self_data['TailscaleIPs'][0]
-                    
-                    # Get hostname
-                    if 'DNSName' in self_data:
-                        ts_hostname = self_data['DNSName'].rstrip('.')
+                # Get Tailscale IP
+                if 'TailscaleIPs' in self_data and self_data['TailscaleIPs']:
+                    ts_ip = self_data['TailscaleIPs'][0]
+                
+                # Get hostname
+                if 'DNSName' in self_data:
+                    ts_hostname = self_data['DNSName'].rstrip('.')
+                
+                # Check if we got any data
+                if not ts_ip and not ts_hostname:
+                    return None, None, "Tailscale is running but no network information available. Ensure Tailscale is connected."
+            else:
+                return None, None, "Tailscale status response missing 'Self' information."
         
         except Exception as e:
-            print(f"Error getting Tailscale info: {e}")
+            logger.error(f"Error getting Tailscale info: {e}")
+            return None, None, f"Unexpected error: {str(e)}"
         
-        return ts_ip, ts_hostname
+        return ts_ip, ts_hostname, None
     
     def _display_tailscale_info(self, parent):
         """Display current Tailscale network information"""
-        ts_ip, ts_hostname = self._get_tailscale_info()
+        ts_ip, ts_hostname, error_message = self._get_tailscale_info()
         
-        if ts_ip or ts_hostname:
+        if ts_ip or ts_hostname or error_message:
             info_frame = tk.Frame(parent, bg=self.theme_colors['info_bg'], relief="solid", borderwidth=1)
             info_frame.pack(pady=15, fill="x", padx=20)
             
@@ -9779,7 +9833,8 @@ Would you like to open the detailed guide?
                     text=f"IP Address: {ts_ip}",
                     font=("Arial", 10),
                     bg=self.theme_colors['info_bg'],
-                    fg=self.theme_colors['info_fg']
+                    fg=self.theme_colors['info_fg'],
+                    wraplength=520
                 ).pack(pady=2, padx=20, anchor="w")
             
             if ts_hostname:
@@ -9788,8 +9843,20 @@ Would you like to open the detailed guide?
                     text=f"Hostname: {ts_hostname}",
                     font=("Arial", 10),
                     bg=self.theme_colors['info_bg'],
-                    fg=self.theme_colors['info_fg']
+                    fg=self.theme_colors['info_fg'],
+                    wraplength=520
                 ).pack(pady=2, padx=20, anchor="w")
+            
+            if error_message:
+                tk.Label(
+                    info_frame,
+                    text=f"⚠️ {error_message}",
+                    font=("Arial", 10),
+                    bg=self.theme_colors['info_bg'],
+                    fg=self.theme_colors['error_fg'],
+                    wraplength=520,
+                    justify=tk.LEFT
+                ).pack(pady=5, padx=20, anchor="w")
             
             tk.Label(
                 info_frame,
