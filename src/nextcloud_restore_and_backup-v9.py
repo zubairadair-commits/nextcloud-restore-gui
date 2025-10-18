@@ -2113,11 +2113,12 @@ def _setup_windows_task_scheduler(tailscale_path, port, enable):
         if enable:
             # Create the task
             # Use PowerShell to create a more reliable scheduled task
+            # The task runs at logon with highest privileges and hidden window
             ps_script = f'''
 $action = New-ScheduledTaskAction -Execute '"{tailscale_path}"' -Argument 'serve --bg --https=443 http://localhost:{port}'
 $trigger = New-ScheduledTaskTrigger -AtLogon
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERNAME" -LogonType Interactive -RunLevel Highest
-$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -Hidden
 Register-ScheduledTask -TaskName '{task_name}' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force
 '''
             
