@@ -2034,6 +2034,264 @@ def attach_container_to_network(container_name, network_name="bridge"):
         print(f"Error attaching container to network: {e}")
         return False
 
+def get_nextcloud_port():
+    """
+    Detect the port mapping for the Nextcloud container.
+    Returns the host port that maps to container port 80, or None if not found.
+    """
+    try:
+        container_name = get_nextcloud_container_name()
+        if not container_name:
+            return None
+        
+        # Get port mappings from docker inspect
+        result = run_docker_command_silent(
+            ['docker', 'inspect', container_name, '--format', '{{range $p, $conf := .NetworkSettings.Ports}}{{if eq $p "80/tcp"}}{{(index $conf 0).HostPort}}{{end}}{{end}}']
+        )
+        
+        if result and result.returncode == 0 and result.stdout.strip():
+            port = result.stdout.strip()
+            if port.isdigit():
+                return int(port)
+        
+        # Fallback: try docker port command
+        result = run_docker_command_silent(
+            ['docker', 'port', container_name, '80']
+        )
+        
+        if result and result.returncode == 0 and result.stdout.strip():
+            # Output format: "0.0.0.0:8080" or ":::8080"
+            port_mapping = result.stdout.strip()
+            if ':' in port_mapping:
+                port = port_mapping.split(':')[-1]
+                if port.isdigit():
+                    return int(port)
+    
+    except Exception as e:
+        logger.error(f"Error detecting Nextcloud port: {e}")
+    
+    return None
+
+def setup_tailscale_serve_startup(port, enable=True):
+    """
+    Set up automatic 'tailscale serve' to run at system startup.
+    
+    Args:
+        port: The port number to serve (e.g., 8080)
+        enable: If True, enable startup; if False, disable/remove startup
+    
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    system = platform.system()
+    
+    try:
+        tailscale_path = find_tailscale_exe() if system == "Windows" else "tailscale"
+        if system == "Windows" and not tailscale_path:
+            return False, "Tailscale executable not found"
+        
+        serve_cmd = f'"{tailscale_path}" serve --bg --https=443 http://localhost:{port}' if system == "Windows" else f'tailscale serve --bg --https=443 http://localhost:{port}'
+        
+        if system == "Windows":
+            return _setup_windows_task_scheduler(tailscale_path, port, enable)
+        elif system == "Linux":
+            return _setup_linux_systemd_service(port, enable)
+        elif system == "Darwin":
+            return _setup_macos_launchagent(port, enable)
+        else:
+            return False, f"Unsupported platform: {system}"
+    
+    except Exception as e:
+        logger.error(f"Error setting up tailscale serve startup: {e}")
+        return False, f"Error: {str(e)}"
+
+def _setup_windows_task_scheduler(tailscale_path, port, enable):
+    """Set up Windows Task Scheduler for tailscale serve"""
+    task_name = "NextcloudTailscaleServe"
+    
+    try:
+        if enable:
+            # Create the task
+            # Use PowerShell to create a more reliable scheduled task
+            ps_script = f'''
+$action = New-ScheduledTaskAction -Execute '"{tailscale_path}"' -Argument 'serve --bg --https=443 http://localhost:{port}'
+$trigger = New-ScheduledTaskTrigger -AtLogon
+$principal = New-ScheduledTaskPrincipal -UserId "$env:USERNAME" -LogonType Interactive -RunLevel Highest
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+Register-ScheduledTask -TaskName '{task_name}' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force
+'''
+            
+            creation_flags = get_subprocess_creation_flags()
+            result = subprocess.run(
+                ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps_script],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                creationflags=creation_flags
+            )
+            
+            if result.returncode == 0:
+                logger.info(f"Windows scheduled task '{task_name}' created successfully")
+                return True, f"Auto-start configured successfully. Tailscale will serve on port {port} at login."
+            else:
+                logger.error(f"Failed to create scheduled task: {result.stderr}")
+                return False, f"Failed to create scheduled task: {result.stderr}"
+        else:
+            # Delete the task
+            creation_flags = get_subprocess_creation_flags()
+            result = subprocess.run(
+                ['schtasks', '/Delete', '/TN', task_name, '/F'],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                creationflags=creation_flags
+            )
+            
+            if result.returncode == 0:
+                logger.info(f"Windows scheduled task '{task_name}' deleted successfully")
+                return True, "Auto-start disabled successfully."
+            else:
+                # Task might not exist, which is fine
+                return True, "Auto-start disabled (task may not have existed)."
+    
+    except Exception as e:
+        logger.error(f"Error managing Windows scheduled task: {e}")
+        return False, f"Error: {str(e)}"
+
+def _setup_linux_systemd_service(port, enable):
+    """Set up Linux systemd service for tailscale serve"""
+    service_name = "nextcloud-tailscale-serve.service"
+    service_path = f"/etc/systemd/system/{service_name}"
+    
+    try:
+        if enable:
+            # Create systemd service file
+            service_content = f"""[Unit]
+Description=Tailscale Serve for Nextcloud
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/tailscale serve --bg --https=443 http://localhost:{port}
+ExecStop=/usr/bin/tailscale serve reset
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+"""
+            
+            # Write service file (requires sudo)
+            temp_file = f"/tmp/{service_name}"
+            with open(temp_file, 'w') as f:
+                f.write(service_content)
+            
+            # Move to systemd directory and enable service
+            commands = [
+                ['sudo', 'mv', temp_file, service_path],
+                ['sudo', 'chmod', '644', service_path],
+                ['sudo', 'systemctl', 'daemon-reload'],
+                ['sudo', 'systemctl', 'enable', service_name],
+                ['sudo', 'systemctl', 'start', service_name]
+            ]
+            
+            for cmd in commands:
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+                if result.returncode != 0:
+                    logger.error(f"Command failed: {' '.join(cmd)}: {result.stderr}")
+                    return False, f"Failed to set up service: {result.stderr}"
+            
+            logger.info(f"Linux systemd service '{service_name}' created and enabled")
+            return True, f"Auto-start configured successfully. Tailscale will serve on port {port} at boot."
+        else:
+            # Disable and remove service
+            commands = [
+                ['sudo', 'systemctl', 'stop', service_name],
+                ['sudo', 'systemctl', 'disable', service_name],
+                ['sudo', 'rm', '-f', service_path],
+                ['sudo', 'systemctl', 'daemon-reload']
+            ]
+            
+            for cmd in commands:
+                subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            
+            logger.info(f"Linux systemd service '{service_name}' disabled and removed")
+            return True, "Auto-start disabled successfully."
+    
+    except Exception as e:
+        logger.error(f"Error managing Linux systemd service: {e}")
+        return False, f"Error: {str(e)}"
+
+def _setup_macos_launchagent(port, enable):
+    """Set up macOS LaunchAgent for tailscale serve"""
+    agent_label = "com.nextcloud.tailscale-serve"
+    agent_plist = os.path.expanduser(f"~/Library/LaunchAgents/{agent_label}.plist")
+    
+    try:
+        if enable:
+            # Create LaunchAgent plist
+            plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{agent_label}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/tailscale</string>
+        <string>serve</string>
+        <string>--bg</string>
+        <string>--https=443</string>
+        <string>http://localhost:{port}</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>/tmp/nextcloud-tailscale-serve.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/nextcloud-tailscale-serve-error.log</string>
+</dict>
+</plist>
+"""
+            
+            # Ensure LaunchAgents directory exists
+            os.makedirs(os.path.dirname(agent_plist), exist_ok=True)
+            
+            # Write plist file
+            with open(agent_plist, 'w') as f:
+                f.write(plist_content)
+            
+            # Load the agent
+            result = subprocess.run(
+                ['launchctl', 'load', agent_plist],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode == 0:
+                logger.info(f"macOS LaunchAgent '{agent_label}' created and loaded")
+                return True, f"Auto-start configured successfully. Tailscale will serve on port {port} at login."
+            else:
+                logger.error(f"Failed to load LaunchAgent: {result.stderr}")
+                return False, f"Failed to load LaunchAgent: {result.stderr}"
+        else:
+            # Unload and remove agent
+            if os.path.exists(agent_plist):
+                subprocess.run(['launchctl', 'unload', agent_plist], 
+                             capture_output=True, text=True, timeout=10)
+                os.remove(agent_plist)
+            
+            logger.info(f"macOS LaunchAgent '{agent_label}' unloaded and removed")
+            return True, "Auto-start disabled successfully."
+    
+    except Exception as e:
+        logger.error(f"Error managing macOS LaunchAgent: {e}")
+        return False, f"Error: {str(e)}"
+
 # ----------- EXTRACTION USING PYTHON TARFILE MODULE -----------
 def extract_config_php_only(archive_path, extract_to):
     """
@@ -3388,10 +3646,10 @@ class NextcloudRestoreWizard(tk.Tk):
         # Separator
         ttk.Separator(menu_frame, orient="horizontal").pack(fill="x", padx=10, pady=5)
         
-        # Remote Access (Tailscale) option
+        # Remote Access option
         tailscale_btn = tk.Button(
             menu_frame,
-            text="🌐 Remote Access (Tailscale)",
+            text="🌐 Remote Access",
             font=("Arial", 11),
             width=25,
             bg=self.theme_colors['button_bg'],
@@ -8036,7 +8294,7 @@ php /tmp/update_config.php"
         for widget in self.body_frame.winfo_children():
             widget.destroy()
         
-        self.status_label.config(text="Remote Access Setup (Tailscale)")
+        self.status_label.config(text="Remote Access Setup")
         
         # Create minimal loading indicator first so page is never blank
         logger.info("TAILSCALE WIZARD: Creating minimal loading indicator")
@@ -8078,10 +8336,11 @@ php /tmp/update_config.php"
         
         tk.Label(
             content,
-            text="Securely access your Nextcloud from anywhere using Tailscale",
+            text="Securely access your Nextcloud from anywhere using Tailscale VPN",
             font=("Arial", 11),
             bg=self.theme_colors['bg'],
-            fg=self.theme_colors['hint_fg']
+            fg=self.theme_colors['hint_fg'],
+            wraplength=520
         ).pack(pady=(0, 20), fill="x", padx=40)
         
         # Info box
@@ -8143,7 +8402,8 @@ php /tmp/update_config.php"
             text=f"Tailscale Installation: {install_status}",
             font=("Arial", 11, "bold"),
             bg=self.theme_colors['bg'],
-            fg=install_color
+            fg=install_color,
+            wraplength=520
         ).pack(pady=5, anchor="w")
         
         # Running status
@@ -8156,10 +8416,11 @@ php /tmp/update_config.php"
                 text=f"Tailscale Status: {running_status}",
                 font=("Arial", 11, "bold"),
                 bg=self.theme_colors['bg'],
-                fg=running_color
+                fg=running_color,
+                wraplength=520
             ).pack(pady=5, anchor="w")
         
-        self.status_label.config(text="Remote Access Setup (Tailscale)")
+        self.status_label.config(text="Remote Access Setup")
         
         # Action buttons frame
         logger.info("TAILSCALE WIZARD: Creating action buttons")
@@ -8250,31 +8511,142 @@ php /tmp/update_config.php"
             return False
     
     def _check_tailscale_running(self):
-        """Check if Tailscale is running"""
+        """Check if Tailscale is running with robust cross-platform detection"""
         try:
-            # On Windows, use the full path if available
-            if platform.system() == "Windows":
+            system = platform.system()
+            
+            if system == "Windows":
+                # Method 1: Check Windows service status
+                try:
+                    creation_flags = get_subprocess_creation_flags()
+                    result = subprocess.run(
+                        ['sc', 'query', 'Tailscale'],
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                        creationflags=creation_flags
+                    )
+                    if result.returncode == 0 and 'RUNNING' in result.stdout:
+                        return True
+                    elif result.returncode == 0 and 'STOPPED' in result.stdout:
+                        return False
+                except Exception:
+                    pass
+                
+                # Method 2: Check using tailscale status command
                 tailscale_path = self._find_tailscale_exe()
                 if tailscale_path:
+                    try:
+                        creation_flags = get_subprocess_creation_flags()
+                        result = subprocess.run(
+                            [tailscale_path, "status"],
+                            capture_output=True,
+                            text=True,
+                            timeout=5,
+                            creationflags=creation_flags
+                        )
+                        return result.returncode == 0
+                    except Exception:
+                        pass
+                
+                # Method 3: Check if process is running
+                try:
+                    creation_flags = get_subprocess_creation_flags()
                     result = subprocess.run(
-                        [tailscale_path, "status"],
+                        ['tasklist', '/FI', 'IMAGENAME eq tailscaled.exe'],
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                        creationflags=creation_flags
+                    )
+                    return 'tailscaled.exe' in result.stdout
+                except Exception:
+                    pass
+                
+                return False
+            
+            elif system == "Linux":
+                # Method 1: Check systemd service status
+                try:
+                    result = subprocess.run(
+                        ['systemctl', 'is-active', 'tailscaled'],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    if result.returncode == 0 and result.stdout.strip() == 'active':
+                        return True
+                except Exception:
+                    pass
+                
+                # Method 2: Check using tailscale status command
+                try:
+                    result = subprocess.run(
+                        ["tailscale", "status"],
                         capture_output=True,
                         text=True,
                         timeout=5
                     )
                     return result.returncode == 0
-                else:
-                    return False
+                except Exception:
+                    pass
+                
+                # Method 3: Check if process is running
+                try:
+                    result = subprocess.run(
+                        ['pgrep', '-x', 'tailscaled'],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    return result.returncode == 0
+                except Exception:
+                    pass
+                
+                return False
+            
+            elif system == "Darwin":  # macOS
+                # Method 1: Check using tailscale status command
+                try:
+                    result = subprocess.run(
+                        ["tailscale", "status"],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    return result.returncode == 0
+                except Exception:
+                    pass
+                
+                # Method 2: Check if process is running
+                try:
+                    result = subprocess.run(
+                        ['pgrep', '-x', 'tailscaled'],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    return result.returncode == 0
+                except Exception:
+                    pass
+                
+                return False
+            
             else:
-                result = subprocess.run(
-                    ["tailscale", "status"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
-                )
-                return result.returncode == 0
+                # Unknown system, try basic check
+                try:
+                    result = subprocess.run(
+                        ["tailscale", "status"],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    return result.returncode == 0
+                except Exception:
+                    return False
+                    
         except Exception as e:
-            print(f"Error checking Tailscale status: {e}")
+            logger.error(f"Error checking Tailscale status: {e}")
             return False
     
     def _install_tailscale(self):
@@ -8524,7 +8896,7 @@ php /tmp/update_config.php"
         # Back button
         tk.Button(
             content,
-            text="← Back to Tailscale Setup",
+            text="← Back to Remote Access Setup",
             font=("Arial", 11),
             command=self.show_tailscale_wizard,
             bg=self.theme_colors['button_bg'],
@@ -8632,6 +9004,83 @@ php /tmp/update_config.php"
             fg=self.theme_colors['hint_fg']
         ).pack(pady=(0, 15), fill="x", padx=40)
         
+        # Auto-serve configuration section
+        logger.info("TAILSCALE CONFIG: Creating auto-serve configuration section")
+        tk.Label(
+            content,
+            text="Automatic Tailscale Serve (Optional)",
+            font=("Arial", 13, "bold"),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg']
+        ).pack(pady=(20, 5), fill="x", padx=40)
+        
+        # Detect Nextcloud port
+        detected_port = get_nextcloud_port()
+        port_info_text = f"Detected Nextcloud port: {detected_port}" if detected_port else "No Nextcloud port detected"
+        
+        tk.Label(
+            content,
+            text=port_info_text,
+            font=("Arial", 10),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['hint_fg']
+        ).pack(pady=(0, 5), fill="x", padx=40)
+        
+        tk.Label(
+            content,
+            text="Enable automatic 'tailscale serve' at system startup to make Nextcloud\naccessible via HTTPS on your Tailscale network.",
+            font=("Arial", 10),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['hint_fg'],
+            justify=tk.LEFT
+        ).pack(pady=(0, 10), fill="x", padx=40)
+        
+        # Auto-serve checkbox
+        auto_serve_var = tk.BooleanVar()
+        auto_serve_check = tk.Checkbutton(
+            content,
+            text="Enable automatic Tailscale serve at startup",
+            variable=auto_serve_var,
+            font=("Arial", 11),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg'],
+            selectcolor=self.theme_colors['entry_bg'],
+            activebackground=self.theme_colors['bg'],
+            activeforeground=self.theme_colors['fg']
+        )
+        auto_serve_check.pack(pady=5, fill="x", padx=40, anchor="w")
+        
+        # Port override entry (in case auto-detection fails)
+        port_override_frame = tk.Frame(content, bg=self.theme_colors['bg'])
+        port_override_frame.pack(pady=5, fill="x", padx=40)
+        
+        tk.Label(
+            port_override_frame,
+            text="Port (override):",
+            font=("Arial", 10),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg']
+        ).pack(side="left", padx=(0, 10))
+        
+        port_override_var = tk.StringVar(value=str(detected_port) if detected_port else "")
+        tk.Entry(
+            port_override_frame,
+            textvariable=port_override_var,
+            font=("Arial", 10),
+            bg=self.theme_colors['entry_bg'],
+            fg=self.theme_colors['entry_fg'],
+            insertbackground=self.theme_colors['entry_fg'],
+            width=10
+        ).pack(side="left")
+        
+        tk.Label(
+            port_override_frame,
+            text="(leave empty to use detected port)",
+            font=("Arial", 9),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['hint_fg']
+        ).pack(side="left", padx=(10, 0))
+        
         # Action buttons
         tk.Button(
             content,
@@ -8641,7 +9090,10 @@ php /tmp/update_config.php"
             fg="white",
             width=35,
             height=2,
-            command=lambda: self._apply_tailscale_config(ts_ip, ts_hostname, custom_domain_var.get())
+            command=lambda: self._apply_tailscale_config(
+                ts_ip, ts_hostname, custom_domain_var.get(),
+                auto_serve_var.get(), port_override_var.get()
+            )
         ).pack(pady=20, fill="x", padx=40)
         
         # Startup automation button (for Linux systems)
@@ -9345,7 +9797,7 @@ Would you like to open the detailed guide?
                 bg=self.theme_colors['info_bg']
             ).pack(pady=5)
     
-    def _apply_tailscale_config(self, ts_ip, ts_hostname, custom_domain):
+    def _apply_tailscale_config(self, ts_ip, ts_hostname, custom_domain, enable_auto_serve=False, port_override=""):
         """Apply Tailscale configuration to Nextcloud"""
         # Get Nextcloud container
         container_names = get_nextcloud_container_name()
@@ -9382,6 +9834,24 @@ Would you like to open the detailed guide?
             
             success = self._update_trusted_domains(nextcloud_container, domains_to_add)
             
+            # Handle auto-serve setup if requested
+            auto_serve_status = ""
+            if enable_auto_serve:
+                # Determine port to use
+                if port_override and port_override.strip().isdigit():
+                    serve_port = int(port_override.strip())
+                else:
+                    serve_port = get_nextcloud_port()
+                
+                if serve_port:
+                    self.status_label.config(text="Setting up automatic Tailscale serve...")
+                    self.update_idletasks()
+                    
+                    serve_success, serve_message = setup_tailscale_serve_startup(serve_port, enable=True)
+                    auto_serve_status = f"\n\nAuto-serve setup: {serve_message}"
+                else:
+                    auto_serve_status = "\n\nAuto-serve setup: Failed - Could not detect Nextcloud port. Please configure manually."
+            
             if success:
                 messagebox.showinfo(
                     "Success",
@@ -9389,6 +9859,7 @@ Would you like to open the detailed guide?
                     f"Added to trusted domains:\n" + "\n".join(f"  • {d}" for d in domains_to_add) + "\n\n"
                     f"You can now access Nextcloud using these addresses from any device\n"
                     f"connected to your Tailscale network."
+                    f"{auto_serve_status}"
                 )
                 self.show_landing()
             else:
