@@ -9182,30 +9182,47 @@ php /tmp/update_config.php"
         rotation_options = [
             (0, "Unlimited (no deletion)"),
             (1, "1 backup (always replace)"),
+            (2, "2 backups"),
             (3, "3 backups"),
             (5, "5 backups"),
             (10, "10 backups")
         ]
         
-        for value, label in rotation_options:
-            rb = tk.Radiobutton(
-                rotation_options_frame,
-                text=label,
-                variable=rotation_var,
-                value=value,
-                font=("Arial", 9),
-                bg=self.theme_colors['bg'],
-                fg=self.theme_colors['fg'],
-                selectcolor=self.theme_colors['entry_bg']
-            )
-            rb.pack(anchor="w", padx=20, pady=2)
-            
-            if value == 1:
-                ToolTip(rb, "Each new backup will delete the previous one, saving disk space")
-            elif value > 1:
-                ToolTip(rb, f"Keep the {value} most recent backups, delete older ones automatically")
-            else:
-                ToolTip(rb, "All backups are kept (manual cleanup required)")
+        # Create dropdown menu for rotation options
+        rotation_dropdown_frame = tk.Frame(rotation_options_frame, bg=self.theme_colors['bg'])
+        rotation_dropdown_frame.pack(padx=20, pady=5)
+        
+        # Create a mapping from display text to value
+        rotation_display_options = [label for value, label in rotation_options]
+        rotation_value_map = {label: value for value, label in rotation_options}
+        rotation_reverse_map = {value: label for value, label in rotation_options}
+        
+        # Set initial selection based on current rotation value
+        initial_selection = rotation_reverse_map.get(current_rotation, "Unlimited (no deletion)")
+        
+        rotation_combobox = ttk.Combobox(
+            rotation_dropdown_frame,
+            values=rotation_display_options,
+            state='readonly',
+            font=("Arial", 10),
+            width=30
+        )
+        rotation_combobox.set(initial_selection)
+        rotation_combobox.pack(side="left")
+        
+        # Update rotation_var when selection changes
+        def on_rotation_change(event):
+            selected_label = rotation_combobox.get()
+            rotation_var.set(rotation_value_map[selected_label])
+        
+        rotation_combobox.bind('<<ComboboxSelected>>', on_rotation_change)
+        
+        # Add tooltip to the combobox
+        tooltip_text = ("Select how many backups to keep. Older backups will be automatically deleted.\n"
+                       "• Unlimited: Keep all backups (requires manual cleanup)\n"
+                       "• 1 backup: Always replace the previous backup (saves disk space)\n"
+                       "• 2-10 backups: Keep this many recent backups, delete older ones")
+        ToolTip(rotation_combobox, tooltip_text)
         
         # Note about Windows only
         if platform.system() != "Windows":
