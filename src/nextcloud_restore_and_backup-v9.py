@@ -77,6 +77,33 @@ logger.info(f"Logging initialized. Log file: {LOG_FILE_PATH}")
 DOCKER_INSTALLER_URL = "https://www.docker.com/products/docker-desktop/"
 GPG_DOWNLOAD_URL = "https://files.gpg4win.org/gpg4win-latest.exe"
 
+# --- Utility Functions ---
+def get_app_data_directory():
+    """
+    Get the application data directory for storing internal files.
+    Creates the directory if it doesn't exist.
+    
+    Returns:
+        Path: Path to the app data directory (~/.nextcloud_backup_utility)
+    """
+    home_dir = Path.home()
+    app_data_dir = home_dir / ".nextcloud_backup_utility"
+    app_data_dir.mkdir(exist_ok=True)
+    return app_data_dir
+
+def get_compose_directory():
+    """
+    Get the directory for storing docker-compose.yml files.
+    Creates the directory if it doesn't exist.
+    
+    Returns:
+        Path: Path to the compose directory (~/.nextcloud_backup_utility/compose)
+    """
+    app_data_dir = get_app_data_directory()
+    compose_dir = app_data_dir / "compose"
+    compose_dir.mkdir(exist_ok=True)
+    return compose_dir
+
 # --- Tooltip System for In-App Help ---
 class ToolTip:
     """
@@ -5220,6 +5247,246 @@ If the problem persists, please report this issue on GitHub.
         tk.Label(info_frame, text="No manual Docker commands or YAML editing required!", 
                  font=("Arial", 10, "bold"), bg=self.theme_colors['info_bg'], 
                  fg="#45bf55").pack(pady=(8, 10), anchor="center")
+        
+        # Advanced Options section (collapsible)
+        self.create_advanced_options_section(parent)
+    
+    def create_advanced_options_section(self, parent):
+        """Create an Advanced Options section for power users"""
+        # Advanced Options header with expand/collapse
+        advanced_frame = tk.Frame(parent)
+        advanced_frame.pack(pady=10, fill="x", padx=40)
+        
+        # State variable for expansion
+        if not hasattr(self, 'advanced_options_expanded'):
+            self.advanced_options_expanded = tk.BooleanVar(value=False)
+        
+        def toggle_advanced_options():
+            """Toggle visibility of advanced options"""
+            expanded = self.advanced_options_expanded.get()
+            if expanded:
+                advanced_content_frame.pack(pady=5, fill="x")
+            else:
+                advanced_content_frame.pack_forget()
+        
+        # Header button for expand/collapse
+        advanced_header_btn = tk.Button(
+            advanced_frame,
+            text="▶ Advanced Options (for power users)",
+            font=("Arial", 11, "bold"),
+            bg=self.theme_colors.get('button_bg', '#3c3c3c'),
+            fg=self.theme_colors.get('button_fg', '#ffffff'),
+            command=lambda: [
+                self.advanced_options_expanded.set(not self.advanced_options_expanded.get()),
+                advanced_header_btn.config(
+                    text="▼ Advanced Options (for power users)" if self.advanced_options_expanded.get() 
+                    else "▶ Advanced Options (for power users)"
+                ),
+                toggle_advanced_options()
+            ],
+            relief="flat",
+            padx=10,
+            pady=5
+        )
+        advanced_header_btn.pack(fill="x")
+        
+        # Advanced options content (initially hidden)
+        advanced_content_frame = tk.Frame(parent, bg=self.theme_colors.get('info_bg', '#2d3e50'), 
+                                         relief="solid", borderwidth=1)
+        
+        tk.Label(
+            advanced_content_frame,
+            text="Docker Compose Configuration",
+            font=("Arial", 11, "bold"),
+            bg=self.theme_colors.get('info_bg', '#2d3e50'),
+            fg=self.theme_colors.get('info_fg', '#ecf0f1')
+        ).pack(pady=(10, 5))
+        
+        tk.Label(
+            advanced_content_frame,
+            text="Docker Compose YAML files are automatically generated and stored internally.\n"
+                 "Use these options if you need to customize or export the configuration.",
+            font=("Arial", 9),
+            bg=self.theme_colors.get('info_bg', '#2d3e50'),
+            fg=self.theme_colors.get('hint_fg', '#95a5a6'),
+            justify="center"
+        ).pack(pady=(0, 10))
+        
+        # Buttons for YAML operations
+        button_frame = tk.Frame(advanced_content_frame, bg=self.theme_colors.get('info_bg', '#2d3e50'))
+        button_frame.pack(pady=(0, 10))
+        
+        tk.Button(
+            button_frame,
+            text="📄 View Generated YAML",
+            font=("Arial", 10),
+            command=self.view_generated_yaml,
+            width=20
+        ).pack(side="left", padx=5)
+        
+        tk.Button(
+            button_frame,
+            text="💾 Export YAML File",
+            font=("Arial", 10),
+            command=self.export_yaml_file,
+            width=20
+        ).pack(side="left", padx=5)
+        
+        tk.Button(
+            button_frame,
+            text="📁 Open YAML Folder",
+            font=("Arial", 10),
+            command=self.open_yaml_folder,
+            width=20
+        ).pack(side="left", padx=5)
+    
+    def view_generated_yaml(self):
+        """View the most recently generated YAML file"""
+        try:
+            compose_dir = get_compose_directory()
+            yaml_files = sorted(compose_dir.glob("docker-compose-*.yml"), reverse=True)
+            
+            if not yaml_files:
+                messagebox.showinfo(
+                    "No YAML Files",
+                    "No Docker Compose YAML files have been generated yet.\n\n"
+                    "YAML files are created automatically during the restore process.",
+                    parent=self
+                )
+                return
+            
+            # Get the most recent file
+            latest_yaml = yaml_files[0]
+            
+            with open(latest_yaml, 'r') as f:
+                yaml_content = f.read()
+            
+            # Create a dialog to display the YAML content
+            dialog = tk.Toplevel(self)
+            dialog.title("Docker Compose YAML Configuration")
+            dialog.geometry("800x600")
+            dialog.transient(self)
+            dialog.grab_set()
+            
+            # Header
+            header_frame = tk.Frame(dialog, bg="#3daee9", height=60)
+            header_frame.pack(fill="x")
+            header_frame.pack_propagate(False)
+            tk.Label(
+                header_frame,
+                text=f"📄 {latest_yaml.name}",
+                font=("Arial", 14, "bold"),
+                bg="#3daee9",
+                fg="white"
+            ).pack(pady=15)
+            
+            # Text widget with scrollbar
+            text_frame = tk.Frame(dialog)
+            text_frame.pack(fill="both", expand=True, padx=10, pady=10)
+            
+            scrollbar = tk.Scrollbar(text_frame)
+            scrollbar.pack(side="right", fill="y")
+            
+            text_widget = tk.Text(
+                text_frame,
+                wrap="none",
+                font=("Courier", 10),
+                yscrollcommand=scrollbar.set
+            )
+            text_widget.pack(side="left", fill="both", expand=True)
+            scrollbar.config(command=text_widget.yview)
+            
+            text_widget.insert("1.0", yaml_content)
+            text_widget.config(state="disabled")
+            
+            # Close button
+            tk.Button(
+                dialog,
+                text="Close",
+                font=("Arial", 11),
+                command=dialog.destroy,
+                width=15
+            ).pack(pady=10)
+            
+        except Exception as e:
+            messagebox.showerror(
+                "Error",
+                f"Failed to view YAML file:\n{e}",
+                parent=self
+            )
+            logger.error(f"Error viewing YAML file: {e}")
+    
+    def export_yaml_file(self):
+        """Export the most recently generated YAML file to a user-selected location"""
+        try:
+            compose_dir = get_compose_directory()
+            yaml_files = sorted(compose_dir.glob("docker-compose-*.yml"), reverse=True)
+            
+            if not yaml_files:
+                messagebox.showinfo(
+                    "No YAML Files",
+                    "No Docker Compose YAML files have been generated yet.\n\n"
+                    "YAML files are created automatically during the restore process.",
+                    parent=self
+                )
+                return
+            
+            # Get the most recent file
+            latest_yaml = yaml_files[0]
+            
+            # Ask user where to save
+            save_path = filedialog.asksaveasfilename(
+                title="Export Docker Compose YAML",
+                defaultextension=".yml",
+                initialfile="docker-compose.yml",
+                filetypes=[("YAML files", "*.yml"), ("YAML files", "*.yaml"), ("All files", "*.*")],
+                parent=self
+            )
+            
+            if not save_path:
+                return
+            
+            # Copy the file
+            shutil.copy2(latest_yaml, save_path)
+            
+            messagebox.showinfo(
+                "Export Successful",
+                f"Docker Compose YAML file exported to:\n{save_path}\n\n"
+                "You can now use 'docker-compose up -d' to start your containers.",
+                parent=self
+            )
+            logger.info(f"YAML file exported to: {save_path}")
+            
+        except Exception as e:
+            messagebox.showerror(
+                "Export Failed",
+                f"Failed to export YAML file:\n{e}",
+                parent=self
+            )
+            logger.error(f"Error exporting YAML file: {e}")
+    
+    def open_yaml_folder(self):
+        """Open the folder containing generated YAML files in the system file explorer"""
+        try:
+            compose_dir = get_compose_directory()
+            
+            # Open the folder in the default file manager
+            if platform.system() == 'Windows':
+                os.startfile(str(compose_dir))
+            elif platform.system() == 'Darwin':  # macOS
+                subprocess.run(['open', str(compose_dir)])
+            else:  # Linux and others
+                subprocess.run(['xdg-open', str(compose_dir)])
+            
+            logger.info(f"Opened YAML folder: {compose_dir}")
+            
+        except Exception as e:
+            messagebox.showerror(
+                "Error",
+                f"Failed to open YAML folder:\n{e}",
+                parent=self
+            )
+            logger.error(f"Error opening YAML folder: {e}")
     
     def wizard_navigate(self, direction):
         """Navigate between wizard pages, saving current page data"""
@@ -5610,17 +5877,11 @@ If the problem persists, please report this issue on GitHub.
                 logger.info("Detection successful - navigating to Page 2")
                 self.show_wizard_page(2)
                 
-                # Show Docker Compose suggestion dialog if full config was detected
-                # This happens immediately after config.php extraction and database detection
-                if self.detected_full_config:
-                    # Schedule the dialog to show after the success message clears
-                    self.after(1500, lambda: [
-                        self.error_label.config(text=""),
-                        self.show_docker_compose_suggestion()
-                    ])
-                else:
-                    # Clear success message after a brief moment
-                    self.after(1500, lambda: self.error_label.config(text=""))
+                # Docker Compose is now automatically generated during restore
+                # No need to prompt user for YAML file generation
+                # Advanced users can access YAML options from the Advanced Options section
+                # Clear success message after a brief moment
+                self.after(1500, lambda: self.error_label.config(text=""))
             else:
                 # Detection failed - show warning but allow navigation
                 # User may still be able to proceed with manual configuration
@@ -6928,13 +7189,21 @@ php /tmp/update_config.php"
                     db_port=5432 if dbtype == 'pgsql' else 3306
                 )
                 
-                # Save to current directory
-                compose_file_path = 'docker-compose.yml'
+                # Save to app data directory with timestamp
+                compose_dir = get_compose_directory()
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                compose_filename = f"docker-compose-{timestamp}.yml"
+                compose_file_path = compose_dir / compose_filename
+                
                 with open(compose_file_path, 'w') as f:
                     f.write(compose_content)
                 
+                # Store the compose file path for later reference (e.g., advanced options)
+                self.last_generated_compose_file = str(compose_file_path)
+                
                 self.process_label.config(text=f"✓ Generated docker-compose.yml with {dbtype} configuration")
-                print(f"Docker Compose file generated: {os.path.abspath(compose_file_path)}")
+                logger.info(f"Docker Compose file saved to: {compose_file_path}")
+                print(f"Docker Compose file saved to internal storage: {compose_file_path}")
                 print(f"Configuration: {dbtype} database on port {self.restore_container_port}")
                 time.sleep(1)
             except Exception as yaml_err:
