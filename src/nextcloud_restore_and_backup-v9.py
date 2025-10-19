@@ -2806,7 +2806,7 @@ def run_test_backup(backup_dir, encrypt, password=""):
         logger.error(f"TEST RUN: Test backup failed with error: {e}")
         return False, f"Test backup failed: {e}"
 
-def create_scheduled_task(task_name, schedule_type, schedule_time, backup_dir, encrypt, password=""):
+def create_scheduled_task(task_name, schedule_type, schedule_time, backup_dir, encrypt, password="", components=None, rotation_keep=0):
     """
     Create a Windows scheduled task for automatic backups.
     
@@ -2817,6 +2817,8 @@ def create_scheduled_task(task_name, schedule_type, schedule_time, backup_dir, e
         backup_dir: Directory to save backups
         encrypt: Boolean for encryption
         password: Encryption password (optional)
+        components: Dict of component selections (optional)
+        rotation_keep: Number of backups to keep (0 = unlimited)
     
     Returns: (success, message) tuple
     """
@@ -2839,6 +2841,16 @@ def create_scheduled_task(task_name, schedule_type, schedule_time, backup_dir, e
         
         if encrypt and password:
             args.extend(["--password", password])
+        
+        # Add component selection if provided
+        if components:
+            selected_components = [k for k, v in components.items() if v]
+            if selected_components:
+                args.extend(["--components", ",".join(selected_components)])
+        
+        # Add rotation setting
+        if rotation_keep > 0:
+            args.extend(["--rotation-keep", str(rotation_keep)])
         
         # Build the full command
         # Detect if running as .py script or .exe executable
@@ -7472,6 +7484,139 @@ php /tmp/update_config.php"
         encrypt_var.trace_add('write', toggle_password_field)
         toggle_password_field()  # Initial state
         
+        # Component selection section
+        component_frame = tk.Frame(config_frame, bg=self.theme_colors['bg'])
+        component_frame.pack(pady=(15, 10), fill="x")
+        
+        tk.Label(
+            component_frame,
+            text="📁 Components to Backup:",
+            font=("Arial", 11, "bold"),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg']
+        ).pack(pady=(0, 5))
+        
+        tk.Label(
+            component_frame,
+            text="Select which folders to include in scheduled backups",
+            font=("Arial", 9),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['hint_fg']
+        ).pack(pady=(0, 10))
+        
+        # Get component selection from config
+        components_config = config.get('components', {}) if config else {}
+        
+        # Component checkboxes
+        component_vars = {}
+        components = [
+            ("config", True, "Configuration files (Required)"),
+            ("data", True, "User data and files (Required)"),
+            ("apps", False, "Standard Nextcloud apps"),
+            ("custom_apps", False, "Custom/third-party apps"),
+        ]
+        
+        for folder, is_critical, description in components:
+            comp_row = tk.Frame(component_frame, bg=self.theme_colors['bg'])
+            comp_row.pack(fill="x", pady=2, padx=20)
+            
+            # Default to True for required components, check config for optional ones
+            default_value = True if is_critical else components_config.get(folder, True)
+            var = tk.BooleanVar(value=default_value)
+            component_vars[folder] = (var, is_critical)
+            
+            cb = tk.Checkbutton(
+                comp_row,
+                text=f"{folder}",
+                variable=var,
+                font=("Arial", 10, "bold" if is_critical else "normal"),
+                bg=self.theme_colors['bg'],
+                fg=self.theme_colors['fg'],
+                selectcolor=self.theme_colors['entry_bg'],
+                state=tk.DISABLED if is_critical else tk.NORMAL
+            )
+            cb.pack(side="left", padx=(0, 10))
+            
+            desc_label = tk.Label(
+                comp_row,
+                text=f"- {description}",
+                font=("Arial", 8),
+                bg=self.theme_colors['bg'],
+                fg=self.theme_colors['hint_fg'],
+                anchor="w"
+            )
+            desc_label.pack(side="left")
+            
+            if is_critical:
+                ToolTip(cb, "This component is required for a complete backup")
+        
+        # Backup rotation section
+        rotation_frame = tk.Frame(config_frame, bg=self.theme_colors['bg'])
+        rotation_frame.pack(pady=(15, 10), fill="x")
+        
+        tk.Label(
+            rotation_frame,
+            text="♻️ Backup Rotation:",
+            font=("Arial", 11, "bold"),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg']
+        ).pack(pady=(0, 5))
+        
+        tk.Label(
+            rotation_frame,
+            text="Automatically delete old backups when limit is reached",
+            font=("Arial", 9),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['hint_fg']
+        ).pack(pady=(0, 10))
+        
+        # Rotation options
+        rotation_label_frame = tk.Frame(rotation_frame, bg=self.theme_colors['bg'])
+        rotation_label_frame.pack(pady=5)
+        
+        tk.Label(
+            rotation_label_frame,
+            text="Keep last:",
+            font=("Arial", 10),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg']
+        ).pack(side="left", padx=(20, 10))
+        
+        # Get rotation setting from config (default to 0 = unlimited)
+        current_rotation = config.get('rotation_keep', 0) if config else 0
+        rotation_var = tk.IntVar(value=current_rotation)
+        
+        rotation_options_frame = tk.Frame(rotation_frame, bg=self.theme_colors['bg'])
+        rotation_options_frame.pack(pady=5)
+        
+        rotation_options = [
+            (0, "Unlimited (no deletion)"),
+            (1, "1 backup (always replace)"),
+            (3, "3 backups"),
+            (5, "5 backups"),
+            (10, "10 backups")
+        ]
+        
+        for value, label in rotation_options:
+            rb = tk.Radiobutton(
+                rotation_options_frame,
+                text=label,
+                variable=rotation_var,
+                value=value,
+                font=("Arial", 9),
+                bg=self.theme_colors['bg'],
+                fg=self.theme_colors['fg'],
+                selectcolor=self.theme_colors['entry_bg']
+            )
+            rb.pack(anchor="w", padx=20, pady=2)
+            
+            if value == 1:
+                ToolTip(rb, "Each new backup will delete the previous one, saving disk space")
+            elif value > 1:
+                ToolTip(rb, f"Keep the {value} most recent backups, delete older ones automatically")
+            else:
+                ToolTip(rb, "All backups are kept (manual cleanup required)")
+        
         # Note about Windows only
         if platform.system() != "Windows":
             warning_label = tk.Label(
@@ -7507,7 +7652,9 @@ php /tmp/update_config.php"
                 frequency_var.get(),
                 time_var.get(),
                 encrypt_var.get(),
-                password_var.get()
+                password_var.get(),
+                component_vars,
+                rotation_var.get()
             )
         ).pack(pady=20)
         
@@ -7622,13 +7769,18 @@ php /tmp/update_config.php"
         # Apply theme
         self.apply_theme_recursive(dialog)
     
-    def _create_schedule(self, backup_dir, frequency, time, encrypt, password):
+    def _create_schedule(self, backup_dir, frequency, time, encrypt, password, component_vars, rotation_keep):
         """Create or update a scheduled backup with validation."""
         task_name = "NextcloudBackup"
         
         # Clear any previous messages
         if hasattr(self, 'schedule_message_label'):
             self.schedule_message_label.config(text="", fg="green")
+        
+        # Extract selected components
+        components = {}
+        for folder, (var, is_critical) in component_vars.items():
+            components[folder] = var.get()
         
         # Run validation checks
         logger.info("Running pre-creation validation checks...")
@@ -7657,7 +7809,9 @@ php /tmp/update_config.php"
             time, 
             backup_dir, 
             encrypt, 
-            password
+            password,
+            components,
+            rotation_keep
         )
         
         if success:
@@ -7669,16 +7823,25 @@ php /tmp/update_config.php"
                 'time': time,
                 'encrypt': encrypt,
                 'password': password,  # Note: In production, consider more secure storage
+                'components': components,
+                'rotation_keep': rotation_keep,
                 'enabled': True,
                 'created_at': datetime.now().isoformat()
             }
             
             if save_schedule_config(config):
+                # Build success message with component details
+                selected_comps = [k for k, v in components.items() if v]
+                comp_list = ", ".join(selected_comps)
+                rotation_msg = f"{rotation_keep} backups" if rotation_keep > 0 else "unlimited"
+                
                 success_msg = (
                     f"✅ Scheduled backup created successfully!\n\n"
                     f"Frequency: {frequency}\n"
                     f"Time: {time}\n"
-                    f"Backup Directory: {backup_dir}\n\n"
+                    f"Backup Directory: {backup_dir}\n"
+                    f"Components: {comp_list}\n"
+                    f"Rotation: Keep {rotation_msg}\n\n"
                     f"Your backups will run automatically according to this schedule.\n"
                     f"You can now use the Test Run button to verify your setup."
                 )
@@ -8117,10 +8280,17 @@ php /tmp/update_config.php"
         thread = threading.Thread(target=run_verification, daemon=True)
         thread.start()
     
-    def run_scheduled_backup(self, backup_dir, encrypt, password):
+    def run_scheduled_backup(self, backup_dir, encrypt, password, components=None, rotation_keep=0):
         """
         Run a backup in scheduled/silent mode (no GUI interactions).
         This is called when the app is launched with --scheduled flag.
+        
+        Args:
+            backup_dir: Directory to save backup
+            encrypt: Whether to encrypt the backup
+            password: Encryption password
+            components: List of component names to backup (None = all)
+            rotation_keep: Number of backups to keep (0 = unlimited)
         """
         try:
             # Check if Docker is running
@@ -8150,16 +8320,33 @@ php /tmp/update_config.php"
             
             # Run backup process silently
             print(f"Starting scheduled backup to {backup_dir}")
-            self.run_backup_process_scheduled(backup_dir, encrypt, password, chosen_container)
+            if components:
+                print(f"Backing up components: {', '.join(components)}")
+            if rotation_keep > 0:
+                print(f"Backup rotation: keeping last {rotation_keep} backup(s)")
+            
+            self.run_backup_process_scheduled(backup_dir, encrypt, password, chosen_container, components)
             print("Scheduled backup completed successfully")
+            
+            # Perform backup rotation if configured
+            if rotation_keep > 0:
+                print(f"\nPerforming backup rotation (keep last {rotation_keep} backups)...")
+                self._perform_backup_rotation(backup_dir, rotation_keep)
             
         except Exception as e:
             print(f"ERROR: Scheduled backup failed: {e}")
             traceback.print_exc()
     
-    def run_backup_process_scheduled(self, backup_dir, encrypt, encryption_password, container_name):
+    def run_backup_process_scheduled(self, backup_dir, encrypt, encryption_password, container_name, components=None):
         """
         Run backup process in scheduled mode (no GUI, just logging to console).
+        
+        Args:
+            backup_dir: Directory to save backup
+            encrypt: Whether to encrypt
+            encryption_password: Encryption password
+            container_name: Nextcloud container name
+            components: List of component names to backup (None = all)
         """
         NEXTCLOUD_PATH = "/var/www/html"
         try:
@@ -8170,12 +8357,20 @@ php /tmp/update_config.php"
             backup_file = os.path.join(backup_dir, f"nextcloud-backup-{timestamp}.tar.gz")
             encrypted_file = backup_file + ".gpg"
 
-            folders_to_copy = [
+            # Define folders with their criticality
+            all_folders = [
                 ("config", True),
                 ("data", True),
                 ("apps", False),
                 ("custom_apps", False),
             ]
+            
+            # Filter folders based on component selection
+            if components:
+                folders_to_copy = [(f, c) for f, c in all_folders if f in components or c]
+            else:
+                folders_to_copy = all_folders
+            
             copied_folders = []
             skipped_folders = []
             
@@ -8283,6 +8478,70 @@ php /tmp/update_config.php"
             tb = traceback.format_exc()
             print(f"Backup failed: {e}")
             print(tb)
+    
+    def _perform_backup_rotation(self, backup_dir, keep_count):
+        """
+        Perform backup rotation by deleting old backups when the limit is exceeded.
+        
+        Args:
+            backup_dir: Directory containing backups
+            keep_count: Number of backups to keep
+        """
+        try:
+            # Get list of backup files in the directory
+            backup_files = []
+            for filename in os.listdir(backup_dir):
+                if filename.startswith('nextcloud-backup-') and (
+                    filename.endswith('.tar.gz') or filename.endswith('.tar.gz.gpg')
+                ):
+                    filepath = os.path.join(backup_dir, filename)
+                    if os.path.isfile(filepath):
+                        backup_files.append(filepath)
+            
+            if not backup_files:
+                print("No backup files found for rotation")
+                return
+            
+            # Sort by modification time (newest first)
+            backup_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+            
+            print(f"Found {len(backup_files)} backup file(s) in {backup_dir}")
+            
+            # Delete old backups if we exceed the limit
+            if len(backup_files) > keep_count:
+                files_to_delete = backup_files[keep_count:]
+                print(f"Deleting {len(files_to_delete)} old backup(s)...")
+                
+                for filepath in files_to_delete:
+                    try:
+                        print(f"  Deleting: {os.path.basename(filepath)}")
+                        os.remove(filepath)
+                        logger.info(f"BACKUP ROTATION: Deleted old backup: {filepath}")
+                        
+                        # Also remove from backup history database if present
+                        # Find the backup in history by path
+                        backups = self.backup_history.get_all_backups(limit=1000)
+                        for backup in backups:
+                            backup_id, backup_path = backup[0], backup[1]
+                            if backup_path == filepath:
+                                self.backup_history.delete_backup(backup_id)
+                                print(f"    Removed from backup history (ID: {backup_id})")
+                                logger.info(f"BACKUP ROTATION: Removed from history - ID: {backup_id}")
+                                break
+                    except Exception as e:
+                        print(f"  Warning: Failed to delete {filepath}: {e}")
+                        logger.warning(f"BACKUP ROTATION: Failed to delete {filepath}: {e}")
+                
+                print(f"✓ Backup rotation complete. Kept {keep_count} newest backup(s)")
+                logger.info(f"BACKUP ROTATION: Complete - kept {keep_count} backup(s)")
+            else:
+                print(f"✓ No rotation needed. Current backup count ({len(backup_files)}) ≤ limit ({keep_count})")
+                logger.info(f"BACKUP ROTATION: Not needed - {len(backup_files)} backups ≤ {keep_count} limit")
+        
+        except Exception as e:
+            print(f"ERROR during backup rotation: {e}")
+            logger.error(f"BACKUP ROTATION: Error - {e}")
+            traceback.print_exc()
     
     # ----- Tailscale Setup Wizard -----
     
@@ -11074,6 +11333,8 @@ if __name__ == "__main__":
     parser.add_argument('--encrypt', action='store_true', help='Enable encryption')
     parser.add_argument('--no-encrypt', action='store_true', help='Disable encryption')
     parser.add_argument('--password', type=str, default='', help='Encryption password')
+    parser.add_argument('--components', type=str, default='', help='Comma-separated list of components to backup')
+    parser.add_argument('--rotation-keep', type=int, default=0, help='Number of backups to keep (0 = unlimited)')
     
     args = parser.parse_args()
     
@@ -11101,9 +11362,14 @@ if __name__ == "__main__":
         
         encrypt = args.encrypt and not args.no_encrypt
         
+        # Parse components
+        components = []
+        if args.components:
+            components = [c.strip() for c in args.components.split(',') if c.strip()]
+        
         # Create a minimal app instance in scheduled mode (no GUI initialization)
         app = NextcloudRestoreWizard(scheduled_mode=True)
-        app.run_scheduled_backup(args.backup_dir, encrypt, args.password)
+        app.run_scheduled_backup(args.backup_dir, encrypt, args.password, components, args.rotation_keep)
         sys.exit(0)
     else:
         # Normal GUI mode
