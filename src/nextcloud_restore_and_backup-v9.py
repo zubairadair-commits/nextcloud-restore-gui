@@ -74,6 +74,200 @@ LOG_FILE_PATH = setup_logging()
 logger = logging.getLogger(__name__)
 logger.info(f"Logging initialized. Log file: {LOG_FILE_PATH}")
 
+# Setup Docker error logging with dedicated file
+def setup_docker_error_logging():
+    """
+    Setup dedicated Docker error logging file.
+    Returns the path to the Docker error log file.
+    """
+    if platform.system() == 'Windows':
+        documents_dir = Path.home() / 'Documents'
+    else:
+        documents_dir = Path.home() / 'Documents'
+    
+    log_dir = documents_dir / 'NextcloudLogs'
+    log_dir.mkdir(parents=True, exist_ok=True)
+    
+    docker_error_log_file = log_dir / 'nextcloud_docker_errors.log'
+    return docker_error_log_file
+
+DOCKER_ERROR_LOG_PATH = setup_docker_error_logging()
+
+def log_docker_error(error_type, error_message, container_name=None, port=None, additional_info=None):
+    """
+    Log Docker error to dedicated error log file with timestamp and context.
+    
+    Args:
+        error_type: Type of error (e.g., 'port_conflict', 'image_not_found', 'container_start_failed')
+        error_message: The actual error message from Docker
+        container_name: Name of the container that failed (if applicable)
+        port: Port that caused the issue (if applicable)
+        additional_info: Any additional context information
+    """
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    log_entry = f"\n{'='*80}\n"
+    log_entry += f"[{timestamp}] Docker Error: {error_type}\n"
+    log_entry += f"{'='*80}\n"
+    
+    if container_name:
+        log_entry += f"Container: {container_name}\n"
+    if port:
+        log_entry += f"Port: {port}\n"
+    
+    log_entry += f"Error Message:\n{error_message}\n"
+    
+    if additional_info:
+        log_entry += f"\nAdditional Information:\n{additional_info}\n"
+    
+    log_entry += f"{'='*80}\n"
+    
+    # Write to dedicated Docker error log
+    try:
+        with open(DOCKER_ERROR_LOG_PATH, 'a', encoding='utf-8') as f:
+            f.write(log_entry)
+    except Exception as e:
+        logger.error(f"Failed to write to Docker error log: {e}")
+    
+    # Also log to main log
+    logger.error(f"Docker Error ({error_type}): {error_message}")
+
+def analyze_docker_error(stderr_output, container_name=None, port=None):
+    """
+    Analyze Docker error output and return structured error information.
+    
+    Returns:
+        dict with keys:
+            - error_type: Type of error detected
+            - user_message: User-friendly error message
+            - suggested_action: Recommended action to resolve the issue
+            - alternative_port: Suggested alternative port (if port conflict)
+            - is_recoverable: Whether the error can be resolved by user action
+    """
+    error_info = {
+        'error_type': 'unknown',
+        'user_message': 'An unknown error occurred while creating the Docker container.',
+        'suggested_action': 'Please check Docker logs for more details.',
+        'alternative_port': None,
+        'is_recoverable': False
+    }
+    
+    stderr_lower = stderr_output.lower()
+    
+    # Port conflict detection
+    if 'bind' in stderr_lower and ('already' in stderr_lower or 'in use' in stderr_lower):
+        error_info['error_type'] = 'port_conflict'
+        error_info['user_message'] = f"Port {port} is already in use by another application or container."
+        error_info['is_recoverable'] = True
+        
+        # Suggest alternative ports
+        if port:
+            suggested_ports = []
+            for offset in [1, 2, 10, 100]:
+                alt_port = int(port) + offset
+                if alt_port <= 65535:
+                    suggested_ports.append(alt_port)
+            
+            if suggested_ports:
+                error_info['alternative_port'] = suggested_ports[0]
+                error_info['suggested_action'] = (
+                    f"Try one of these alternative ports: {', '.join(map(str, suggested_ports[:3]))}\n\n"
+                    "Or stop the application/container using the port:\n"
+                    "  docker ps (to see running containers)\n"
+                    "  docker stop <container-name> (to stop conflicting container)"
+                )
+        else:
+            error_info['suggested_action'] = (
+                "Check which application is using the port and stop it, "
+                "or choose a different port for your Nextcloud container."
+            )
+    
+    # Image not found
+    elif 'not found' in stderr_lower or 'no such image' in stderr_lower:
+        error_info['error_type'] = 'image_not_found'
+        error_info['user_message'] = "The required Docker image could not be found."
+        error_info['is_recoverable'] = True
+        error_info['suggested_action'] = (
+            "The image may need to be downloaded. Try:\n"
+            "1. Check your internet connection\n"
+            "2. Manually pull the image: docker pull nextcloud\n"
+            "3. Restart the restore process"
+        )
+    
+    # Container name conflict
+    elif 'name' in stderr_lower and ('already' in stderr_lower or 'in use' in stderr_lower or 'conflict' in stderr_lower):
+        error_info['error_type'] = 'container_name_conflict'
+        error_info['user_message'] = f"A container with name '{container_name}' already exists."
+        error_info['is_recoverable'] = True
+        error_info['suggested_action'] = (
+            f"Remove the existing container or choose a different name:\n"
+            f"  docker rm {container_name} (to remove the container)\n"
+            f"  docker rm -f {container_name} (to force remove if running)\n\n"
+            "Or choose a different container name in the restore wizard."
+        )
+    
+    # Network errors
+    elif 'network' in stderr_lower and ('not found' in stderr_lower or 'error' in stderr_lower):
+        error_info['error_type'] = 'network_error'
+        error_info['user_message'] = "Docker network configuration error."
+        error_info['is_recoverable'] = True
+        error_info['suggested_action'] = (
+            "Try creating the default bridge network:\n"
+            "  docker network create bridge\n\n"
+            "Or restart Docker Desktop/daemon."
+        )
+    
+    # Volume/mount errors
+    elif 'mount' in stderr_lower or 'volume' in stderr_lower:
+        error_info['error_type'] = 'volume_error'
+        error_info['user_message'] = "Failed to mount volume or directory."
+        error_info['is_recoverable'] = True
+        error_info['suggested_action'] = (
+            "Check that:\n"
+            "1. The directory exists and is accessible\n"
+            "2. You have proper permissions\n"
+            "3. The path is correct (absolute path required)"
+        )
+    
+    # Docker daemon not running
+    elif 'daemon' in stderr_lower or 'connect' in stderr_lower or 'cannot connect' in stderr_lower:
+        error_info['error_type'] = 'docker_not_running'
+        error_info['user_message'] = "Docker daemon is not running or not accessible."
+        error_info['is_recoverable'] = True
+        error_info['suggested_action'] = (
+            "Start Docker:\n"
+            "  - Windows/Mac: Open Docker Desktop\n"
+            "  - Linux: sudo systemctl start docker\n\n"
+            "Then retry the restore."
+        )
+    
+    # Permission denied
+    elif 'permission denied' in stderr_lower or 'access denied' in stderr_lower:
+        error_info['error_type'] = 'permission_error'
+        error_info['user_message'] = "Permission denied - insufficient privileges to run Docker."
+        error_info['is_recoverable'] = True
+        error_info['suggested_action'] = (
+            "Run with proper permissions:\n"
+            "  - Windows: Run as Administrator\n"
+            "  - Linux: Add user to docker group or use sudo\n"
+            "    sudo usermod -aG docker $USER\n"
+            "    (logout and login again after running this)"
+        )
+    
+    # Resource exhaustion
+    elif 'no space' in stderr_lower or 'disk' in stderr_lower:
+        error_info['error_type'] = 'disk_space_error'
+        error_info['user_message'] = "Insufficient disk space for Docker operation."
+        error_info['is_recoverable'] = True
+        error_info['suggested_action'] = (
+            "Free up disk space:\n"
+            "  - Remove unused Docker images: docker image prune -a\n"
+            "  - Remove stopped containers: docker container prune\n"
+            "  - Check available disk space: df -h (Linux) or dir (Windows)"
+        )
+    
+    return error_info
+
 DOCKER_INSTALLER_URL = "https://www.docker.com/products/docker-desktop/"
 GPG_DOWNLOAD_URL = "https://files.gpg4win.org/gpg4win-latest.exe"
 
@@ -6272,9 +6466,30 @@ If the problem persists, please report this issue on GitHub.
             )
             
             if pull_result.returncode != 0:
-                error_msg = f"Failed to pull Nextcloud image: {pull_result.stderr}"
+                # Analyze Docker error
+                error_info = analyze_docker_error(pull_result.stderr, container_name=new_container_name)
+                
+                # Log to dedicated Docker error file
+                log_docker_error(
+                    error_type='image_pull_failed',
+                    error_message=pull_result.stderr,
+                    container_name=new_container_name,
+                    additional_info=f"Failed to pull image: {NEXTCLOUD_IMAGE}"
+                )
+                
+                error_msg = f"Failed to pull Nextcloud image: {error_info['user_message']}"
                 self.set_restore_progress(0, "Restore failed!")
-                self.error_label.config(text=error_msg)
+                self.error_label.config(text=error_msg, fg="red")
+                
+                # Store and show error dialog
+                self.last_docker_error = {
+                    'error_info': error_info,
+                    'stderr': pull_result.stderr,
+                    'container_name': new_container_name,
+                    'port': None
+                }
+                self.show_docker_container_error_dialog(error_info, pull_result.stderr, f"{NEXTCLOUD_IMAGE} (image)", "N/A")
+                
                 return None
             
             self.set_restore_progress(30, "Image downloaded successfully")
@@ -6307,18 +6522,41 @@ If the problem persists, please report this issue on GitHub.
         
         if result.returncode != 0:
             tb = traceback.format_exc()
+            
+            # Analyze Docker error
+            error_info = analyze_docker_error(result.stderr, container_name=new_container_name, port=port)
+            
+            # Log to dedicated Docker error file
+            log_docker_error(
+                error_type=error_info['error_type'],
+                error_message=result.stderr,
+                container_name=new_container_name,
+                port=port,
+                additional_info=f"Full traceback:\n{tb}"
+            )
+            
+            # Build user-friendly error message
             error_msg = (
                 f"Failed to start Nextcloud container.\n\n"
-                f"Error: {result.stderr}\n\n"
-                "Common issues:\n"
-                "- Container name already in use (try a different name)\n"
-                "- Port already in use (try a different port)\n"
-                "- Not attached to default bridge network\n\n"
-                "Please check Docker status and try again."
+                f"{error_info['user_message']}\n\n"
+                f"Raw Error: {result.stderr[:200]}..."  # Show first 200 chars
             )
+            
             self.set_restore_progress(0, "Restore failed!")
-            self.error_label.config(text=error_msg)
+            self.error_label.config(text=error_info['user_message'], fg="red")
             print(f"Container start failed: {result.stderr}\n{tb}")
+            
+            # Store error info for detailed view
+            self.last_docker_error = {
+                'error_info': error_info,
+                'stderr': result.stderr,
+                'container_name': new_container_name,
+                'port': port
+            }
+            
+            # Show error dialog with "Show Docker Error Details" button
+            self.show_docker_container_error_dialog(error_info, result.stderr, new_container_name, port)
+            
             return None
         
         container_id = new_container_name
@@ -6382,9 +6620,30 @@ If the problem persists, please report this issue on GitHub.
             )
             
             if pull_db_result.returncode != 0:
-                error_msg = f"Failed to pull PostgreSQL image: {pull_db_result.stderr}"
+                # Analyze Docker error
+                error_info = analyze_docker_error(pull_db_result.stderr, container_name=POSTGRES_CONTAINER_NAME)
+                
+                # Log to dedicated Docker error file
+                log_docker_error(
+                    error_type='image_pull_failed',
+                    error_message=pull_db_result.stderr,
+                    container_name=POSTGRES_CONTAINER_NAME,
+                    additional_info=f"Failed to pull image: {POSTGRES_IMAGE}"
+                )
+                
+                error_msg = f"Failed to pull PostgreSQL image: {error_info['user_message']}"
                 self.set_restore_progress(0, "Restore failed!")
-                self.error_label.config(text=error_msg)
+                self.error_label.config(text=error_msg, fg="red")
+                
+                # Store and show error dialog
+                self.last_docker_error = {
+                    'error_info': error_info,
+                    'stderr': pull_db_result.stderr,
+                    'container_name': POSTGRES_CONTAINER_NAME,
+                    'port': None
+                }
+                self.show_docker_container_error_dialog(error_info, pull_db_result.stderr, f"{POSTGRES_IMAGE} (image)", "N/A")
+                
                 return None
         
         self.set_restore_progress(40, "Creating database container...")
@@ -6404,18 +6663,41 @@ If the problem persists, please report this issue on GitHub.
         
         if result.returncode != 0:
             tb = traceback.format_exc()
+            
+            # Analyze Docker error
+            error_info = analyze_docker_error(result.stderr, container_name=POSTGRES_CONTAINER_NAME, port=POSTGRES_PORT)
+            
+            # Log to dedicated Docker error file
+            log_docker_error(
+                error_type=error_info['error_type'],
+                error_message=result.stderr,
+                container_name=POSTGRES_CONTAINER_NAME,
+                port=POSTGRES_PORT,
+                additional_info=f"Full traceback:\n{tb}"
+            )
+            
+            # Build user-friendly error message
             error_msg = (
                 f"Failed to start PostgreSQL container.\n\n"
-                f"Error: {result.stderr}\n\n"
-                "Common issues:\n"
-                "- Container name already in use\n"
-                "- Port 5432 already in use\n"
-                "- Not attached to default bridge network\n\n"
-                "Please check Docker status and try again."
+                f"{error_info['user_message']}\n\n"
+                f"Raw Error: {result.stderr[:200]}..."  # Show first 200 chars
             )
+            
             self.set_restore_progress(0, "Restore failed!")
-            self.error_label.config(text=error_msg)
+            self.error_label.config(text=error_info['user_message'], fg="red")
             print(f"Database container start failed: {result.stderr}\n{tb}")
+            
+            # Store error info for detailed view
+            self.last_docker_error = {
+                'error_info': error_info,
+                'stderr': result.stderr,
+                'container_name': POSTGRES_CONTAINER_NAME,
+                'port': POSTGRES_PORT
+            }
+            
+            # Show error dialog with "Show Docker Error Details" button
+            self.show_docker_container_error_dialog(error_info, result.stderr, POSTGRES_CONTAINER_NAME, POSTGRES_PORT)
+            
             return None
         
         db_container_id = POSTGRES_CONTAINER_NAME
@@ -7772,6 +8054,344 @@ php /tmp/update_config.php"
             command=details_window.destroy
         )
         close_btn.pack(pady=10)
+    
+    def show_docker_container_error_dialog(self, error_info, stderr_output, container_name, port):
+        """
+        Show error dialog when Docker container creation fails.
+        Includes "Show Docker Error Details" button.
+        """
+        # Create a modal dialog
+        error_dialog = tk.Toplevel(self)
+        error_dialog.title("Docker Container Creation Failed")
+        error_dialog.geometry("700x500")
+        error_dialog.configure(bg=self.theme_colors['bg'])
+        error_dialog.transient(self)
+        error_dialog.grab_set()
+        
+        # Center the dialog
+        error_dialog.update_idletasks()
+        x = (error_dialog.winfo_screenwidth() // 2) - (700 // 2)
+        y = (error_dialog.winfo_screenheight() // 2) - (500 // 2)
+        error_dialog.geometry(f"+{x}+{y}")
+        
+        # Header
+        header_frame = tk.Frame(error_dialog, bg='#d32f2f', height=80)
+        header_frame.pack(fill='x')
+        header_frame.pack_propagate(False)
+        
+        tk.Label(
+            header_frame,
+            text="❌ Docker Container Failed",
+            font=("Arial", 18, "bold"),
+            bg='#d32f2f',
+            fg='white'
+        ).pack(pady=25)
+        
+        # Content frame
+        content_frame = tk.Frame(error_dialog, bg=self.theme_colors['bg'])
+        content_frame.pack(fill='both', expand=True, padx=20, pady=20)
+        
+        # Error type label
+        tk.Label(
+            content_frame,
+            text=f"Error Type: {error_info['error_type'].replace('_', ' ').title()}",
+            font=("Arial", 12, "bold"),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg']
+        ).pack(pady=(0, 10))
+        
+        # Container info
+        info_frame = tk.Frame(content_frame, bg=self.theme_colors['info_bg'], relief="solid", borderwidth=1)
+        info_frame.pack(fill='x', pady=10)
+        
+        tk.Label(
+            info_frame,
+            text=f"Container: {container_name}  |  Port: {port}",
+            font=("Arial", 10),
+            bg=self.theme_colors['info_bg'],
+            fg=self.theme_colors['info_fg']
+        ).pack(pady=8)
+        
+        # Error message
+        tk.Label(
+            content_frame,
+            text=error_info['user_message'],
+            font=("Arial", 11),
+            bg=self.theme_colors['bg'],
+            fg='#d32f2f',
+            wraplength=640,
+            justify="left"
+        ).pack(pady=10)
+        
+        # Suggested action frame
+        action_frame = tk.Frame(content_frame, bg='#e8f5e9', relief="solid", borderwidth=1)
+        action_frame.pack(fill='x', pady=15)
+        
+        tk.Label(
+            action_frame,
+            text="💡 Suggested Action:",
+            font=("Arial", 11, "bold"),
+            bg='#e8f5e9',
+            fg='#2e7d32'
+        ).pack(pady=(8, 3), padx=10, anchor='w')
+        
+        tk.Label(
+            action_frame,
+            text=error_info['suggested_action'],
+            font=("Arial", 9),
+            bg='#e8f5e9',
+            fg='#1b5e20',
+            wraplength=620,
+            justify="left"
+        ).pack(pady=(0, 8), padx=15, anchor='w')
+        
+        # Alternative port suggestion (if applicable)
+        if error_info.get('alternative_port'):
+            port_label = tk.Label(
+                content_frame,
+                text=f"🔌 Try alternative port: {error_info['alternative_port']}",
+                font=("Arial", 10, "bold"),
+                bg=self.theme_colors['bg'],
+                fg='#f7b32b'
+            )
+            port_label.pack(pady=5)
+        
+        # Log location
+        tk.Label(
+            content_frame,
+            text=f"📁 Error logged to: {DOCKER_ERROR_LOG_PATH}",
+            font=("Arial", 8),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['hint_fg']
+        ).pack(pady=(15, 5))
+        
+        # Button frame
+        button_frame = tk.Frame(content_frame, bg=self.theme_colors['bg'])
+        button_frame.pack(pady=15)
+        
+        # Show Docker Error Details button
+        details_btn = tk.Button(
+            button_frame,
+            text="📋 Show Docker Error Details",
+            font=("Arial", 11, "bold"),
+            bg="#3daee9",
+            fg="white",
+            width=25,
+            command=lambda: self.show_docker_error_details(error_info, stderr_output)
+        )
+        details_btn.pack(side="left", padx=5)
+        
+        # Close button
+        close_btn = tk.Button(
+            button_frame,
+            text="Close",
+            font=("Arial", 11),
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg'],
+            width=15,
+            command=error_dialog.destroy
+        )
+        close_btn.pack(side="left", padx=5)
+    
+    def show_docker_error_details(self, error_info, stderr_output):
+        """
+        Show detailed Docker error information in a popup window with actionable guidance.
+        
+        Args:
+            error_info: Dictionary with error analysis from analyze_docker_error()
+            stderr_output: Raw stderr output from Docker command
+        """
+        details_window = tk.Toplevel(self)
+        details_window.title("Docker Error Details")
+        details_window.geometry("900x700")
+        details_window.configure(bg=self.theme_colors['bg'])
+        
+        # Title with error type
+        title_frame = tk.Frame(details_window, bg=self.theme_colors['header_bg'])
+        title_frame.pack(fill="x", pady=(0, 10))
+        
+        title_label = tk.Label(
+            title_frame,
+            text=f"🐳 Docker Error: {error_info['error_type'].replace('_', ' ').title()}",
+            font=("Arial", 16, "bold"),
+            bg=self.theme_colors['header_bg'],
+            fg=self.theme_colors['header_fg']
+        )
+        title_label.pack(pady=15)
+        
+        # Main content with scrollbar
+        main_frame = tk.Frame(details_window, bg=self.theme_colors['bg'])
+        main_frame.pack(expand=True, fill="both", padx=15, pady=5)
+        
+        canvas = tk.Canvas(main_frame, bg=self.theme_colors['bg'], highlightthickness=0)
+        scrollbar = tk.Scrollbar(main_frame, command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg=self.theme_colors['bg'])
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # User-friendly error message
+        error_msg_frame = tk.Frame(scrollable_frame, bg=self.theme_colors['info_bg'], relief="solid", borderwidth=2)
+        error_msg_frame.pack(fill="x", padx=10, pady=10)
+        
+        tk.Label(
+            error_msg_frame,
+            text="❌ Error Description",
+            font=("Arial", 12, "bold"),
+            bg=self.theme_colors['info_bg'],
+            fg=self.theme_colors['info_fg']
+        ).pack(pady=(10, 5), padx=10, anchor="w")
+        
+        tk.Label(
+            error_msg_frame,
+            text=error_info['user_message'],
+            font=("Arial", 11),
+            bg=self.theme_colors['info_bg'],
+            fg=self.theme_colors['info_fg'],
+            wraplength=820,
+            justify="left"
+        ).pack(pady=(0, 10), padx=15, anchor="w")
+        
+        # Suggested action
+        action_frame = tk.Frame(scrollable_frame, bg='#e8f5e9', relief="solid", borderwidth=2)
+        action_frame.pack(fill="x", padx=10, pady=10)
+        
+        tk.Label(
+            action_frame,
+            text="💡 Suggested Action",
+            font=("Arial", 12, "bold"),
+            bg='#e8f5e9',
+            fg='#2e7d32'
+        ).pack(pady=(10, 5), padx=10, anchor="w")
+        
+        tk.Label(
+            action_frame,
+            text=error_info['suggested_action'],
+            font=("Arial", 10),
+            bg='#e8f5e9',
+            fg='#1b5e20',
+            wraplength=820,
+            justify="left"
+        ).pack(pady=(0, 10), padx=15, anchor="w")
+        
+        # Alternative port suggestion (if applicable)
+        if error_info.get('alternative_port'):
+            port_frame = tk.Frame(scrollable_frame, bg='#fff3cd', relief="solid", borderwidth=2)
+            port_frame.pack(fill="x", padx=10, pady=10)
+            
+            tk.Label(
+                port_frame,
+                text="🔌 Alternative Port Suggestion",
+                font=("Arial", 12, "bold"),
+                bg='#fff3cd',
+                fg='#856404'
+            ).pack(pady=(10, 5), padx=10, anchor="w")
+            
+            tk.Label(
+                port_frame,
+                text=f"Try using port {error_info['alternative_port']} instead.",
+                font=("Arial", 10),
+                bg='#fff3cd',
+                fg='#856404',
+                wraplength=820,
+                justify="left"
+            ).pack(pady=(0, 10), padx=15, anchor="w")
+        
+        # Raw Docker error output
+        raw_error_frame = tk.Frame(scrollable_frame, bg=self.theme_colors['bg'])
+        raw_error_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        tk.Label(
+            raw_error_frame,
+            text="📋 Raw Docker Error Output",
+            font=("Arial", 11, "bold"),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg']
+        ).pack(pady=(5, 5), anchor="w")
+        
+        text_frame = tk.Frame(raw_error_frame)
+        text_frame.pack(fill="both", expand=True)
+        
+        text_scrollbar = tk.Scrollbar(text_frame)
+        text_scrollbar.pack(side="right", fill="y")
+        
+        text_widget = tk.Text(
+            text_frame,
+            wrap="word",
+            bg=self.theme_colors['entry_bg'],
+            fg=self.theme_colors['entry_fg'],
+            font=("Courier", 9),
+            height=8,
+            yscrollcommand=text_scrollbar.set
+        )
+        text_widget.pack(fill="both", expand=True)
+        text_scrollbar.config(command=text_widget.yview)
+        
+        text_widget.insert("1.0", stderr_output)
+        text_widget.config(state="disabled")
+        
+        # Docker error log file location
+        log_location_frame = tk.Frame(scrollable_frame, bg=self.theme_colors['bg'])
+        log_location_frame.pack(fill="x", padx=10, pady=10)
+        
+        tk.Label(
+            log_location_frame,
+            text=f"📁 Docker errors are logged to:\n{DOCKER_ERROR_LOG_PATH}",
+            font=("Arial", 9),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['hint_fg'],
+            justify="left"
+        ).pack(anchor="w")
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Button frame at bottom
+        button_frame = tk.Frame(details_window, bg=self.theme_colors['bg'])
+        button_frame.pack(fill="x", padx=15, pady=15)
+        
+        # Open Docker error log button
+        open_log_btn = tk.Button(
+            button_frame,
+            text="📂 Open Docker Error Log",
+            font=("Arial", 10),
+            bg="#3daee9",
+            fg="white",
+            command=lambda: self.open_file_location(DOCKER_ERROR_LOG_PATH)
+        )
+        open_log_btn.pack(side="left", padx=5)
+        
+        # Close button
+        close_btn = tk.Button(
+            button_frame,
+            text="Close",
+            font=("Arial", 10),
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg'],
+            command=details_window.destroy
+        )
+        close_btn.pack(side="right", padx=5)
+    
+    def open_file_location(self, file_path):
+        """Open the file location in the system file explorer."""
+        try:
+            if platform.system() == 'Windows':
+                os.startfile(os.path.dirname(file_path))
+            elif platform.system() == 'Darwin':  # macOS
+                subprocess.run(['open', os.path.dirname(file_path)])
+            else:  # Linux
+                subprocess.run(['xdg-open', os.path.dirname(file_path)])
+        except Exception as e:
+            messagebox.showinfo(
+                "File Location",
+                f"Log file location:\n{file_path}",
+                parent=self
+            )
     
     def open_nextcloud_in_browser(self, port):
         """
