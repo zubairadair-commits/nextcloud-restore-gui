@@ -227,6 +227,62 @@ def test_tooltip_integration():
         print(f"  ✗ Error: {e}")
         return False
 
+def test_automated_yaml_generation():
+    """Test that YAML is generated automatically during restore"""
+    print("\nTesting automated YAML generation...")
+    try:
+        with open(src_file, 'r') as f:
+            content = f.read()
+        
+        # Check for YAML generation
+        checks = [
+            ('generate_docker_compose_yml', 'YAML generation function'),
+            ('Generating Docker Compose configuration', 'YAML generation message'),
+            ('docker-compose.yml', 'YAML file reference')
+        ]
+        
+        all_found = True
+        for check_str, desc in checks:
+            if check_str in content:
+                print(f"  ✓ Found {desc}")
+            else:
+                print(f"  ✗ Missing {desc}")
+                all_found = False
+        
+        return all_found
+    except Exception as e:
+        print(f"  ✗ Error: {e}")
+        return False
+
+def test_enhanced_progress_indicators():
+    """Test that detailed progress indicators are present"""
+    print("\nTesting enhanced progress indicators...")
+    try:
+        with open(src_file, 'r') as f:
+            content = f.read()
+        
+        # Check for detailed progress messages
+        progress_messages = [
+            'Generating Docker configuration',
+            'Setting up containers',
+            'Copying files into container',
+            'Restoring database',
+            'Setting permissions'
+        ]
+        
+        all_found = True
+        for msg in progress_messages:
+            if msg in content:
+                print(f"  ✓ Found progress message: '{msg}'")
+            else:
+                print(f"  ✗ Missing progress message: '{msg}'")
+                all_found = False
+        
+        return all_found
+    except Exception as e:
+        print(f"  ✗ Error: {e}")
+        return False
+
 def run_all_tests():
     """Run all test functions"""
     print("=" * 60)
@@ -243,7 +299,9 @@ def run_all_tests():
         test_enhanced_docker_detection,
         test_automated_process_messaging,
         test_default_path_suggestions,
-        test_tooltip_integration
+        test_tooltip_integration,
+        test_automated_yaml_generation,
+        test_enhanced_progress_indicators
     ]
     
     results = []

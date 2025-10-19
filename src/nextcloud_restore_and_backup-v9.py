@@ -3485,7 +3485,8 @@ class NextcloudRestoreWizard(tk.Tk):
         self.restore_backup_path = None
         self.restore_steps = [
             "Decrypting/extracting backup ...",
-            "Ensuring containers running ...",
+            "Generating Docker configuration ...",
+            "Setting up containers ...",
             "Copying files into container ...",
             "Restoring database ...",
             "Setting permissions ...",
@@ -6640,6 +6641,44 @@ php /tmp/update_config.php"
 
             self.set_restore_progress(20, self.restore_steps[1])
             
+            # Generate Docker Compose YAML automatically
+            self.set_restore_progress(21, "Generating Docker Compose configuration...")
+            self.process_label.config(text="Creating docker-compose.yml with detected settings...")
+            self.update_idletasks()
+            
+            try:
+                # Generate docker-compose.yml based on detected configuration
+                compose_config = {
+                    'dbtype': dbtype,
+                    'dbname': self.restore_db_name,
+                    'dbuser': self.restore_db_user,
+                    'dbpassword': self.restore_db_password,
+                    'datadirectory': '/var/www/html/data',
+                    'trusted_domains': ['localhost']
+                }
+                
+                compose_content = generate_docker_compose_yml(
+                    compose_config,
+                    nextcloud_port=self.restore_container_port,
+                    db_port=5432 if dbtype == 'pgsql' else 3306
+                )
+                
+                # Save to current directory
+                compose_file_path = 'docker-compose.yml'
+                with open(compose_file_path, 'w') as f:
+                    f.write(compose_content)
+                
+                self.process_label.config(text=f"✓ Generated docker-compose.yml with {dbtype} configuration")
+                print(f"Docker Compose file generated: {os.path.abspath(compose_file_path)}")
+                print(f"Configuration: {dbtype} database on port {self.restore_container_port}")
+                time.sleep(1)
+            except Exception as yaml_err:
+                # Not fatal - continue with manual container creation
+                warning_msg = f"⚠️ Warning: Could not generate docker-compose.yml: {yaml_err}\nContinuing with manual container setup..."
+                self.error_label.config(text=warning_msg, fg="orange")
+                print(f"Warning: YAML generation failed: {yaml_err}")
+                time.sleep(2)
+            
             # Auto-create required host folders before starting containers
             self.process_label.config(text="Checking and creating required host folders...")
             self.update_idletasks()
@@ -6691,32 +6730,45 @@ php /tmp/update_config.php"
                 print(f"⚠️ {warning_msg}")
                 time.sleep(2)
             
+            # Update to step 2 with detailed messaging
+            self.set_restore_progress(40, self.restore_steps[2])
+            
             # For SQLite, we don't need a separate database container
             db_container = None
             if dbtype != 'sqlite':
                 # Start database container first (needed for Nextcloud container linking)
+                self.process_label.config(text=f"Starting {dbtype.upper()} database container...")
+                self.update_idletasks()
                 db_container = self.ensure_db_container()
                 if not db_container:
                     self.set_restore_progress(0, "Restore failed!")
                     return
+                self.process_label.config(text=f"✓ Database container ready: {db_container}")
             else:
-                self.process_label.config(text="SQLite detected - no separate database container needed")
+                self.process_label.config(text="✓ SQLite detected - no separate database container needed")
                 self.update_idletasks()
             
             # Start Nextcloud container (linked to database if not SQLite)
+            self.process_label.config(text=f"Starting Nextcloud container on port {self.restore_container_port}...")
+            self.update_idletasks()
             nextcloud_container = self.ensure_nextcloud_container()
             if not nextcloud_container:
                 self.set_restore_progress(0, "Restore failed!")
                 return
+            self.process_label.config(text=f"✓ Nextcloud container ready: {nextcloud_container}")
 
-            self.set_restore_progress(50, self.restore_steps[2])
+            self.set_restore_progress(50, self.restore_steps[3])
             nextcloud_path = "/var/www/html"
             # Copy config/data/apps/custom_apps into container
             # Note: We need to remove existing folders first, then copy the backup folders
-            for folder in ["config", "data", "apps", "custom_apps"]:
+            folders_to_copy = ["config", "data", "apps", "custom_apps"]
+            for idx, folder in enumerate(folders_to_copy):
                 local_path = os.path.join(extract_dir, folder)
                 if os.path.isdir(local_path):
-                    self.process_label.config(text=f"Copying: {folder}")
+                    # Calculate progress (50-65% for file copying)
+                    progress = 50 + int((idx / len(folders_to_copy)) * 15)
+                    self.set_restore_progress(progress, self.restore_steps[3])
+                    self.process_label.config(text=f"Copying {folder} folder to container...")
                     self.update_idletasks()
                     try:
                         # Remove existing folder in container (if it exists)
@@ -6729,6 +6781,8 @@ php /tmp/update_config.php"
                             f'docker cp "{local_path}/." {nextcloud_container}:{nextcloud_path}/{folder}/',
                             shell=True, check=True
                         )
+                        self.process_label.config(text=f"✓ Copied {folder} folder")
+                        print(f"Successfully copied {folder} to container")
                     except Exception as copy_err:
                         tb = traceback.format_exc()
                         self.error_label.config(text=f"Error copying {folder}: {copy_err}\n{tb}")
@@ -6737,7 +6791,7 @@ php /tmp/update_config.php"
                         return
 
             # Database restore - branch based on detected database type
-            self.set_restore_progress(70, self.restore_steps[3])
+            self.set_restore_progress(70, self.restore_steps[4])
             
             db_restore_success = False
             
@@ -6769,6 +6823,8 @@ php /tmp/update_config.php"
             self.update_idletasks()
             try:
                 self.update_config_php(nextcloud_container, db_container, dbtype)
+                self.process_label.config(text="✓ Configuration updated successfully")
+                print("Config.php updated with correct database settings")
             except Exception as config_err:
                 # Show warning but continue
                 warning_msg = f"Warning: Could not update config.php: {config_err}. You may need to configure manually."
@@ -6802,20 +6858,22 @@ php /tmp/update_config.php"
                     self.set_restore_progress(0, "Restore failed!")
                     return
                 
+                self.process_label.config(text="✓ All critical files validated")
                 print("File validation successful: config.php and data folder exist.")
             except Exception as val_err:
                 warning_msg = f"Warning: Could not validate files: {val_err}"
                 self.error_label.config(text=warning_msg, fg="orange")
                 print(f"Warning: file validation error: {val_err}")
             
-            self.set_restore_progress(90, self.restore_steps[4])
-            self.process_label.config(text="Setting permissions ...")
+            self.set_restore_progress(90, self.restore_steps[5])
+            self.process_label.config(text="Setting file permissions for web server...")
             self.update_idletasks()
             try:
                 subprocess.run(
                     f'docker exec {nextcloud_container} chown -R www-data:www-data {nextcloud_path}/config {nextcloud_path}/data',
                     shell=True, check=True
                 )
+                self.process_label.config(text="✓ File permissions set correctly")
                 print("Permissions set successfully.")
             except subprocess.CalledProcessError as perm_err:
                 # Display warning but allow restore to continue
@@ -6832,13 +6890,14 @@ php /tmp/update_config.php"
 
             # Restart Nextcloud container to apply all changes
             self.set_restore_progress(95, "Restarting Nextcloud container ...")
-            self.process_label.config(text="Restarting Nextcloud container ...")
+            self.process_label.config(text="Restarting Nextcloud to apply changes...")
             self.update_idletasks()
             try:
                 subprocess.run(
                     f'docker restart {nextcloud_container}',
                     shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
                 )
+                self.process_label.config(text="✓ Nextcloud restarted successfully")
                 print(f"Nextcloud container restarted successfully.")
                 time.sleep(3)  # Give container time to start
             except Exception as restart_err:
@@ -6846,8 +6905,8 @@ php /tmp/update_config.php"
                 self.error_label.config(text=warning_msg, fg="orange")
                 print(f"Warning: container restart failed: {restart_err}")
 
-            self.set_restore_progress(100, self.restore_steps[5])
-            self.process_label.config(text="Restore complete.")
+            self.set_restore_progress(100, self.restore_steps[6])
+            self.process_label.config(text="✅ Restore completed successfully!")
             
             # Clear or show final status in error label
             if hasattr(self, "error_label") and self.error_label:
