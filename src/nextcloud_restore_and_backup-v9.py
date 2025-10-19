@@ -3416,6 +3416,9 @@ class NextcloudRestoreWizard(tk.Tk):
         self.current_theme = 'dark'
         self.theme_colors = THEMES[self.current_theme]
         
+        # Initialize verbose logging mode (can be toggled in settings)
+        self.verbose_logging = False
+        
         # Configure root window
         self.configure(bg=self.theme_colors['bg'])
 
@@ -3712,8 +3715,31 @@ class NextcloudRestoreWizard(tk.Tk):
         logs_btn.bind("<Enter>", on_enter_logs)
         logs_btn.bind("<Leave>", on_leave_logs)
         
-        # Placeholder for future features (commented out)
-        # Add more options here in the future
+        # Settings option
+        settings_btn = tk.Button(
+            menu_frame,
+            text="⚙️ Settings",
+            font=("Arial", 11),
+            width=25,
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg'],
+            command=lambda: [menu_window.destroy(), self.show_settings()],
+            relief=tk.FLAT,
+            cursor="hand2",
+            anchor="w",
+            padx=10
+        )
+        settings_btn.pack(pady=5, padx=10, fill="x")
+        
+        # Add hover effects for settings button
+        def on_enter_settings(e):
+            settings_btn.config(bg=self.theme_colors['button_active_bg'])
+        
+        def on_leave_settings(e):
+            settings_btn.config(bg=self.theme_colors['button_bg'])
+        
+        settings_btn.bind("<Enter>", on_enter_settings)
+        settings_btn.bind("<Leave>", on_leave_settings)
         
         # Close button
         close_btn = tk.Button(
@@ -3729,6 +3755,148 @@ class NextcloudRestoreWizard(tk.Tk):
         
         # Make menu modal
         menu_window.grab_set()
+    
+    def show_settings(self):
+        """Show settings dialog with verbose logging and other options"""
+        logger.info("Opening settings dialog")
+        
+        # Create settings window
+        settings_window = tk.Toplevel(self)
+        settings_window.title("Settings")
+        settings_window.geometry("600x400")
+        settings_window.transient(self)
+        settings_window.resizable(False, False)
+        
+        # Apply theme
+        settings_window.configure(bg=self.theme_colors['bg'])
+        
+        # Header frame
+        header_frame = tk.Frame(settings_window, bg=self.theme_colors['header_bg'])
+        header_frame.pack(fill="x", padx=10, pady=10)
+        
+        # Title
+        tk.Label(
+            header_frame,
+            text="⚙️ Settings",
+            font=("Arial", 16, "bold"),
+            bg=self.theme_colors['header_bg'],
+            fg=self.theme_colors['header_fg']
+        ).pack(pady=10)
+        
+        # Content frame
+        content_frame = tk.Frame(settings_window, bg=self.theme_colors['bg'])
+        content_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        
+        # Logging settings section
+        logging_section = tk.LabelFrame(
+            content_frame,
+            text="Logging Settings",
+            font=("Arial", 12, "bold"),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg'],
+            padx=15,
+            pady=15
+        )
+        logging_section.pack(fill="x", pady=(0, 15))
+        
+        # Verbose logging checkbox
+        verbose_var = tk.BooleanVar(value=self.verbose_logging)
+        
+        verbose_check = tk.Checkbutton(
+            logging_section,
+            text="Enable Verbose Logging",
+            variable=verbose_var,
+            font=("Arial", 11),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg'],
+            selectcolor=self.theme_colors['entry_bg'],
+            activebackground=self.theme_colors['bg'],
+            activeforeground=self.theme_colors['fg']
+        )
+        verbose_check.pack(anchor="w", pady=(0, 5))
+        
+        # Description label
+        verbose_desc = tk.Label(
+            logging_section,
+            text="When enabled, the application logs additional detailed information\n"
+                 "about all operations. This is useful for diagnosing issues but will\n"
+                 "generate larger log files. Recommended for troubleshooting.",
+            font=("Arial", 9),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['hint_fg'],
+            justify="left",
+            wraplength=500
+        )
+        verbose_desc.pack(anchor="w", padx=20)
+        
+        # Log file location info
+        log_location_label = tk.Label(
+            logging_section,
+            text=f"Log file location:\n{LOG_FILE_PATH}",
+            font=("Arial", 9),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['hint_fg'],
+            justify="left"
+        )
+        log_location_label.pack(anchor="w", pady=(10, 0))
+        
+        # Button frame
+        button_frame = tk.Frame(settings_window, bg=self.theme_colors['bg'])
+        button_frame.pack(fill="x", padx=20, pady=(10, 20))
+        
+        def save_settings():
+            # Update verbose logging setting
+            old_value = self.verbose_logging
+            self.verbose_logging = verbose_var.get()
+            
+            # Update logging level
+            if self.verbose_logging:
+                logger.setLevel(logging.DEBUG)
+                for handler in logger.handlers:
+                    handler.setLevel(logging.DEBUG)
+                logger.info("Verbose logging enabled")
+            else:
+                logger.setLevel(logging.INFO)
+                for handler in logger.handlers:
+                    handler.setLevel(logging.INFO)
+                logger.info("Verbose logging disabled")
+            
+            if old_value != self.verbose_logging:
+                messagebox.showinfo(
+                    "Settings Saved",
+                    f"Verbose logging has been {'enabled' if self.verbose_logging else 'disabled'}.\n\n"
+                    "The new setting will take effect immediately.",
+                    parent=settings_window
+                )
+            
+            settings_window.destroy()
+        
+        # Save button
+        save_btn = tk.Button(
+            button_frame,
+            text="Save Settings",
+            font=("Arial", 12),
+            bg="#45bf55",
+            fg="white",
+            width=15,
+            command=save_settings
+        )
+        save_btn.pack(side="right", padx=5)
+        
+        # Cancel button
+        cancel_btn = tk.Button(
+            button_frame,
+            text="Cancel",
+            font=("Arial", 12),
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg'],
+            width=15,
+            command=settings_window.destroy
+        )
+        cancel_btn.pack(side="right", padx=5)
+        
+        # Make settings window modal
+        settings_window.grab_set()
     
     def show_log_viewer(self):
         """Show log viewer window with current log contents"""
@@ -3795,15 +3963,77 @@ class NextcloudRestoreWizard(tk.Tk):
                     with open(LOG_FILE_PATH, 'r', encoding='utf-8') as f:
                         log_contents = f.read()
                     log_text.delete(1.0, tk.END)
-                    log_text.insert(1.0, log_contents)
-                    # Scroll to bottom
-                    log_text.see(tk.END)
+                    if log_contents.strip():
+                        log_text.insert(1.0, log_contents)
+                        # Scroll to bottom to show most recent logs
+                        log_text.see(tk.END)
+                    else:
+                        # Log file exists but is empty
+                        no_logs_message = """No log entries found.
+
+Troubleshooting Tips:
+
+1. If you just started the application, there may not be any logs yet.
+   
+2. If you experienced an error, try reproducing the issue - the logs will 
+   capture the details automatically.
+   
+3. The application logs all operations to help diagnose issues:
+   - Backup operations
+   - Restore operations
+   - Docker interactions
+   - Configuration changes
+   
+4. If you need more detailed logs, enable Verbose Logging in Settings.
+
+5. Log files are rotated automatically (max 10MB per file, 5 backup files).
+
+Location: """ + str(LOG_FILE_PATH)
+                        log_text.insert(1.0, no_logs_message)
                 else:
+                    # Log file doesn't exist
+                    no_file_message = """Log file not found.
+
+The log file will be created automatically when you perform operations.
+
+Expected location: """ + str(LOG_FILE_PATH) + """
+
+Troubleshooting:
+
+1. Check if the Documents folder exists and is writable
+2. Try performing a backup or restore operation to generate logs
+3. If problems persist, check file permissions on the Documents folder
+4. On Windows, ensure the application has write access to your Documents folder
+5. On Linux/Mac, check that ~/Documents is accessible
+
+Need Help?
+
+• Check the GitHub repository for issues and documentation
+• Enable Verbose Logging in Settings for more detailed information
+• Report issues with log file creation on GitHub
+"""
                     log_text.delete(1.0, tk.END)
-                    log_text.insert(1.0, "Log file not found.")
+                    log_text.insert(1.0, no_file_message)
             except Exception as e:
+                error_message = f"""Error reading log file: {str(e)}
+
+Troubleshooting:
+
+1. Check if the log file location is accessible:
+   {LOG_FILE_PATH}
+
+2. Verify file permissions (the application needs read access)
+
+3. Try closing other applications that might be using the log file
+
+4. On Windows, check if antivirus is blocking access
+
+5. Try running the application with appropriate permissions
+
+If the problem persists, please report this issue on GitHub.
+"""
                 log_text.delete(1.0, tk.END)
-                log_text.insert(1.0, f"Error reading log file: {str(e)}")
+                log_text.insert(1.0, error_message)
         
         # Button frame
         button_frame = tk.Frame(log_window, bg=self.theme_colors['bg'])
@@ -6611,16 +6841,34 @@ php /tmp/update_config.php"
 
     def _restore_auto_thread(self, backup_path, password):
         try:
+            # Log restore operation start
+            logger.info("=" * 60)
+            logger.info("RESTORE OPERATION STARTED")
+            logger.info(f"Backup Path: {backup_path}")
+            logger.info(f"Has Password: {'Yes' if password else 'No'}")
+            if self.verbose_logging:
+                logger.debug(f"Container Name: {self.restore_container_name}")
+                logger.debug(f"Container Port: {self.restore_container_port}")
+                logger.debug(f"Database Type: {self.restore_db_type}")
+                logger.debug(f"Database Name: {self.restore_db_name}")
+                logger.debug(f"Database User: {self.restore_db_user}")
+            logger.info("=" * 60)
+            
             self.set_restore_progress(5, self.restore_steps[0])
+            logger.info("Step 1/7: Extracting backup...")
             extract_dir = self.auto_extract_backup(backup_path, password)
             if not extract_dir:
+                logger.error("Backup extraction failed!")
                 self.set_restore_progress(0, "Restore failed!")
                 return
+            if self.verbose_logging:
+                logger.debug(f"Extraction directory: {extract_dir}")
 
             # Auto-detect database type from config.php
             self.set_restore_progress(18, "Detecting database type ...")
             self.process_label.config(text="Reading config.php to detect database type ...")
             self.update_idletasks()
+            logger.info("Step 2/7: Detecting database configuration...")
             
             dbtype, db_config = self.detect_database_type(extract_dir)
             
@@ -6634,6 +6882,9 @@ php /tmp/update_config.php"
                 self.detected_dbtype = dbtype
                 self.detected_db_config = db_config
                 self.db_auto_detected = True
+                logger.info(f"Database type detected: {dbtype}")
+                if self.verbose_logging and db_config:
+                    logger.debug(f"Database config: {db_config}")
                 self.show_db_detection_message(dbtype, db_config)
                 time.sleep(2)  # Give user time to see the detection message
             else:
@@ -6646,12 +6897,14 @@ php /tmp/update_config.php"
                 )
                 self.error_label.config(text=warning_msg, fg="orange")
                 self.process_label.config(text="Proceeding with PostgreSQL (default)...")
+                logger.warning("config.php not found - using PostgreSQL as default")
                 print(warning_msg)
                 dbtype = 'pgsql'
                 self.detected_dbtype = dbtype
                 time.sleep(3)  # Give user more time to see the warning
 
             self.set_restore_progress(20, self.restore_steps[1])
+            logger.info("Step 3/7: Generating Docker Compose configuration...")
             
             # Generate Docker Compose YAML automatically
             self.set_restore_progress(21, "Generating Docker Compose configuration...")
@@ -6744,6 +6997,7 @@ php /tmp/update_config.php"
             
             # Update to step 2 with detailed messaging
             self.set_restore_progress(40, self.restore_steps[2])
+            logger.info("Step 4/7: Setting up Docker containers...")
             
             # For SQLite, we don't need a separate database container
             db_container = None
@@ -6751,18 +7005,23 @@ php /tmp/update_config.php"
                 # Start database container first (needed for Nextcloud container linking)
                 self.process_label.config(text=f"Starting {dbtype.upper()} database container...")
                 self.update_idletasks()
+                logger.info(f"Creating {dbtype.upper()} database container...")
                 db_container = self.ensure_db_container()
                 if not db_container:
+                    logger.error("Failed to create database container!")
                     self.set_restore_progress(0, "Restore failed!")
                     return
+                logger.info(f"Database container ready: {db_container}")
                 self.process_label.config(text=f"✓ Database container ready: {db_container}")
             else:
+                logger.info("SQLite detected - no separate database container needed")
                 self.process_label.config(text="✓ SQLite detected - no separate database container needed")
                 self.update_idletasks()
             
             # Start Nextcloud container (linked to database if not SQLite)
             self.process_label.config(text=f"Starting Nextcloud container on port {self.restore_container_port}...")
             self.update_idletasks()
+            logger.info(f"Creating Nextcloud container on port {self.restore_container_port}...")
             nextcloud_container = self.ensure_nextcloud_container()
             if not nextcloud_container:
                 self.set_restore_progress(0, "Restore failed!")
@@ -6804,23 +7063,33 @@ php /tmp/update_config.php"
 
             # Database restore - branch based on detected database type
             self.set_restore_progress(70, self.restore_steps[4])
+            logger.info("Step 5/7: Restoring database...")
             
             db_restore_success = False
             
             if dbtype == 'sqlite':
                 # SQLite: restore by copying .db file (already done with data folder)
+                logger.info("Restoring SQLite database...")
                 db_restore_success = self.restore_sqlite_database(extract_dir, nextcloud_container, nextcloud_path)
             elif dbtype == 'mysql':
                 # MySQL/MariaDB: restore from SQL dump
+                logger.info("Restoring MySQL/MariaDB database...")
                 db_restore_success = self.restore_mysql_database(extract_dir, db_container)
             elif dbtype == 'pgsql':
                 # PostgreSQL: restore from SQL dump
+                logger.info("Restoring PostgreSQL database...")
                 db_restore_success = self.restore_postgresql_database(extract_dir, db_container)
             else:
                 # Unknown database type - show warning
                 warning_msg = f"Warning: Unknown database type '{dbtype}'. Skipping database restore."
                 self.error_label.config(text=warning_msg, fg="orange")
+                logger.warning(f"Unknown database type: {dbtype}")
                 print(warning_msg)
+            
+            if db_restore_success:
+                logger.info("Database restore completed successfully")
+            else:
+                logger.warning("Database restore had issues")
             
             if not db_restore_success and dbtype != 'sqlite':
                 # For non-SQLite databases, if restore failed, we might want to continue with warning
@@ -6934,6 +7203,16 @@ php /tmp/update_config.php"
             shutil.rmtree(extract_dir, ignore_errors=True)
         except Exception as e:
             tb = traceback.format_exc()
+            # Log the error with full details
+            logger.error("=" * 60)
+            logger.error("RESTORE FAILED - Error Details:")
+            logger.error(f"Error Type: {type(e).__name__}")
+            logger.error(f"Error Message: {str(e)}")
+            logger.error(f"Backup Path: {backup_path}")
+            logger.error("Full Traceback:")
+            logger.error(tb)
+            logger.error("=" * 60)
+            
             self.set_restore_progress(0, "Restore failed!")
             # Show actionable error message with recovery options
             self.show_restore_error_dialog(e, tb)
@@ -7076,21 +7355,36 @@ php /tmp/update_config.php"
             )
             suggestion_label.pack(pady=2, padx=20, anchor="w")
         
+        # Log file location info
+        log_info_frame = tk.Frame(error_frame, bg=self.theme_colors['bg'])
+        log_info_frame.pack(pady=15, fill="x", padx=20)
+        
+        log_info_label = tk.Label(
+            log_info_frame,
+            text=f"📁 Error details saved to:\n{LOG_FILE_PATH}",
+            font=("Arial", 9),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['hint_fg'],
+            justify="center"
+        )
+        log_info_label.pack()
+        
         # Button frame
         button_frame = tk.Frame(error_frame, bg=self.theme_colors['bg'])
-        button_frame.pack(pady=30)
+        button_frame.pack(pady=20)
         
-        # Show logs button
+        # Show logs button - opens full log viewer
         logs_btn = tk.Button(
             button_frame,
-            text="📋 View Logs",
-            font=("Arial", 12),
-            bg=self.theme_colors['button_bg'],
-            fg=self.theme_colors['button_fg'],
+            text="📋 Show Logs",
+            font=("Arial", 12, "bold"),
+            bg="#3daee9",
+            fg="white",
             width=20,
-            command=lambda: self.show_error_details(traceback_str)
+            command=self.show_log_viewer
         )
         logs_btn.pack(side="left", padx=10)
+        ToolTip(logs_btn, "View detailed error logs and troubleshooting information")
         
         # Try again button
         retry_btn = tk.Button(
