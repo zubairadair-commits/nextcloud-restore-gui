@@ -32,3 +32,27 @@ config/config.json
 build/
 dist/
 *.spec
+
+# Testing artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swn
+.DS_Store?
+ehthumbs.db
+Desktop.ini
+
+# Database files (local testing)
+*.db-journal
+*.sqlite-journal
+
+# Backup files
+*.backup
+*~
