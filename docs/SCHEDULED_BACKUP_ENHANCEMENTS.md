@@ -1,189 +1,305 @@
 # Scheduled Backup Enhancements
 
 ## Overview
-This document describes the enhancements made to the scheduled backup functionality in the Nextcloud Restore & Backup Utility.
 
-## Changes Implemented
+This document describes the new features added to the scheduled backup functionality in the Nextcloud Restore & Backup Utility.
 
-### 1. Run with Highest Privileges
-**Change:** Added `/RL HIGHEST` flag to Windows Task Scheduler task creation.
+## Features
 
-**Location:** `create_scheduled_task()` function in `nextcloud_restore_and_backup-v9.py`
+### 1. Component Selection for Scheduled Backups
 
-**Impact:** 
-- Scheduled backup tasks now run with the highest available privileges
-- Ensures backup can access all necessary files and Docker containers
-- Prevents permission-related backup failures
+Users can now choose which components to include in their scheduled backups, mirroring the functionality available in manual backups.
 
-**Technical Details:**
-```python
-schtasks_cmd = [
-    "schtasks", "/Create",
-    "/TN", task_name,
-    "/TR", command,
-    "/ST", schedule_time,
-    "/RL", "HIGHEST",  # Run with highest privileges
-    "/Z"  # Run task as soon as possible after scheduled start is missed
-]
+#### UI Components
+
+**Location**: Schedule Backup Configuration page (`show_schedule_backup()`)
+
+**Section Header**: 📁 Components to Backup
+
+**Description**: "Select which folders to include in scheduled backups"
+
+**Checkboxes**:
+- ✅ **config** - Configuration files (Required) - *Always checked, disabled*
+- ✅ **data** - User data and files (Required) - *Always checked, disabled*
+- ☐ **apps** - Standard Nextcloud apps - *Optional, user can toggle*
+- ☐ **custom_apps** - Custom/third-party apps - *Optional, user can toggle*
+
+**Default Behavior**: All components are selected by default. The required components (config and data) cannot be deselected.
+
+#### Configuration Storage
+
+Component selections are stored in the schedule configuration file (`~/.nextcloud_backup/schedule_config.json`):
+
+```json
+{
+  "task_name": "NextcloudBackup",
+  "backup_dir": "/path/to/backups",
+  "frequency": "daily",
+  "time": "02:00",
+  "encrypt": false,
+  "password": "",
+  "components": {
+    "config": true,
+    "data": true,
+    "apps": true,
+    "custom_apps": false
+  },
+  "rotation_keep": 3,
+  "enabled": true,
+  "created_at": "2025-10-19T12:00:00"
+}
 ```
 
-### 2. Run Missed Tasks ASAP
-**Change:** Added `/Z` flag to Windows Task Scheduler task creation.
+#### Command-Line Integration
 
-**Location:** `create_scheduled_task()` function in `nextcloud_restore_and_backup-v9.py`
+When the scheduled task runs, component selections are passed via the `--components` argument:
 
-**Impact:**
-- If the computer is off or asleep at the scheduled backup time, the task will run as soon as possible after the system is available
-- Ensures backups are not skipped due to system downtime
-- Provides better backup coverage and reliability
-
-**Behavior:**
-- If scheduled time is 2:00 AM and computer is off, task runs when computer turns on
-- Task runs immediately upon system availability, not waiting for next scheduled time
-- Logged in Task Scheduler history
-
-### 3. Backup History Tracking for Scheduled Backups
-**Change:** Added backup history database tracking to scheduled backup execution.
-
-**Location:** `run_backup_process_scheduled()` function in `nextcloud_restore_and_backup-v9.py`
-
-**Impact:**
-- Scheduled backups are now recorded in the backup history database
-- "Backup History" button on main page shows recent scheduled backups immediately
-- Backups include metadata: timestamp, size, database type, folders, encryption status
-- Marked with "Scheduled backup" note to distinguish from manual backups
-
-**Technical Details:**
-```python
-# Add backup to history
-folders_list = ['config', 'data'] + [f for f in copied_folders if f not in ['config', 'data']]
-backup_id = self.backup_history.add_backup(
-    backup_path=final_file,
-    database_type=dbtype,
-    folders=folders_list,
-    encrypted=bool(encrypt and encryption_password),
-    notes="Scheduled backup"
-)
-```
-
-## Verification
-
-### How to Verify Changes
-
-#### 1. Verify Task Scheduler Settings (Windows Only)
-After creating a scheduled backup:
-1. Open Windows Task Scheduler
-2. Navigate to Task Scheduler Library
-3. Find your scheduled task (e.g., "NextcloudBackup")
-4. Right-click → Properties
-5. Go to "General" tab
-6. Verify "Run with highest privileges" is checked
-7. Go to "Settings" tab
-8. Verify "Run task as soon as possible after a scheduled start is missed" is checked
-
-#### 2. Verify Backup History Tracking
-After a scheduled backup runs:
-1. Open the Nextcloud Restore & Backup Utility
-2. Click "📜 Backup History" button on main page
-3. Verify the most recent backup appears in the list
-4. Check that it shows:
-   - Correct timestamp
-   - File size
-   - Database type
-   - Encryption status (if applicable)
-   - Note: "Scheduled backup"
-
-#### 3. Run Automated Tests
 ```bash
-# Test scheduled task flags
-python3 test_scheduled_backup_enhancements.py
-
-# Test integration
-python3 test_integration_scheduled_enhancements.py
-
-# Test existing functionality
-python3 test_scheduled_backup.py
+python nextcloud_restore_and_backup-v9.py --scheduled --backup-dir "/path/to/backups" --components "config,data,apps"
 ```
 
-## Compatibility
+### 2. Automatic Backup Rotation
 
-- **Windows:** Full support for all features
-- **Linux/Mac:** Task scheduling features not available (as before)
-- **Docker:** No changes to Docker integration
+Users can now configure automatic backup rotation to manage disk space by keeping only a specified number of recent backups.
+
+#### UI Components
+
+**Location**: Schedule Backup Configuration page (`show_schedule_backup()`)
+
+**Section Header**: ♻️ Backup Rotation
+
+**Description**: "Automatically delete old backups when limit is reached"
+
+**Radio Buttons** (labeled "Keep last:"):
+- ⚪ **Unlimited (no deletion)** - All backups are preserved (default)
+- ⚪ **1 backup (always replace)** - Each new backup deletes the previous one
+- ⚪ **3 backups** - Keep the 3 most recent backups
+- ⚪ **5 backups** - Keep the 5 most recent backups
+- ⚪ **10 backups** - Keep the 10 most recent backups
+
+**Tooltips**:
+- "Unlimited": "All backups are kept (manual cleanup required)"
+- "1 backup": "Each new backup will delete the previous one, saving disk space"
+- "3/5/10 backups": "Keep the N most recent backups, delete older ones automatically"
+
+#### Configuration Storage
+
+The rotation setting is stored as `rotation_keep` in the schedule configuration:
+
+```json
+{
+  "rotation_keep": 3  // 0 = unlimited, 1-10 = keep N backups
+}
+```
+
+#### Command-Line Integration
+
+The rotation setting is passed via the `--rotation-keep` argument:
+
+```bash
+python nextcloud_restore_and_backup-v9.py --scheduled --backup-dir "/path/to/backups" --rotation-keep 3
+```
+
+#### Rotation Logic
+
+When a scheduled backup completes successfully and rotation is enabled (`rotation_keep > 0`):
+
+1. **Scan Backup Directory**: List all files matching the pattern `nextcloud-backup-*.tar.gz` or `nextcloud-backup-*.tar.gz.gpg`
+2. **Sort by Time**: Sort files by modification time (newest first)
+3. **Identify Old Backups**: Files beyond the `rotation_keep` limit are marked for deletion
+4. **Delete Files**: Remove old backup files from disk
+5. **Update History**: Remove deleted backups from the backup history database
+6. **Logging**: All rotation operations are logged for troubleshooting
+
+**Example**: With `rotation_keep: 3`:
+- Before: 5 backups (oldest to newest: B1, B2, B3, B4, B5)
+- After new backup (B6): 4 backups kept (B4, B5, B6), 3 deleted (B1, B2, B3)
+- After next backup (B7): Still 3 backups (B5, B6, B7), B4 deleted
+
+## Implementation Details
+
+### Modified Functions
+
+1. **`show_schedule_backup()`**
+   - Added component selection checkboxes
+   - Added backup rotation radio buttons
+   - Updated `_create_schedule()` call to pass new parameters
+
+2. **`_create_schedule()`**
+   - Updated signature to accept `component_vars` and `rotation_keep`
+   - Extract component selections from checkboxes
+   - Save components and rotation settings to configuration
+   - Pass parameters to `create_scheduled_task()`
+
+3. **`create_scheduled_task()`**
+   - Updated signature to accept `components` and `rotation_keep`
+   - Build command-line arguments with `--components` and `--rotation-keep`
+   - Create Windows scheduled task with enhanced command
+
+4. **`run_scheduled_backup()`**
+   - Updated signature to accept `components` and `rotation_keep`
+   - Parse component list from command-line argument
+   - Pass components to backup process
+   - Call `_perform_backup_rotation()` after successful backup
+
+5. **`run_backup_process_scheduled()`**
+   - Updated signature to accept `components` parameter
+   - Filter `folders_to_copy` based on component selection
+   - Maintain backward compatibility (None = backup all components)
+
+6. **`_perform_backup_rotation()` (NEW)**
+   - Scan backup directory for backup files
+   - Sort by modification time
+   - Delete old files exceeding the limit
+   - Update backup history database
+   - Comprehensive logging
+
+### Command-Line Arguments
+
+Added two new arguments to the argument parser:
+
+```python
+parser.add_argument('--components', type=str, default='', 
+                    help='Comma-separated list of components to backup')
+parser.add_argument('--rotation-keep', type=int, default=0, 
+                    help='Number of backups to keep (0 = unlimited)')
+```
+
+### Backward Compatibility
+
+- Existing scheduled backups without component/rotation settings will continue to work
+- Default behavior: backup all components, no rotation (unlimited backups)
+- Configuration files are backward compatible
+
+## Usage Examples
+
+### Scheduling a Backup with Component Selection
+
+1. Navigate to "Schedule Backup Configuration"
+2. Configure backup directory, frequency, and time
+3. In "Components to Backup" section:
+   - Config and Data are always selected (required)
+   - Check "apps" if you want to include standard Nextcloud apps
+   - Check "custom_apps" if you want to include custom/third-party apps
+4. Click "Create/Update Schedule"
+
+### Configuring Backup Rotation
+
+1. In the "Backup Rotation" section, select:
+   - "Unlimited" to keep all backups (no automatic deletion)
+   - "1 backup" to always replace the previous backup (saves space)
+   - "3/5/10 backups" to keep that many recent backups
+2. The rotation will apply automatically after each scheduled backup
+
+### Manual Testing
+
+To test the scheduled backup manually:
+
+```bash
+# With component selection and rotation
+python nextcloud_restore_and_backup-v9.py --scheduled \
+  --backup-dir "/path/to/backups" \
+  --components "config,data,apps" \
+  --rotation-keep 3 \
+  --encrypt --password "mypassword"
+
+# Minimal (backup all, no rotation)
+python nextcloud_restore_and_backup-v9.py --scheduled \
+  --backup-dir "/path/to/backups"
+```
 
 ## Testing
 
-### Test Files
-1. `test_scheduled_backup_enhancements.py` - Unit tests for new features
-2. `test_integration_scheduled_enhancements.py` - Integration tests
-3. `test_scheduled_backup.py` - Existing tests (still passing)
+### Automated Tests
 
-### Test Coverage
-- ✅ Task creation includes `/RL HIGHEST` flag
-- ✅ Task creation includes `/Z` flag
-- ✅ Flags are properly positioned in command
-- ✅ Scheduled backup adds to backup history
-- ✅ History tracking occurs after successful backup
-- ✅ All required parameters passed to history database
-- ✅ Backup history display shows all backups
-- ✅ Existing functionality unaffected
-- ✅ No breaking changes introduced
+Three comprehensive test suites have been created:
+
+1. **`test_scheduled_backup_enhancements.py`** (existing)
+   - Validates scheduled task creation
+   - Validates backup history tracking
+
+2. **`test_scheduled_backup_component_rotation.py`** (new)
+   - Tests component selection UI presence
+   - Tests rotation UI presence
+   - Tests parameter passing through the call chain
+   - Tests configuration storage
+   - 8 test cases, all passing
+
+3. **`test_backup_rotation_logic.py`** (new)
+   - Tests rotation with keep_count=3
+   - Tests rotation with keep_count=1 (always replace)
+   - Tests rotation with unlimited (no deletion)
+   - Tests rotation with mixed encrypted/unencrypted files
+   - 4 test scenarios, all passing
+
+### Manual Testing Checklist
+
+- [ ] Open Schedule Backup Configuration page
+- [ ] Verify component selection checkboxes are present and correctly labeled
+- [ ] Verify config and data checkboxes are checked and disabled
+- [ ] Verify apps and custom_apps checkboxes are toggleable
+- [ ] Verify backup rotation section is present with all options
+- [ ] Create a schedule with custom component selection
+- [ ] Verify configuration is saved correctly
+- [ ] Run a test backup with component selection
+- [ ] Verify only selected components are backed up
+- [ ] Configure rotation (e.g., keep 3 backups)
+- [ ] Create multiple backups to exceed the limit
+- [ ] Verify old backups are automatically deleted
+- [ ] Verify backup history database is updated correctly
 
 ## Benefits
 
-1. **Better Reliability:** Tasks run with appropriate permissions and won't be skipped
-2. **Better Visibility:** All backups (manual and scheduled) appear in backup history
-3. **Better Tracking:** Can verify scheduled backups are running as expected
-4. **Better Recovery:** Can see all available backup points in one place
-5. **Better User Experience:** No need to check file system to verify scheduled backups ran
+### Component Selection
+- **Flexibility**: Users can choose what to backup based on their needs
+- **Space Savings**: Excluding large optional components saves disk space
+- **Speed**: Smaller backups complete faster
+- **Consistency**: Mirrors manual backup selection experience
 
-## Technical Notes
-
-### Windows Task Scheduler Flags Used
-
-| Flag | Purpose | Effect |
-|------|---------|--------|
-| `/RL HIGHEST` | Run level | Task runs with highest available privileges |
-| `/Z` | Run after missed | Task runs ASAP if scheduled time was missed |
-| `/F` | Force | Overwrites existing task with same name |
-
-### Database Schema
-No changes to database schema were required. The existing `BackupHistoryManager` class supports all necessary fields:
-- `backup_path` - Full path to backup file
-- `timestamp` - When backup was created
-- `size_bytes` - Size of backup file
-- `encrypted` - Whether backup is encrypted
-- `database_type` - Type of database (pgsql, mysql, sqlite)
-- `folders_backed_up` - List of folders included
-- `notes` - Custom notes (used to mark scheduled backups)
+### Backup Rotation
+- **Automatic Management**: No manual cleanup required
+- **Disk Space Control**: Prevents unlimited backup accumulation
+- **Configurable**: Multiple options to suit different needs
+- **Safe**: Always keeps the newest backups, deletes oldest first
 
 ## Future Enhancements
 
-Possible future improvements:
-- Email notifications when scheduled backups complete
-- Configurable retention policy for scheduled backups
-- Scheduled backup statistics and reporting
-- Cloud backup integration for scheduled backups
+Potential improvements for future versions:
+
+1. **Custom Rotation Counts**: Allow users to specify any number of backups to keep
+2. **Time-Based Rotation**: Delete backups older than X days/weeks/months
+3. **Size-Based Rotation**: Delete old backups when total size exceeds a threshold
+4. **Notification**: Alert users when rotation deletes backups
+5. **Rotation History**: Track what was deleted and when
+6. **Component Presets**: Save and load component selection presets
+7. **Smart Rotation**: Keep daily backups for a week, weekly for a month, monthly for a year
 
 ## Troubleshooting
 
-### Backup History Not Showing Scheduled Backups
-1. Verify the scheduled task actually ran (check Task Scheduler history)
-2. Check the log file at `Documents/NextcloudLogs/nextcloud_restore_gui.log`
-3. Run a test backup using the app's "Test Backup" feature
-4. Verify Docker is running when scheduled task executes
+### Component Selection Not Working
 
-### Task Not Running with Highest Privileges
-1. User account must have administrator rights
-2. UAC may prompt for permission on first run
-3. Verify in Task Scheduler Properties → General tab
+1. Check the schedule configuration file: `~/.nextcloud_backup/schedule_config.json`
+2. Verify the `components` field contains the expected selections
+3. Check the Windows Task Scheduler for the actual command being run
+4. Review the backup logs in `Documents/NextcloudLogs/nextcloud_restore_gui.log`
 
-### Task Not Running After Missed Schedule
-1. Verify `/Z` flag in task properties
-2. Check Task Scheduler history for missed task entries
-3. Ensure system allows scheduled tasks to wake computer (if needed)
+### Rotation Not Deleting Old Backups
 
-## References
+1. Verify `rotation_keep` is greater than 0 in the configuration
+2. Check if there are enough backups to exceed the limit
+3. Review rotation logs in `Documents/NextcloudLogs/nextcloud_restore_gui.log`
+4. Ensure backup files match the expected naming pattern
+5. Check file permissions in the backup directory
 
-- Windows Task Scheduler documentation: https://docs.microsoft.com/en-us/windows/win32/taskschd/task-scheduler-start-page
-- Schtasks command reference: https://docs.microsoft.com/en-us/windows-server/administration/windows-commands/schtasks
+### Logs Location
+
+All operations are logged to: `Documents/NextcloudLogs/nextcloud_restore_gui.log`
+
+Search for:
+- `SCHEDULED BACKUP:` - Scheduled backup events
+- `BACKUP ROTATION:` - Rotation operations
+- Component selections are logged during backup
+
+## Conclusion
+
+These enhancements significantly improve the scheduled backup feature by giving users more control over what gets backed up and how backup storage is managed. The implementation is thoroughly tested, backward compatible, and follows the existing code patterns in the application.
