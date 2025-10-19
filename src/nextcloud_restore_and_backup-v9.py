@@ -4584,7 +4584,39 @@ class NextcloudRestoreWizard(tk.Tk):
 
     # --- Restore logic with in-GUI password, progress bar, live file output, and error label ---
     def start_restore(self):
-        # Check if Docker is running before proceeding
+        # Enhanced Docker detection with installation prompt
+        if not is_tool_installed('docker'):
+            # Docker is not installed at all
+            for widget in self.body_frame.winfo_children():
+                widget.destroy()
+            self.status_label.config(text="Docker Required for Restore")
+            
+            # Show installation prompt
+            def proceed_after_install():
+                # Check if Docker is now installed
+                if not is_tool_installed('docker'):
+                    messagebox.showerror(
+                        "Docker Not Found",
+                        "Docker is still not installed. Please install Docker and try again.",
+                        parent=self
+                    )
+                    self.show_landing()
+                    return
+                # Check if Docker is running
+                if not self.check_docker_running():
+                    self.show_landing()
+                    return
+                # Proceed to wizard
+                self.current_page = 'wizard'
+                for widget in self.body_frame.winfo_children():
+                    widget.destroy()
+                self.status_label.config(text="Restore Wizard: Select backup archive to restore.")
+                self.create_wizard()
+            
+            prompt_install_docker_link(self, self.status_label, proceed_after_install)
+            return
+        
+        # Docker is installed, check if it's running
         if not self.check_docker_running():
             self.show_landing()
             return
@@ -4709,6 +4741,15 @@ class NextcloudRestoreWizard(tk.Tk):
         
     def create_wizard_page1(self, parent):
         """Page 1: Backup Archive Selection and Decryption Password"""
+        # Add info box about Quick Restore mode
+        info_frame = tk.Frame(parent, bg=self.theme_colors['info_bg'], relief="solid", borderwidth=1)
+        info_frame.pack(pady=(10, 15), fill="x", padx=40)
+        tk.Label(info_frame, text="ℹ️ Quick Restore Mode", font=("Arial", 11, "bold"), 
+                 bg=self.theme_colors['info_bg'], fg=self.theme_colors['info_fg']).pack(pady=(8, 3), fill="x", padx=10)
+        tk.Label(info_frame, text="This wizard will guide you through the restore process step-by-step.\nAll Docker commands and configuration will be handled automatically.", 
+                 font=("Arial", 9), bg=self.theme_colors['info_bg'], fg=self.theme_colors['info_fg'],
+                 wraplength=500, justify="center").pack(pady=(0, 8), fill="x", padx=10)
+        
         # Section 1: Backup file selection - full width with padding
         tk.Label(parent, text="Step 1: Select Backup Archive", font=("Arial", 14, "bold"),
                  bg=self.theme_colors['bg'], fg=self.theme_colors['fg']).pack(pady=(20, 5), fill="x", padx=40)
@@ -4725,6 +4766,12 @@ class NextcloudRestoreWizard(tk.Tk):
         if 'backup_path' in self.wizard_data:
             self.backup_entry.delete(0, tk.END)
             self.backup_entry.insert(0, self.wizard_data['backup_path'])
+        
+        # Suggest default backup location
+        default_backup_hint = tk.Label(parent, text="💡 Tip: Default backup location is usually in Documents/NextcloudBackups", 
+                 font=("Arial", 9), bg=self.theme_colors['bg'], fg=self.theme_colors['hint_fg'])
+        default_backup_hint.pack(pady=(0, 5), fill="x", padx=40)
+        ToolTip(default_backup_hint, "Most users save backups in their Documents folder")
         
         tk.Button(parent, text="Browse...", font=("Arial", 11), width=20, 
                  bg=self.theme_colors['button_bg'], fg=self.theme_colors['button_fg'],
@@ -4760,7 +4807,7 @@ class NextcloudRestoreWizard(tk.Tk):
         tk.Label(info_frame, text="The restore process will automatically detect your database type (SQLite, PostgreSQL, MySQL)", 
                  font=("Arial", 9), bg=self.theme_colors['info_bg'], fg=self.theme_colors['info_fg'],
                  wraplength=500, justify="center").pack(pady=2, fill="x", padx=10)
-        tk.Label(info_frame, text="from the config.php file in your backup and restore accordingly.", 
+        tk.Label(info_frame, text="from the config.php file in your backup. You only need to provide credentials for MySQL/PostgreSQL.", 
                  font=("Arial", 9), bg=self.theme_colors['info_bg'], fg=self.theme_colors['info_fg'],
                  wraplength=500, justify="center").pack(pady=(0, 5), fill="x", padx=10)
         
@@ -4789,7 +4836,7 @@ class NextcloudRestoreWizard(tk.Tk):
         instruction_label1 = tk.Label(parent, text="These credentials are stored in your backup and must match exactly", font=("Arial", 9), fg="gray")
         instruction_label1.pack(fill="x", padx=40)
         
-        instruction_label2 = tk.Label(parent, text="The database will be automatically imported using these credentials", font=("Arial", 9), fg="gray")
+        instruction_label2 = tk.Label(parent, text="💡 Tip: Default values are pre-filled, but verify they match your original setup", font=("Arial", 9), fg="gray")
         instruction_label2.pack(pady=(0, 10), fill="x", padx=40)
         
         db_frame = tk.Frame(parent)
@@ -4851,7 +4898,7 @@ class NextcloudRestoreWizard(tk.Tk):
         
         # Section 4: Nextcloud admin credentials - full width with padding
         tk.Label(parent, text="Step 4: Nextcloud Admin Credentials", font=("Arial", 14, "bold")).pack(pady=(30, 5), fill="x", padx=40)
-        tk.Label(parent, text="Admin credentials for Nextcloud instance", font=("Arial", 10), fg="gray").pack(pady=(0, 5), fill="x", padx=40)
+        tk.Label(parent, text="These credentials are for accessing your Nextcloud admin panel", font=("Arial", 10), fg="gray").pack(pady=(0, 5), fill="x", padx=40)
         
         admin_frame = tk.Frame(parent)
         admin_frame.pack(pady=10, fill="x", padx=40)
@@ -4903,23 +4950,33 @@ class NextcloudRestoreWizard(tk.Tk):
         ).pack(pady=15, fill="x", padx=40)
         
         # Add informative text about what will happen during restore - full width with padding
-        info_frame = tk.Frame(parent, bg="#e8f4f8", relief="ridge", borderwidth=2)
+        info_frame = tk.Frame(parent, bg=self.theme_colors['info_bg'], relief="solid", borderwidth=1)
         info_frame.pack(pady=20, fill="x", padx=40)
         
-        tk.Label(info_frame, text="ℹ️ The restore process will automatically:", font=("Arial", 11, "bold"), bg="#e8f4f8").pack(pady=(10, 5), anchor="center")
+        tk.Label(info_frame, text="🔧 Automated Restore Process", font=("Arial", 12, "bold"), 
+                 bg=self.theme_colors['info_bg'], fg=self.theme_colors['info_fg']).pack(pady=(10, 8), anchor="center")
+        tk.Label(info_frame, text="When you click 'Start Restore', the following will happen automatically:", 
+                 font=("Arial", 10), bg=self.theme_colors['info_bg'], fg=self.theme_colors['info_fg']).pack(pady=(0, 5), anchor="center")
+        
         restore_info = [
-            "• Extract your backup archive",
-            "• Start database and Nextcloud containers (if needed)",
-            "• Copy config, data, and app folders to /var/www/html",
-            "• Import the database backup",
-            "• Update config.php with correct database credentials",
-            "• Set proper file permissions (www-data:www-data)",
-            "• Validate all files and database tables exist",
-            "• Restart the Nextcloud container"
+            "✓ Generate Docker Compose YAML configuration",
+            "✓ Create required Docker volumes and networks",
+            "✓ Extract and decrypt your backup files",
+            "✓ Start database and Nextcloud containers",
+            "✓ Copy all files to the container (/var/www/html)",
+            "✓ Restore database from backup",
+            "✓ Update configuration files automatically",
+            "✓ Set proper file permissions",
+            "✓ Restart services and validate installation"
         ]
         for info in restore_info:
-            tk.Label(info_frame, text=info, font=("Arial", 10), bg="#e8f4f8", anchor="center", justify="center").pack(anchor="center", pady=2)
-        tk.Label(info_frame, text="", bg="#e8f4f8").pack(pady=5)  # Spacing
+            tk.Label(info_frame, text=info, font=("Arial", 9), 
+                     bg=self.theme_colors['info_bg'], fg=self.theme_colors['info_fg'],
+                     anchor="w", justify="left").pack(anchor="w", pady=1, padx=30)
+        
+        tk.Label(info_frame, text="No manual Docker commands or YAML editing required!", 
+                 font=("Arial", 10, "bold"), bg=self.theme_colors['info_bg'], 
+                 fg="#45bf55").pack(pady=(8, 10), anchor="center")
     
     def wizard_navigate(self, direction):
         """Navigate between wizard pages, saving current page data"""
@@ -6801,15 +6858,306 @@ php /tmp/update_config.php"
                 else:
                     self.error_label.config(text="", fg="red")
             
-            messagebox.showinfo("Restore Complete", "Your Nextcloud instance was successfully restored from backup.")
+            # Show completion dialog with "Open Nextcloud" option
+            self.show_restore_completion_dialog(nextcloud_container, self.restore_container_port)
             shutil.rmtree(extract_dir, ignore_errors=True)
-            self.show_landing()
         except Exception as e:
             tb = traceback.format_exc()
             self.set_restore_progress(0, "Restore failed!")
-            self.error_label.config(text=f"Restore failed: {e}\n{tb}")
+            # Show actionable error message with recovery options
+            self.show_restore_error_dialog(e, tb)
             print(tb)
-            self.show_landing()
+
+    def show_restore_completion_dialog(self, container_name, port):
+        """
+        Show a completion dialog with an option to open Nextcloud in browser.
+        This provides a beginner-friendly post-restore action.
+        """
+        # Create completion message frame
+        for widget in self.body_frame.winfo_children():
+            widget.destroy()
+        
+        completion_frame = tk.Frame(self.body_frame, bg=self.theme_colors['bg'])
+        completion_frame.pack(expand=True, fill="both", pady=40)
+        
+        # Success icon and message
+        success_label = tk.Label(
+            completion_frame,
+            text="✅ Restore Complete!",
+            font=("Arial", 24, "bold"),
+            bg=self.theme_colors['bg'],
+            fg="#45bf55"
+        )
+        success_label.pack(pady=20)
+        
+        info_label = tk.Label(
+            completion_frame,
+            text="Your Nextcloud instance has been successfully restored from backup.",
+            font=("Arial", 14),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg']
+        )
+        info_label.pack(pady=10)
+        
+        # Container info
+        container_info = tk.Label(
+            completion_frame,
+            text=f"Container: {container_name}\nPort: {port}",
+            font=("Arial", 11),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['hint_fg']
+        )
+        container_info.pack(pady=10)
+        
+        # Button frame
+        button_frame = tk.Frame(completion_frame, bg=self.theme_colors['bg'])
+        button_frame.pack(pady=30)
+        
+        # Open Nextcloud button
+        open_btn = tk.Button(
+            button_frame,
+            text="🌐 Open Nextcloud in Browser",
+            font=("Arial", 14, "bold"),
+            bg="#3daee9",
+            fg="white",
+            width=30,
+            height=2,
+            command=lambda: self.open_nextcloud_in_browser(port)
+        )
+        open_btn.pack(pady=10)
+        ToolTip(open_btn, f"Open http://localhost:{port} in your default web browser")
+        
+        # Return to menu button
+        menu_btn = tk.Button(
+            button_frame,
+            text="Return to Main Menu",
+            font=("Arial", 12),
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg'],
+            width=30,
+            command=self.show_landing
+        )
+        menu_btn.pack(pady=10)
+        
+        # Apply theme
+        self.apply_theme_recursive(completion_frame)
+    
+    def show_restore_error_dialog(self, error, traceback_str):
+        """
+        Show a user-friendly error dialog with actionable recovery options.
+        """
+        # Create error message frame
+        for widget in self.body_frame.winfo_children():
+            widget.destroy()
+        
+        error_frame = tk.Frame(self.body_frame, bg=self.theme_colors['bg'])
+        error_frame.pack(expand=True, fill="both", pady=40, padx=40)
+        
+        # Error icon and message
+        error_label = tk.Label(
+            error_frame,
+            text="❌ Restore Failed",
+            font=("Arial", 24, "bold"),
+            bg=self.theme_colors['bg'],
+            fg="#d32f2f"
+        )
+        error_label.pack(pady=20)
+        
+        # Error message
+        error_msg = str(error)
+        error_text = tk.Label(
+            error_frame,
+            text=f"Error: {error_msg}",
+            font=("Arial", 12),
+            bg=self.theme_colors['bg'],
+            fg="#d32f2f",
+            wraplength=600,
+            justify="left"
+        )
+        error_text.pack(pady=10)
+        
+        # Actionable suggestions based on error type
+        suggestions_frame = tk.Frame(error_frame, bg=self.theme_colors['info_bg'], relief="solid", borderwidth=1)
+        suggestions_frame.pack(pady=20, fill="x", padx=20)
+        
+        suggestions_title = tk.Label(
+            suggestions_frame,
+            text="💡 Suggested Actions",
+            font=("Arial", 12, "bold"),
+            bg=self.theme_colors['info_bg'],
+            fg=self.theme_colors['info_fg']
+        )
+        suggestions_title.pack(pady=(10, 5))
+        
+        # Determine specific suggestions based on error
+        suggestions = self.get_error_suggestions(error_msg)
+        
+        for suggestion in suggestions:
+            suggestion_label = tk.Label(
+                suggestions_frame,
+                text=f"• {suggestion}",
+                font=("Arial", 10),
+                bg=self.theme_colors['info_bg'],
+                fg=self.theme_colors['info_fg'],
+                wraplength=550,
+                justify="left",
+                anchor="w"
+            )
+            suggestion_label.pack(pady=2, padx=20, anchor="w")
+        
+        # Button frame
+        button_frame = tk.Frame(error_frame, bg=self.theme_colors['bg'])
+        button_frame.pack(pady=30)
+        
+        # Show logs button
+        logs_btn = tk.Button(
+            button_frame,
+            text="📋 View Logs",
+            font=("Arial", 12),
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg'],
+            width=20,
+            command=lambda: self.show_error_details(traceback_str)
+        )
+        logs_btn.pack(side="left", padx=10)
+        
+        # Try again button
+        retry_btn = tk.Button(
+            button_frame,
+            text="🔄 Try Again",
+            font=("Arial", 12),
+            bg="#f7b32b",
+            fg="white",
+            width=20,
+            command=self.start_restore
+        )
+        retry_btn.pack(side="left", padx=10)
+        
+        # Return to menu button
+        menu_btn = tk.Button(
+            button_frame,
+            text="Return to Main Menu",
+            font=("Arial", 12),
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg'],
+            width=20,
+            command=self.show_landing
+        )
+        menu_btn.pack(side="left", padx=10)
+        
+        # Apply theme
+        self.apply_theme_recursive(error_frame)
+    
+    def get_error_suggestions(self, error_msg):
+        """
+        Provide actionable suggestions based on the error message.
+        """
+        suggestions = []
+        
+        error_lower = error_msg.lower()
+        
+        if "docker" in error_lower and ("not running" in error_lower or "cannot connect" in error_lower):
+            suggestions.append("Ensure Docker is installed and running on your system")
+            suggestions.append("Try starting Docker Desktop manually")
+            suggestions.append("Check Docker service status: 'docker ps' in terminal")
+        elif "password" in error_lower or "decrypt" in error_lower:
+            suggestions.append("Verify you entered the correct decryption password")
+            suggestions.append("Check if the backup file is corrupted")
+            suggestions.append("Ensure GPG is installed for encrypted backups")
+        elif "database" in error_lower:
+            suggestions.append("Verify database credentials match your original setup")
+            suggestions.append("Check if the database container is running")
+            suggestions.append("Ensure database dump file exists in backup")
+        elif "permission" in error_lower:
+            suggestions.append("Run the application with appropriate permissions")
+            suggestions.append("Check file and folder permissions on your system")
+            suggestions.append("Ensure Docker has access to required directories")
+        elif "container" in error_lower:
+            suggestions.append("Check if another container is using the same name")
+            suggestions.append("Try removing existing containers: 'docker rm -f <container_name>'")
+            suggestions.append("Verify Docker has sufficient resources (CPU, memory)")
+        elif "port" in error_lower:
+            suggestions.append("Ensure the port is not already in use by another service")
+            suggestions.append("Try using a different port number")
+            suggestions.append("Check firewall settings")
+        else:
+            suggestions.append("Check the log file for detailed error information")
+            suggestions.append("Verify all backup files are present and not corrupted")
+            suggestions.append("Ensure you have sufficient disk space")
+            suggestions.append("Try restarting Docker and running the restore again")
+        
+        return suggestions
+    
+    def show_error_details(self, traceback_str):
+        """
+        Show detailed error logs in a popup window.
+        """
+        details_window = tk.Toplevel(self)
+        details_window.title("Error Details")
+        details_window.geometry("800x600")
+        details_window.configure(bg=self.theme_colors['bg'])
+        
+        # Title
+        title_label = tk.Label(
+            details_window,
+            text="Detailed Error Log",
+            font=("Arial", 14, "bold"),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg']
+        )
+        title_label.pack(pady=10)
+        
+        # Text widget with scrollbar for logs
+        frame = tk.Frame(details_window, bg=self.theme_colors['bg'])
+        frame.pack(expand=True, fill="both", padx=10, pady=10)
+        
+        scrollbar = tk.Scrollbar(frame)
+        scrollbar.pack(side="right", fill="y")
+        
+        text_widget = tk.Text(
+            frame,
+            wrap="word",
+            bg=self.theme_colors['entry_bg'],
+            fg=self.theme_colors['entry_fg'],
+            font=("Courier", 9),
+            yscrollcommand=scrollbar.set
+        )
+        text_widget.pack(expand=True, fill="both")
+        scrollbar.config(command=text_widget.yview)
+        
+        text_widget.insert("1.0", traceback_str)
+        text_widget.config(state="disabled")
+        
+        # Close button
+        close_btn = tk.Button(
+            details_window,
+            text="Close",
+            font=("Arial", 11),
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg'],
+            command=details_window.destroy
+        )
+        close_btn.pack(pady=10)
+    
+    def open_nextcloud_in_browser(self, port):
+        """
+        Open Nextcloud instance in the default web browser.
+        """
+        url = f"http://localhost:{port}"
+        try:
+            webbrowser.open(url)
+            messagebox.showinfo(
+                "Opening Nextcloud",
+                f"Opening Nextcloud at {url} in your browser.",
+                parent=self
+            )
+        except Exception as e:
+            messagebox.showerror(
+                "Error Opening Browser",
+                f"Could not open browser automatically.\n\n"
+                f"Please manually navigate to: {url}",
+                parent=self
+            )
 
     # --- New instance logic ---
     def start_new_instance_workflow(self):
