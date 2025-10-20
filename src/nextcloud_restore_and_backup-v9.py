@@ -3836,6 +3836,16 @@ class NextcloudRestoreWizard(tk.Tk):
         elif self.current_page == 'schedule_backup':
             logger.info("REFRESH PAGE: Calling show_schedule_backup()")
             self.show_schedule_backup()
+        elif self.current_page == 'docker_error':
+            # Docker error page - re-display the error
+            logger.info("REFRESH PAGE: Calling show_docker_error_page()")
+            if hasattr(self, 'current_docker_error'):
+                self.show_docker_error_page(
+                    self.current_docker_error['error_info'],
+                    self.current_docker_error['stderr'],
+                    self.current_docker_error['container_name'],
+                    self.current_docker_error['port']
+                )
         elif self.current_page == 'wizard':
             # Restore wizard - maintain current wizard page
             logger.info("REFRESH PAGE: Calling create_wizard()")
@@ -6488,7 +6498,7 @@ If the problem persists, please report this issue on GitHub.
                     'container_name': new_container_name,
                     'port': None
                 }
-                self.show_docker_container_error_dialog(error_info, pull_result.stderr, f"{NEXTCLOUD_IMAGE} (image)", "N/A")
+                self.show_docker_error_page(error_info, pull_result.stderr, f"{NEXTCLOUD_IMAGE} (image)", "N/A")
                 
                 return None
             
@@ -6554,8 +6564,8 @@ If the problem persists, please report this issue on GitHub.
                 'port': port
             }
             
-            # Show error dialog with "Show Docker Error Details" button
-            self.show_docker_container_error_dialog(error_info, result.stderr, new_container_name, port)
+            # Show error page (not dialog) within the main GUI
+            self.show_docker_error_page(error_info, result.stderr, new_container_name, port)
             
             return None
         
@@ -6642,7 +6652,7 @@ If the problem persists, please report this issue on GitHub.
                     'container_name': POSTGRES_CONTAINER_NAME,
                     'port': None
                 }
-                self.show_docker_container_error_dialog(error_info, pull_db_result.stderr, f"{POSTGRES_IMAGE} (image)", "N/A")
+                self.show_docker_error_page(error_info, pull_db_result.stderr, f"{POSTGRES_IMAGE} (image)", "N/A")
                 
                 return None
         
@@ -6695,8 +6705,8 @@ If the problem persists, please report this issue on GitHub.
                 'port': POSTGRES_PORT
             }
             
-            # Show error dialog with "Show Docker Error Details" button
-            self.show_docker_container_error_dialog(error_info, result.stderr, POSTGRES_CONTAINER_NAME, POSTGRES_PORT)
+            # Show error page (not dialog) within the main GUI
+            self.show_docker_error_page(error_info, result.stderr, POSTGRES_CONTAINER_NAME, POSTGRES_PORT)
             
             return None
         
@@ -8376,6 +8386,233 @@ php /tmp/update_config.php"
             command=details_window.destroy
         )
         close_btn.pack(side="right", padx=5)
+    
+    def show_docker_error_page(self, error_info, stderr_output, container_name, port):
+        """
+        Show Docker error as a dedicated page within the main GUI (not a popup dialog).
+        Displays error details, suggested actions, and a 'Return to Main Menu' button.
+        
+        Args:
+            error_info: Dictionary with error analysis from analyze_docker_error()
+            stderr_output: Raw stderr output from Docker command
+            container_name: Name of the container that failed
+            port: Port that was being used (or None)
+        """
+        # Store error information for potential detailed view
+        self.current_docker_error = {
+            'error_info': error_info,
+            'stderr': stderr_output,
+            'container_name': container_name,
+            'port': port
+        }
+        
+        # Clear the body frame and show error page
+        for widget in self.body_frame.winfo_children():
+            widget.destroy()
+        
+        # Update current page tracking
+        self.current_page = 'docker_error'
+        
+        # Main error container with scrolling
+        main_container = tk.Frame(self.body_frame, bg=self.theme_colors['bg'])
+        main_container.pack(fill='both', expand=True)
+        
+        # Create canvas and scrollbar for scrollable content
+        canvas = tk.Canvas(main_container, bg=self.theme_colors['bg'], highlightthickness=0)
+        scrollbar = tk.Scrollbar(main_container, command=canvas.yview)
+        error_frame = tk.Frame(canvas, bg=self.theme_colors['bg'])
+        
+        error_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=error_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Header with error icon
+        header_frame = tk.Frame(error_frame, bg='#d32f2f', height=100)
+        header_frame.pack(fill='x', pady=(0, 20))
+        header_frame.pack_propagate(False)
+        
+        tk.Label(
+            header_frame,
+            text="❌ Docker Container Failed",
+            font=("Arial", 22, "bold"),
+            bg='#d32f2f',
+            fg='white'
+        ).pack(pady=30)
+        
+        # Content container with padding
+        content_container = tk.Frame(error_frame, bg=self.theme_colors['bg'])
+        content_container.pack(fill='both', expand=True, padx=40, pady=20)
+        
+        # Error type label
+        tk.Label(
+            content_container,
+            text=f"Error Type: {error_info['error_type'].replace('_', ' ').title()}",
+            font=("Arial", 14, "bold"),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg']
+        ).pack(pady=(0, 15), anchor='w')
+        
+        # Container info frame
+        info_frame = tk.Frame(content_container, bg=self.theme_colors['info_bg'], relief="solid", borderwidth=2)
+        info_frame.pack(fill='x', pady=10)
+        
+        port_text = port if port else "N/A"
+        tk.Label(
+            info_frame,
+            text=f"Container: {container_name}  |  Port: {port_text}",
+            font=("Arial", 11),
+            bg=self.theme_colors['info_bg'],
+            fg=self.theme_colors['info_fg']
+        ).pack(pady=10)
+        
+        # Error message frame
+        error_msg_frame = tk.Frame(content_container, bg='#ffebee', relief="solid", borderwidth=2)
+        error_msg_frame.pack(fill='x', pady=15)
+        
+        tk.Label(
+            error_msg_frame,
+            text="❌ Error Description",
+            font=("Arial", 12, "bold"),
+            bg='#ffebee',
+            fg='#c62828'
+        ).pack(pady=(10, 5), padx=15, anchor='w')
+        
+        tk.Label(
+            error_msg_frame,
+            text=error_info['user_message'],
+            font=("Arial", 11),
+            bg='#ffebee',
+            fg='#b71c1c',
+            wraplength=780,
+            justify="left"
+        ).pack(pady=(0, 10), padx=15, anchor='w')
+        
+        # Suggested action frame
+        action_frame = tk.Frame(content_container, bg='#e8f5e9', relief="solid", borderwidth=2)
+        action_frame.pack(fill='x', pady=15)
+        
+        tk.Label(
+            action_frame,
+            text="💡 Suggested Action",
+            font=("Arial", 12, "bold"),
+            bg='#e8f5e9',
+            fg='#2e7d32'
+        ).pack(pady=(10, 5), padx=15, anchor='w')
+        
+        tk.Label(
+            action_frame,
+            text=error_info['suggested_action'],
+            font=("Arial", 10),
+            bg='#e8f5e9',
+            fg='#1b5e20',
+            wraplength=780,
+            justify="left"
+        ).pack(pady=(0, 10), padx=15, anchor='w')
+        
+        # Alternative port suggestion (if applicable)
+        if error_info.get('alternative_port'):
+            port_frame = tk.Frame(content_container, bg='#fff3cd', relief="solid", borderwidth=2)
+            port_frame.pack(fill='x', pady=15)
+            
+            tk.Label(
+                port_frame,
+                text="🔌 Alternative Port Suggestion",
+                font=("Arial", 12, "bold"),
+                bg='#fff3cd',
+                fg='#856404'
+            ).pack(pady=(10, 5), padx=15, anchor='w')
+            
+            tk.Label(
+                port_frame,
+                text=f"Try using port {error_info['alternative_port']} instead.",
+                font=("Arial", 10),
+                bg='#fff3cd',
+                fg='#856404',
+                wraplength=780,
+                justify="left"
+            ).pack(pady=(0, 10), padx=15, anchor='w')
+        
+        # Docker error details section (expandable)
+        details_section = tk.Frame(content_container, bg=self.theme_colors['bg'])
+        details_section.pack(fill='both', expand=True, pady=15)
+        
+        tk.Label(
+            details_section,
+            text="📋 Docker Error Output",
+            font=("Arial", 11, "bold"),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg']
+        ).pack(pady=(5, 5), anchor='w')
+        
+        # Text widget for Docker error output
+        text_frame = tk.Frame(details_section)
+        text_frame.pack(fill='both', expand=True, pady=5)
+        
+        text_scrollbar = tk.Scrollbar(text_frame)
+        text_scrollbar.pack(side="right", fill="y")
+        
+        text_widget = tk.Text(
+            text_frame,
+            wrap="word",
+            bg=self.theme_colors['entry_bg'],
+            fg=self.theme_colors['entry_fg'],
+            font=("Courier", 9),
+            height=10,
+            yscrollcommand=text_scrollbar.set
+        )
+        text_widget.pack(fill="both", expand=True)
+        text_scrollbar.config(command=text_widget.yview)
+        
+        text_widget.insert("1.0", stderr_output)
+        text_widget.config(state="disabled")
+        
+        # Log file location
+        tk.Label(
+            content_container,
+            text=f"📁 Error logged to: {DOCKER_ERROR_LOG_PATH}",
+            font=("Arial", 9),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['hint_fg']
+        ).pack(pady=(15, 5), anchor='w')
+        
+        # Button frame
+        button_frame = tk.Frame(content_container, bg=self.theme_colors['bg'])
+        button_frame.pack(pady=20)
+        
+        # Open Docker Error Log button
+        open_log_btn = tk.Button(
+            button_frame,
+            text="📂 Open Error Log Folder",
+            font=("Arial", 12),
+            bg="#3daee9",
+            fg="white",
+            width=22,
+            command=lambda: self.open_file_location(DOCKER_ERROR_LOG_PATH)
+        )
+        open_log_btn.pack(side="left", padx=5)
+        
+        # Return to Main Menu button
+        menu_btn = tk.Button(
+            button_frame,
+            text="Return to Main Menu",
+            font=("Arial", 12, "bold"),
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg'],
+            width=22,
+            command=self.show_landing
+        )
+        menu_btn.pack(side="left", padx=5)
+        
+        # Pack canvas and scrollbar
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Apply theme
+        self.apply_theme_recursive(error_frame)
     
     def open_file_location(self, file_path):
         """Open the file location in the system file explorer."""
