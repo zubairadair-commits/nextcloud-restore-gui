@@ -1526,18 +1526,21 @@ def start_docker_desktop():
     """
     docker_path = get_docker_desktop_path()
     if not docker_path:
+        logger.debug("Docker Desktop path not found, cannot auto-start")
         return False
     
     try:
         system = platform.system()
         creation_flags = get_subprocess_creation_flags()
         if system == "Windows":
+            logger.info(f"Starting Docker Desktop on Windows: {docker_path}")
             subprocess.Popen([docker_path], shell=False, creationflags=creation_flags)
         elif system == "Darwin":  # macOS
+            logger.info("Starting Docker Desktop on macOS")
             subprocess.Popen(['open', '-a', 'Docker'])
         return True
     except Exception as e:
-        print(f"Failed to start Docker Desktop: {e}")
+        logger.error(f"Failed to start Docker Desktop: {e}")
         return False
 
 def prompt_start_docker(parent):
@@ -4086,35 +4089,56 @@ class NextcloudRestoreWizard(tk.Tk):
 
     def check_docker_running(self):
         """
-        Check if Docker is running and prompt user if not.
-        Returns: True if Docker is running, False if user cancels
+        Check if Docker is running and automatically attempt to start it if not.
+        Returns: True if Docker is running or was successfully started, False otherwise
         """
-        max_retries = 3
-        retry_count = 0
+        # First check if Docker is already running
+        if is_docker_running():
+            return True
         
-        while retry_count < max_retries:
-            if is_docker_running():
-                return True
+        # Docker is not running - attempt to start it automatically
+        docker_status = detect_docker_status()
+        
+        # Only try to auto-start if Docker is installed but not running
+        if docker_status['status'] == 'not_running':
+            logger.info("Docker is not running, attempting to start Docker Desktop automatically...")
             
-            # Docker is not running, prompt user
-            should_retry = prompt_start_docker(self)
-            
-            if not should_retry:
-                # User cancelled
+            # Try to start Docker Desktop
+            if start_docker_desktop():
+                logger.info("Docker Desktop start command issued, waiting for Docker to become available...")
+                
+                # Wait for Docker to start (with retries)
+                max_wait_time = 30  # seconds
+                check_interval = 3  # seconds
+                elapsed = 0
+                
+                while elapsed < max_wait_time:
+                    time.sleep(check_interval)
+                    elapsed += check_interval
+                    
+                    if is_docker_running():
+                        logger.info(f"Docker started successfully after {elapsed} seconds")
+                        return True
+                    
+                    logger.debug(f"Waiting for Docker to start... ({elapsed}s/{max_wait_time}s)")
+                
+                # Docker didn't start in time
+                error_msg = "Docker Desktop is starting but not ready yet. Please wait a moment and try again."
+                logger.error(error_msg)
+                self.status_label.config(text=error_msg, fg=self.theme_colors['error_fg'])
                 return False
-            
-            retry_count += 1
-            # Give Docker some time to start before checking again
-            time.sleep(2)
-        
-        # Max retries reached
-        messagebox.showerror(
-            "Docker Not Running",
-            "Docker is still not running after multiple attempts.\n\n"
-            "Please start Docker manually and try again.",
-            parent=self
-        )
-        return False
+            else:
+                # Could not start Docker Desktop (not found or error)
+                error_msg = "Could not start Docker automatically. Please start Docker Desktop manually."
+                logger.error(error_msg)
+                self.status_label.config(text=error_msg, fg=self.theme_colors['error_fg'])
+                return False
+        else:
+            # Docker is not installed or other error
+            error_msg = docker_status['message']
+            logger.error(f"Docker check failed: {error_msg}")
+            self.status_label.config(text=error_msg, fg=self.theme_colors['error_fg'])
+            return False
 
     def toggle_theme(self):
         """Toggle between light and dark themes"""
