@@ -10146,9 +10146,14 @@ php /tmp/update_config.php"
             rotation_keep: Number of backups to keep (0 = unlimited)
         """
         try:
-            # Check if Docker is running
-            if not is_docker_running():
-                print("ERROR: Docker is not running. Cannot perform backup.")
+            # Check if Docker is running with detailed status
+            docker_status = detect_docker_status()
+            if docker_status['status'] != 'running':
+                error_msg = f"ERROR: Cannot perform backup. {docker_status['message']}"
+                if docker_status['suggested_action']:
+                    error_msg += f"\n\nSuggested action:\n{docker_status['suggested_action']}"
+                print(error_msg)
+                logger.error(f"Scheduled backup failed: {docker_status['message']}")
                 return
             
             # Get Nextcloud container
