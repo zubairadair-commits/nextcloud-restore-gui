@@ -1191,16 +1191,210 @@ def prompt_install_database_utility(parent, dbtype, utility_name):
     
     return result
 
+def detect_docker_status():
+    """
+    Comprehensive Docker detection that checks installation and running status.
+    Analyzes errors to provide specific, actionable feedback.
+    
+    Returns:
+        dict with keys:
+            - status: 'running', 'not_running', 'permission_denied', 'not_installed', 'error'
+            - message: User-friendly message describing the status
+            - suggested_action: Platform-specific instructions to resolve issues
+            - stderr: Raw error output (if applicable)
+    """
+    try:
+        creation_flags = get_subprocess_creation_flags()
+        
+        # Try to run 'docker ps' to check if Docker is running
+        result = subprocess.run(
+            ['docker', 'ps'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=5,
+            creationflags=creation_flags
+        )
+        
+        # Success - Docker is running
+        if result.returncode == 0:
+            return {
+                'status': 'running',
+                'message': 'Docker is running',
+                'suggested_action': None,
+                'stderr': ''
+            }
+        
+        # Docker command ran but failed - analyze stderr to determine why
+        stderr_lower = result.stderr.lower()
+        system = platform.system()
+        
+        # Check for permission denied
+        if 'permission denied' in stderr_lower or 'access denied' in stderr_lower:
+            if system == 'Windows':
+                suggested_action = (
+                    "Run this application as Administrator:\n"
+                    "1. Right-click the application\n"
+                    "2. Select 'Run as Administrator'\n\n"
+                    "Or ensure Docker Desktop is running and you have proper permissions."
+                )
+            elif system == 'Linux':
+                suggested_action = (
+                    "Add your user to the docker group:\n"
+                    "  sudo usermod -aG docker $USER\n\n"
+                    "Then log out and log back in for changes to take effect.\n\n"
+                    "Alternatively, run with sudo (not recommended for GUI apps)."
+                )
+            else:  # macOS
+                suggested_action = (
+                    "Ensure Docker Desktop is running and you have proper permissions.\n"
+                    "You may need to restart Docker Desktop."
+                )
+            
+            return {
+                'status': 'permission_denied',
+                'message': 'Permission denied - insufficient privileges to access Docker',
+                'suggested_action': suggested_action,
+                'stderr': result.stderr
+            }
+        
+        # Check for Docker not running / cannot connect
+        if ('cannot connect' in stderr_lower or 
+            'is not running' in stderr_lower or 
+            'daemon' in stderr_lower or
+            'connect' in stderr_lower):
+            
+            if system == 'Windows':
+                suggested_action = (
+                    "Start Docker Desktop:\n"
+                    "1. Open Docker Desktop from the Start menu\n"
+                    "2. Wait for Docker to fully start (watch the system tray icon)\n"
+                    "3. Try again once Docker is running"
+                )
+            elif system == 'Darwin':  # macOS
+                suggested_action = (
+                    "Start Docker Desktop:\n"
+                    "1. Open Docker Desktop from Applications\n"
+                    "2. Wait for Docker to fully start (check menu bar icon)\n"
+                    "3. Try again once Docker is running"
+                )
+            else:  # Linux
+                suggested_action = (
+                    "Start the Docker daemon:\n"
+                    "  sudo systemctl start docker\n\n"
+                    "To enable Docker to start automatically:\n"
+                    "  sudo systemctl enable docker\n\n"
+                    "Check Docker status:\n"
+                    "  sudo systemctl status docker"
+                )
+            
+            return {
+                'status': 'not_running',
+                'message': 'Docker is not running',
+                'suggested_action': suggested_action,
+                'stderr': result.stderr
+            }
+        
+        # Unknown error from docker command
+        return {
+            'status': 'error',
+            'message': 'Docker command failed with an unexpected error',
+            'suggested_action': (
+                f"Error output: {result.stderr}\n\n"
+                "Try:\n"
+                "1. Restarting Docker Desktop/daemon\n"
+                "2. Checking Docker logs for more information\n"
+                "3. Reinstalling Docker if the problem persists"
+            ),
+            'stderr': result.stderr
+        }
+        
+    except FileNotFoundError:
+        # Docker command not found - not installed or not in PATH
+        system = platform.system()
+        
+        if system == 'Windows':
+            suggested_action = (
+                "Docker Desktop is not installed or not in your system PATH.\n\n"
+                "To install Docker Desktop:\n"
+                "1. Visit https://www.docker.com/products/docker-desktop/\n"
+                "2. Download Docker Desktop for Windows\n"
+                "3. Run the installer and follow the instructions\n"
+                "4. Restart your computer after installation\n"
+                "5. Launch Docker Desktop and wait for it to start"
+            )
+        elif system == 'Darwin':  # macOS
+            suggested_action = (
+                "Docker Desktop is not installed or not in your system PATH.\n\n"
+                "To install Docker Desktop:\n"
+                "1. Visit https://www.docker.com/products/docker-desktop/\n"
+                "2. Download Docker Desktop for Mac\n"
+                "3. Open the .dmg file and drag Docker to Applications\n"
+                "4. Launch Docker Desktop from Applications\n"
+                "5. Complete the first-time setup"
+            )
+        else:  # Linux
+            suggested_action = (
+                "Docker is not installed or not in your system PATH.\n\n"
+                "To install Docker on Linux:\n"
+                "  # Ubuntu/Debian:\n"
+                "  sudo apt-get update\n"
+                "  sudo apt-get install docker.io\n\n"
+                "  # Fedora/RHEL:\n"
+                "  sudo dnf install docker\n\n"
+                "  # Arch Linux:\n"
+                "  sudo pacman -S docker\n\n"
+                "After installation, start and enable Docker:\n"
+                "  sudo systemctl start docker\n"
+                "  sudo systemctl enable docker"
+            )
+        
+        return {
+            'status': 'not_installed',
+            'message': 'Docker is not installed or not found in system PATH',
+            'suggested_action': suggested_action,
+            'stderr': ''
+        }
+    
+    except subprocess.TimeoutExpired:
+        # Docker command timed out
+        return {
+            'status': 'error',
+            'message': 'Docker command timed out',
+            'suggested_action': (
+                "The Docker command took too long to respond.\n\n"
+                "This might indicate:\n"
+                "1. Docker is starting up - wait a moment and try again\n"
+                "2. Docker is experiencing issues - try restarting Docker\n"
+                "3. System performance issues - check system resources"
+            ),
+            'stderr': ''
+        }
+    
+    except Exception as e:
+        # Unexpected error
+        return {
+            'status': 'error',
+            'message': f'Unexpected error while checking Docker: {str(e)}',
+            'suggested_action': (
+                "An unexpected error occurred.\n\n"
+                "Try:\n"
+                "1. Restarting Docker\n"
+                "2. Checking if Docker is properly installed\n"
+                "3. Reviewing system logs for more information"
+            ),
+            'stderr': str(e)
+        }
+
 def is_docker_running():
     """
     Check if Docker daemon is running by attempting a simple Docker command.
     Returns: True if Docker is running, False otherwise
+    
+    Note: For detailed error information, use detect_docker_status() instead.
     """
-    try:
-        result = run_docker_command_silent(['docker', 'ps'], timeout=5)
-        return result is not None and result.returncode == 0
-    except Exception:
-        return False
+    status = detect_docker_status()
+    return status['status'] == 'running'
 
 def check_nextcloud_ready(port, timeout=120):
     """
@@ -1285,34 +1479,62 @@ def start_docker_desktop():
 
 def prompt_start_docker(parent):
     """
-    Show a dialog prompting the user to start Docker.
-    On Windows/Mac, offer to start Docker Desktop automatically.
+    Show a dialog prompting the user to start Docker with context-specific messages.
+    Uses detect_docker_status() to show appropriate error messages and instructions.
     Returns: True if user wants to retry, False to cancel
     """
+    # Get detailed Docker status
+    docker_status = detect_docker_status()
     system = platform.system()
     docker_path = get_docker_desktop_path()
     
+    # Determine dialog title and header based on status
+    status_titles = {
+        'not_installed': 'Docker Not Installed',
+        'not_running': 'Docker Not Running',
+        'permission_denied': 'Docker Permission Error',
+        'error': 'Docker Error'
+    }
+    
+    status_icons = {
+        'not_installed': '📦',
+        'not_running': '⚠',
+        'permission_denied': '🔒',
+        'error': '❌'
+    }
+    
+    dialog_title = status_titles.get(docker_status['status'], 'Docker Issue')
+    header_icon = status_icons.get(docker_status['status'], '⚠')
+    
     dialog = tk.Toplevel(parent)
-    dialog.title("Docker Not Running")
-    dialog.geometry("600x350")
+    dialog.title(dialog_title)
+    dialog.geometry("650x450")
     dialog.transient(parent)
     dialog.grab_set()
     
     # Center the dialog
     dialog.update_idletasks()
-    x = (dialog.winfo_screenwidth() // 2) - (600 // 2)
-    y = (dialog.winfo_screenheight() // 2) - (350 // 2)
-    dialog.geometry(f"600x350+{x}+{y}")
+    x = (dialog.winfo_screenwidth() // 2) - (650 // 2)
+    y = (dialog.winfo_screenheight() // 2) - (450 // 2)
+    dialog.geometry(f"650x450+{x}+{y}")
     
-    # Header
-    header_frame = tk.Frame(dialog, bg="#e74c3c", height=60)
+    # Header with appropriate color based on error type
+    header_colors = {
+        'not_installed': '#e67e22',  # Orange for not installed
+        'not_running': '#e74c3c',     # Red for not running
+        'permission_denied': '#c0392b',  # Dark red for permission
+        'error': '#95a5a6'            # Gray for generic error
+    }
+    header_bg = header_colors.get(docker_status['status'], '#e74c3c')
+    
+    header_frame = tk.Frame(dialog, bg=header_bg, height=60)
     header_frame.pack(fill="x")
     header_frame.pack_propagate(False)
     tk.Label(
         header_frame,
-        text="⚠ Docker Not Running",
+        text=f"{header_icon} {dialog_title}",
         font=("Arial", 16, "bold"),
-        bg="#e74c3c",
+        bg=header_bg,
         fg="white"
     ).pack(pady=15)
     
@@ -1320,33 +1542,38 @@ def prompt_start_docker(parent):
     content_frame = tk.Frame(dialog)
     content_frame.pack(fill="both", expand=True, padx=30, pady=20)
     
-    message = (
-        "Docker is not currently running on your system.\n\n"
-        "This utility requires Docker to manage Nextcloud containers.\n\n"
-    )
-    
-    if docker_path:
-        if system == "Windows":
-            message += "Would you like to start Docker Desktop now?"
-        elif system == "Darwin":
-            message += "Would you like to start Docker Desktop now?"
-    else:
-        if system == "Linux":
-            message += (
-                "Please start the Docker daemon using:\n"
-                "  sudo systemctl start docker\n\n"
-                "Then click 'Retry' to continue."
-            )
-        else:
-            message += "Please start Docker Desktop manually and click 'Retry'."
-    
+    # Show status message
     tk.Label(
         content_frame,
-        text=message,
-        font=("Arial", 12),
-        wraplength=540,
+        text=docker_status['message'],
+        font=("Arial", 13, "bold"),
+        wraplength=590,
         justify="left"
-    ).pack(pady=10)
+    ).pack(pady=(5, 15))
+    
+    # Show suggested action in a scrollable text area for long messages
+    action_frame = tk.Frame(content_frame, relief="solid", borderwidth=1)
+    action_frame.pack(fill="both", expand=True, pady=10)
+    
+    action_text = tk.Text(
+        action_frame,
+        font=("Arial", 10),
+        wrap="word",
+        height=10,
+        bg="#f8f9fa",
+        relief="flat",
+        padx=10,
+        pady=10
+    )
+    action_scrollbar = tk.Scrollbar(action_frame, command=action_text.yview)
+    action_text.config(yscrollcommand=action_scrollbar.set)
+    
+    action_scrollbar.pack(side="right", fill="y")
+    action_text.pack(side="left", fill="both", expand=True)
+    
+    if docker_status['suggested_action']:
+        action_text.insert("1.0", docker_status['suggested_action'])
+    action_text.config(state="disabled")  # Make read-only
     
     result = {"retry": False}
     
@@ -1375,11 +1602,28 @@ def prompt_start_docker(parent):
         result["retry"] = False
         dialog.destroy()
     
-    # Buttons
+    def on_open_website():
+        """Open Docker download website"""
+        webbrowser.open(DOCKER_INSTALLER_URL)
+    
+    # Buttons - context-specific based on Docker status
     button_frame = tk.Frame(content_frame)
     button_frame.pack(pady=20)
     
-    if docker_path:
+    # Show different buttons based on status
+    if docker_status['status'] == 'not_installed':
+        # For not installed, show "Download Docker" button
+        tk.Button(
+            button_frame,
+            text="Download Docker",
+            font=("Arial", 12),
+            command=on_open_website,
+            bg="#e67e22",
+            fg="white",
+            width=20
+        ).pack(side="left", padx=5)
+    elif docker_status['status'] == 'not_running' and docker_path:
+        # For not running with Docker Desktop installed, show "Start Docker Desktop"
         tk.Button(
             button_frame,
             text="Start Docker Desktop",
@@ -1390,15 +1634,17 @@ def prompt_start_docker(parent):
             width=20
         ).pack(side="left", padx=5)
     
-    tk.Button(
-        button_frame,
-        text="Retry",
-        font=("Arial", 12),
-        command=on_retry,
-        bg="#27ae60",
-        fg="white",
-        width=15
-    ).pack(side="left", padx=5)
+    # Always show Retry button (except for not_installed status)
+    if docker_status['status'] != 'not_installed':
+        tk.Button(
+            button_frame,
+            text="Retry",
+            font=("Arial", 12),
+            command=on_retry,
+            bg="#27ae60",
+            fg="white",
+            width=15
+        ).pack(side="left", padx=5)
     
     tk.Button(
         button_frame,
@@ -10137,9 +10383,14 @@ php /tmp/update_config.php"
             rotation_keep: Number of backups to keep (0 = unlimited)
         """
         try:
-            # Check if Docker is running
-            if not is_docker_running():
-                print("ERROR: Docker is not running. Cannot perform backup.")
+            # Check if Docker is running with detailed status
+            docker_status = detect_docker_status()
+            if docker_status['status'] != 'running':
+                error_msg = f"ERROR: Cannot perform backup. {docker_status['message']}"
+                if docker_status['suggested_action']:
+                    error_msg += f"\n\nSuggested action:\n{docker_status['suggested_action']}"
+                print(error_msg)
+                logger.error(f"Scheduled backup failed: {docker_status['message']}")
                 return
             
             # Get Nextcloud container
