@@ -6583,18 +6583,34 @@ If the problem persists, please report this issue on GitHub.
         os.makedirs(extract_temp, exist_ok=True)
         extracted_file = backup_path
 
-        self.error_label.config(text="")  # Clear error
+        safe_widget_update(
+            self.error_label,
+            lambda: self.error_label.config(text=""),
+            "error label clear"
+        )
 
         # Step 1: If encrypted, decrypt using provided password
         if backup_path.endswith('.gpg'):
             if not password:
-                self.error_label.config(text="No password entered. Cannot decrypt backup.")
+                safe_widget_update(
+                    self.error_label,
+                    lambda: self.error_label.config(text="No password entered. Cannot decrypt backup."),
+                    "error label update"
+                )
                 return None
             decrypted_file = os.path.splitext(backup_path)[0]  # remove .gpg
             try:
                 self.set_restore_progress(5, "Decrypting backup archive ...")
-                self.process_label.config(text=f"Decrypting: {os.path.basename(backup_path)}")
-                self.update_idletasks()
+                safe_widget_update(
+                    self.process_label,
+                    lambda: self.process_label.config(text=f"Decrypting: {os.path.basename(backup_path)}"),
+                    "process label update"
+                )
+                try:
+                    if self.winfo_exists():
+                        self.update_idletasks()
+                except tk.TclError:
+                    logger.debug("TclError during update_idletasks - window may have been closed")
                 
                 # Start decryption with progress monitoring
                 decryption_done = [False]  # Use list for mutable flag
@@ -6641,7 +6657,11 @@ If the problem persists, please report this issue on GitHub.
                     user_msg = "Decryption failed: GPG is not installed on your system"
                 else:
                     user_msg = f"Decryption failed: {e}"
-                self.error_label.config(text=user_msg)
+                safe_widget_update(
+                    self.error_label,
+                    lambda: self.error_label.config(text=user_msg),
+                    "error label update after decryption failure"
+                )
                 print(f"Error details:\n{tb}")
                 shutil.rmtree(extract_temp, ignore_errors=True)
                 return None
@@ -6651,7 +6671,11 @@ If the problem persists, please report this issue on GitHub.
         # Unlike early detection which only extracted config.php, this extracts everything
         try:
             self.set_restore_progress(10, "Extracting full backup archive...")
-            self.update_idletasks()
+            try:
+                if self.winfo_exists():
+                    self.update_idletasks()
+            except tk.TclError:
+                logger.debug("TclError during update_idletasks - window may have been closed")
             
             # Start extraction in a background thread with progress updates
             extraction_done = [False]  # Use list for mutable flag
@@ -6674,7 +6698,12 @@ If the problem persists, please report this issue on GitHub.
                 if progress_val < 18:
                     progress_val += 2
                     self.set_restore_progress(progress_val, "Extracting backup archive ...")
-                    self.update_idletasks()
+                    try:
+                        if self.winfo_exists():
+                            self.update_idletasks()
+                    except tk.TclError:
+                        logger.debug("TclError during update_idletasks - window may have been closed")
+                        break  # Exit loop if window is closed
                 time.sleep(0.5)  # Check every 0.5 seconds
             
             # Wait for thread to finish
@@ -6700,13 +6729,21 @@ If the problem persists, please report this issue on GitHub.
                 user_msg = "Extraction failed: Permission denied - please check file permissions"
             else:
                 user_msg = f"Extraction failed: {e}"
-            self.error_label.config(text=user_msg)
+            safe_widget_update(
+                self.error_label,
+                lambda: self.error_label.config(text=user_msg),
+                "error label update after extraction failure"
+            )
             print(f"Error details:\n{tb}")
             shutil.rmtree(extract_temp, ignore_errors=True)
             return None
 
         self.set_restore_progress(20, "Extraction complete!")
-        self.process_label.config(text="Extraction complete.")
+        safe_widget_update(
+            self.process_label,
+            lambda: self.process_label.config(text="Extraction complete."),
+            "process label update after extraction"
+        )
         return extract_temp  # Temp folder with extracted files
 
     # The rest of the class code (ensure_nextcloud_container, ensure_db_container, etc.) remains unchanged.
@@ -8098,6 +8135,11 @@ php /tmp/update_config.php"
             # Show completion dialog with "Open Nextcloud" option
             self.show_restore_completion_dialog(nextcloud_container, self.restore_container_port)
             shutil.rmtree(extract_dir, ignore_errors=True)
+        except tk.TclError as e:
+            # Widget was destroyed - likely user closed window or navigated away
+            logger.info("Restore thread terminated: Widget destroyed (user may have closed window or navigated away)")
+            logger.debug(f"TclError details: {e}")
+            # Don't show error dialog - this is expected behavior when user navigates away
         except Exception as e:
             tb = traceback.format_exc()
             # Log the error with full details
