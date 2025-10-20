@@ -166,9 +166,15 @@ def log_docker_error(error_type, error_message, container_name=None, port=None, 
     # Also log to main log
     logger.error(f"Docker Error ({error_type}): {error_message}")
 
-def analyze_docker_error(stderr_output, container_name=None, port=None):
+def analyze_docker_error(stderr_output, container_name=None, port=None, dbtype=None):
     """
     Analyze Docker error output and return structured error information.
+    
+    Args:
+        stderr_output: Docker error message
+        container_name: Name of the container
+        port: Port number
+        dbtype: Database type ('sqlite', 'mysql', 'pgsql') - helps classify errors correctly
     
     Returns:
         dict with keys:
@@ -196,6 +202,19 @@ def analyze_docker_error(stderr_output, container_name=None, port=None):
         
         # Provide context-specific guidance
         if container_name and 'db' in container_name.lower():
+            # Special handling for SQLite - this is expected, not an error
+            if dbtype == 'sqlite':
+                error_info['error_type'] = 'expected_sqlite_no_db'
+                error_info['user_message'] = "SQLite configuration detected - no separate database container needed."
+                error_info['suggested_action'] = (
+                    "This is expected behavior for SQLite backups.\n\n"
+                    "SQLite stores the database in a file within the data folder,\n"
+                    "so no separate database container is required.\n\n"
+                    "The restore will continue normally."
+                )
+                error_info['is_recoverable'] = True
+                return error_info
+            
             error_info['suggested_action'] = (
                 f"The database container '{container_name}' was not found.\n\n"
                 "This may be because:\n"
@@ -6802,8 +6821,12 @@ If the problem persists, please report this issue on GitHub.
     # The rest of the class code (ensure_nextcloud_container, ensure_db_container, etc.) remains unchanged.
     # ... (rest of the code unchanged from your previous script) ...
 
-    def ensure_nextcloud_container(self):
-        """Ensure Nextcloud container is running, using values from GUI"""
+    def ensure_nextcloud_container(self, dbtype=None):
+        """Ensure Nextcloud container is running, using values from GUI
+        
+        Args:
+            dbtype: Database type ('sqlite', 'mysql', 'pgsql'). If 'sqlite', skip DB container linking.
+        """
         container = get_nextcloud_container_name()
         
         # Check if we should use existing container
@@ -6901,26 +6924,36 @@ If the problem persists, please report this issue on GitHub.
         self.process_label.config(text=f"Creating container: {new_container_name}")
         self.update_idletasks()
         
-        # Try to link to database container for proper Docker networking
-        # First attempt with link and explicit bridge network
-        result = subprocess.run(
-            f'docker run -d --name {new_container_name} --network bridge --link {POSTGRES_CONTAINER_NAME}:db -p {port}:80 {NEXTCLOUD_IMAGE}',
-            shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-        )
-        
-        # If linking failed, try without link but still with bridge network
-        if result.returncode != 0 and "Could not find" in result.stderr:
-            print(f"Warning: Could not link to database container, starting without link: {result.stderr}")
+        # For SQLite, do NOT attempt to link to database container
+        # For MySQL/PostgreSQL, try to link to database container for proper Docker networking
+        if dbtype == 'sqlite':
+            # SQLite - no database container, start without linking
+            logger.info("SQLite detected - starting Nextcloud container without database linking")
             result = subprocess.run(
                 f'docker run -d --name {new_container_name} --network bridge -p {port}:80 {NEXTCLOUD_IMAGE}',
                 shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
             )
+        else:
+            # MySQL/PostgreSQL - try to link to database container
+            # First attempt with link and explicit bridge network
+            result = subprocess.run(
+                f'docker run -d --name {new_container_name} --network bridge --link {POSTGRES_CONTAINER_NAME}:db -p {port}:80 {NEXTCLOUD_IMAGE}',
+                shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            )
+            
+            # If linking failed, try without link but still with bridge network
+            if result.returncode != 0 and "Could not find" in result.stderr:
+                print(f"Warning: Could not link to database container, starting without link: {result.stderr}")
+                result = subprocess.run(
+                    f'docker run -d --name {new_container_name} --network bridge -p {port}:80 {NEXTCLOUD_IMAGE}',
+                    shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+                )
         
         if result.returncode != 0:
             tb = traceback.format_exc()
             
             # Analyze Docker error
-            error_info = analyze_docker_error(result.stderr, container_name=new_container_name, port=port)
+            error_info = analyze_docker_error(result.stderr, container_name=new_container_name, port=port, dbtype=dbtype)
             
             # Log to dedicated Docker error file
             log_docker_error(
@@ -6967,8 +7000,12 @@ If the problem persists, please report this issue on GitHub.
         
         return container_id
 
-    def ensure_db_container(self):
-        """Ensure database container is running, using credentials from GUI"""
+    def ensure_db_container(self, dbtype=None):
+        """Ensure database container is running, using credentials from GUI
+        
+        Args:
+            dbtype: Database type ('sqlite', 'mysql', 'pgsql')
+        """
         db_container = get_postgres_container_name()
         if db_container:
             # Check and attach to bridge network if not connected
@@ -7017,7 +7054,7 @@ If the problem persists, please report this issue on GitHub.
             
             if pull_db_result.returncode != 0:
                 # Analyze Docker error
-                error_info = analyze_docker_error(pull_db_result.stderr, container_name=POSTGRES_CONTAINER_NAME)
+                error_info = analyze_docker_error(pull_db_result.stderr, container_name=POSTGRES_CONTAINER_NAME, dbtype=dbtype)
                 
                 # Log to dedicated Docker error file
                 log_docker_error(
@@ -7061,7 +7098,7 @@ If the problem persists, please report this issue on GitHub.
             tb = traceback.format_exc()
             
             # Analyze Docker error
-            error_info = analyze_docker_error(result.stderr, container_name=POSTGRES_CONTAINER_NAME, port=POSTGRES_PORT)
+            error_info = analyze_docker_error(result.stderr, container_name=POSTGRES_CONTAINER_NAME, port=POSTGRES_PORT, dbtype=dbtype)
             
             # Log to dedicated Docker error file
             log_docker_error(
@@ -8020,7 +8057,7 @@ php /tmp/update_config.php"
                 except tk.TclError:
                     logger.debug("TclError during update_idletasks - window may have been closed")
                 logger.info(f"Creating {dbtype.upper()} database container...")
-                db_container = self.ensure_db_container()
+                db_container = self.ensure_db_container(dbtype=dbtype)
                 if not db_container:
                     logger.error("Failed to create database container!")
                     self.set_restore_progress(0, "Restore failed!")
@@ -8056,7 +8093,7 @@ php /tmp/update_config.php"
             except tk.TclError:
                 logger.debug("TclError during update_idletasks - window may have been closed")
             logger.info(f"Creating Nextcloud container on port {self.restore_container_port}...")
-            nextcloud_container = self.ensure_nextcloud_container()
+            nextcloud_container = self.ensure_nextcloud_container(dbtype=dbtype)
             if not nextcloud_container:
                 self.set_restore_progress(0, "Restore failed!")
                 return
