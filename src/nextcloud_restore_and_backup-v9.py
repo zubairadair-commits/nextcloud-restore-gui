@@ -188,6 +188,35 @@ def analyze_docker_error(stderr_output, container_name=None, port=None):
     
     stderr_lower = stderr_output.lower()
     
+    # No such container error - this is a logic/config error, not Docker not running
+    if 'no such container' in stderr_lower:
+        error_info['error_type'] = 'container_not_found'
+        error_info['user_message'] = "The specified container does not exist."
+        error_info['is_recoverable'] = True
+        
+        # Provide context-specific guidance
+        if container_name and 'db' in container_name.lower():
+            error_info['suggested_action'] = (
+                f"The database container '{container_name}' was not found.\n\n"
+                "This may be because:\n"
+                "1. You are using SQLite (which doesn't need a separate database container)\n"
+                "2. The database container hasn't been created yet\n"
+                "3. The container name is incorrect\n\n"
+                "If you're restoring a SQLite backup, this is expected and the restore should continue.\n"
+                "For MySQL/PostgreSQL, ensure the database container is running:\n"
+                f"  docker ps (to check running containers)\n"
+                f"  docker start {container_name} (to start the container if it exists but is stopped)"
+            )
+        else:
+            error_info['suggested_action'] = (
+                f"Container '{container_name}' does not exist.\n\n"
+                "Check running and stopped containers:\n"
+                "  docker ps -a\n\n"
+                "If the container exists but is stopped, start it:\n"
+                f"  docker start {container_name}"
+            )
+        return error_info
+    
     # Port conflict detection
     if 'bind' in stderr_lower and ('already' in stderr_lower or 'in use' in stderr_lower):
         error_info['error_type'] = 'port_conflict'
@@ -7692,6 +7721,13 @@ If the problem persists, please report this issue on GitHub.
     
     def update_config_php(self, nextcloud_container, db_container, dbtype='pgsql'):
         """Update config.php with database credentials and admin settings"""
+        # For SQLite, we don't need to update database host/credentials
+        # The database file is already in the data directory
+        if dbtype == 'sqlite':
+            logger.info("SQLite detected - skipping database host/credential updates in config.php")
+            print("SQLite database - no database host configuration needed")
+            return
+        
         config_updates = f"""
 docker exec {nextcloud_container} bash -c "cat > /tmp/update_config.php << 'EOFPHP'
 <?php
@@ -7910,7 +7946,11 @@ php /tmp/update_config.php"
                         msg_parts.append(f"Already exist: {', '.join(existing)}")
                     
                     folder_msg = "Host folders prepared: " + " | ".join(msg_parts)
-                    self.process_label.config(text=folder_msg)
+                    safe_widget_update(
+                        self.process_label,
+                        lambda: self.process_label.config(text=folder_msg),
+                        "process label update in restore thread"
+                    )
                     print(f"✓ {folder_msg}")
                     time.sleep(1)  # Give user time to see the message
                 
@@ -7918,14 +7958,22 @@ php /tmp/update_config.php"
                 if errors:
                     error_text = "\n".join(errors)
                     warning_msg = f"⚠️ Warning: Some folders could not be created:\n{error_text}\n\nContinuing with restore..."
-                    self.error_label.config(text=warning_msg, fg="orange")
+                    safe_widget_update(
+                        self.error_label,
+                        lambda: self.error_label.config(text=warning_msg, fg="orange"),
+                        "error label update in restore thread"
+                    )
                     print(f"⚠️ {warning_msg}")
                     time.sleep(2)
                 
             except Exception as folder_err:
                 # Log error but continue - folder creation failure shouldn't stop the restore
                 warning_msg = f"⚠️ Warning: Could not auto-create folders: {folder_err}\n\nContinuing with restore..."
-                self.error_label.config(text=warning_msg, fg="orange")
+                safe_widget_update(
+                    self.error_label,
+                    lambda: self.error_label.config(text=warning_msg, fg="orange"),
+                    "error label update in restore thread"
+                )
                 print(f"⚠️ {warning_msg}")
                 time.sleep(2)
             
@@ -7937,8 +7985,16 @@ php /tmp/update_config.php"
             db_container = None
             if dbtype != 'sqlite':
                 # Start database container first (needed for Nextcloud container linking)
-                self.process_label.config(text=f"Starting {dbtype.upper()} database container...")
-                self.update_idletasks()
+                safe_widget_update(
+                    self.process_label,
+                    lambda: self.process_label.config(text=f"Starting {dbtype.upper()} database container..."),
+                    "process label update in restore thread"
+                )
+                try:
+                    if self.winfo_exists():
+                        self.update_idletasks()
+                except tk.TclError:
+                    logger.debug("TclError during update_idletasks - window may have been closed")
                 logger.info(f"Creating {dbtype.upper()} database container...")
                 db_container = self.ensure_db_container()
                 if not db_container:
@@ -7946,21 +8002,45 @@ php /tmp/update_config.php"
                     self.set_restore_progress(0, "Restore failed!")
                     return
                 logger.info(f"Database container ready: {db_container}")
-                self.process_label.config(text=f"✓ Database container ready: {db_container}")
+                safe_widget_update(
+                    self.process_label,
+                    lambda: self.process_label.config(text=f"✓ Database container ready: {db_container}"),
+                    "process label update in restore thread"
+                )
             else:
                 logger.info("SQLite detected - no separate database container needed")
-                self.process_label.config(text="✓ SQLite detected - no separate database container needed")
-                self.update_idletasks()
+                safe_widget_update(
+                    self.process_label,
+                    lambda: self.process_label.config(text="✓ SQLite detected - no separate database container needed"),
+                    "process label update in restore thread"
+                )
+                try:
+                    if self.winfo_exists():
+                        self.update_idletasks()
+                except tk.TclError:
+                    logger.debug("TclError during update_idletasks - window may have been closed")
             
             # Start Nextcloud container (linked to database if not SQLite)
-            self.process_label.config(text=f"Starting Nextcloud container on port {self.restore_container_port}...")
-            self.update_idletasks()
+            safe_widget_update(
+                self.process_label,
+                lambda: self.process_label.config(text=f"Starting Nextcloud container on port {self.restore_container_port}..."),
+                "process label update in restore thread"
+            )
+            try:
+                if self.winfo_exists():
+                    self.update_idletasks()
+            except tk.TclError:
+                logger.debug("TclError during update_idletasks - window may have been closed")
             logger.info(f"Creating Nextcloud container on port {self.restore_container_port}...")
             nextcloud_container = self.ensure_nextcloud_container()
             if not nextcloud_container:
                 self.set_restore_progress(0, "Restore failed!")
                 return
-            self.process_label.config(text=f"✓ Nextcloud container ready: {nextcloud_container}")
+            safe_widget_update(
+                self.process_label,
+                lambda: self.process_label.config(text=f"✓ Nextcloud container ready: {nextcloud_container}"),
+                "process label update in restore thread"
+            )
 
             self.set_restore_progress(50, self.restore_steps[3])
             nextcloud_path = "/var/www/html"
@@ -7973,8 +8053,16 @@ php /tmp/update_config.php"
                     # Calculate progress (50-65% for file copying)
                     progress = 50 + int((idx / len(folders_to_copy)) * 15)
                     self.set_restore_progress(progress, self.restore_steps[3])
-                    self.process_label.config(text=f"Copying {folder} folder to container...")
-                    self.update_idletasks()
+                    safe_widget_update(
+                        self.process_label,
+                        lambda f=folder: self.process_label.config(text=f"Copying {f} folder to container..."),
+                        "process label update in restore thread"
+                    )
+                    try:
+                        if self.winfo_exists():
+                            self.update_idletasks()
+                    except tk.TclError:
+                        logger.debug("TclError during update_idletasks - window may have been closed")
                     try:
                         # Remove existing folder in container (if it exists)
                         subprocess.run(
@@ -7986,11 +8074,19 @@ php /tmp/update_config.php"
                             f'docker cp "{local_path}/." {nextcloud_container}:{nextcloud_path}/{folder}/',
                             shell=True, check=True
                         )
-                        self.process_label.config(text=f"✓ Copied {folder} folder")
+                        safe_widget_update(
+                            self.process_label,
+                            lambda f=folder: self.process_label.config(text=f"✓ Copied {f} folder"),
+                            "process label update in restore thread"
+                        )
                         print(f"Successfully copied {folder} to container")
                     except Exception as copy_err:
                         tb = traceback.format_exc()
-                        self.error_label.config(text=f"Error copying {folder}: {copy_err}\n{tb}")
+                        safe_widget_update(
+                            self.error_label,
+                            lambda f=folder, e=copy_err, t=tb: self.error_label.config(text=f"Error copying {f}: {e}\n{t}"),
+                            "error label update in restore thread"
+                        )
                         print(tb)
                         self.set_restore_progress(0, "Restore failed!")
                         return
@@ -8016,7 +8112,11 @@ php /tmp/update_config.php"
             else:
                 # Unknown database type - show warning
                 warning_msg = f"Warning: Unknown database type '{dbtype}'. Skipping database restore."
-                self.error_label.config(text=warning_msg, fg="orange")
+                safe_widget_update(
+                    self.error_label,
+                    lambda: self.error_label.config(text=warning_msg, fg="orange"),
+                    "error label update in restore thread"
+                )
                 logger.warning(f"Unknown database type: {dbtype}")
                 print(warning_msg)
             
@@ -8029,27 +8129,55 @@ php /tmp/update_config.php"
                 # For non-SQLite databases, if restore failed, we might want to continue with warning
                 # rather than failing the entire restore
                 warning_msg = f"Warning: Database restore had issues. Please check manually."
-                self.error_label.config(text=warning_msg, fg="orange")
+                safe_widget_update(
+                    self.error_label,
+                    lambda: self.error_label.config(text=warning_msg, fg="orange"),
+                    "error label update in restore thread"
+                )
                 print(warning_msg)
             
             # Update config.php with database credentials
             self.set_restore_progress(75, "Updating Nextcloud configuration ...")
-            self.process_label.config(text="Updating config.php with database credentials ...")
-            self.update_idletasks()
+            safe_widget_update(
+                self.process_label,
+                lambda: self.process_label.config(text="Updating config.php with database credentials ..."),
+                "process label update in restore thread"
+            )
+            try:
+                if self.winfo_exists():
+                    self.update_idletasks()
+            except tk.TclError:
+                logger.debug("TclError during update_idletasks - window may have been closed")
             try:
                 self.update_config_php(nextcloud_container, db_container, dbtype)
-                self.process_label.config(text="✓ Configuration updated successfully")
+                safe_widget_update(
+                    self.process_label,
+                    lambda: self.process_label.config(text="✓ Configuration updated successfully"),
+                    "process label update in restore thread"
+                )
                 print("Config.php updated with correct database settings")
             except Exception as config_err:
                 # Show warning but continue
                 warning_msg = f"Warning: Could not update config.php: {config_err}. You may need to configure manually."
-                self.error_label.config(text=warning_msg, fg="orange")
+                safe_widget_update(
+                    self.error_label,
+                    lambda: self.error_label.config(text=warning_msg, fg="orange"),
+                    "error label update in restore thread"
+                )
                 print(f"Warning: config.php update failed: {config_err}")
 
             # Validate that required files exist
             self.set_restore_progress(85, "Validating restored files ...")
-            self.process_label.config(text="Validating config and data folders ...")
-            self.update_idletasks()
+            safe_widget_update(
+                self.process_label,
+                lambda: self.process_label.config(text="Validating config and data folders ..."),
+                "process label update in restore thread"
+            )
+            try:
+                if self.winfo_exists():
+                    self.update_idletasks()
+            except tk.TclError:
+                logger.debug("TclError during update_idletasks - window may have been closed")
             try:
                 # Check if config.php exists
                 check_config = subprocess.run(
@@ -8058,7 +8186,11 @@ php /tmp/update_config.php"
                 )
                 if check_config.returncode != 0:
                     error_msg = "Error: config.php not found after restore. The backup may be incomplete."
-                    self.error_label.config(text=error_msg, fg="red")
+                    safe_widget_update(
+                        self.error_label,
+                        lambda: self.error_label.config(text=error_msg, fg="red"),
+                        "error label update in restore thread"
+                    )
                     self.set_restore_progress(0, "Restore failed!")
                     return
                 
@@ -8069,68 +8201,135 @@ php /tmp/update_config.php"
                 )
                 if check_data.returncode != 0:
                     error_msg = "Error: data folder not found after restore. The backup may be incomplete."
-                    self.error_label.config(text=error_msg, fg="red")
+                    safe_widget_update(
+                        self.error_label,
+                        lambda: self.error_label.config(text=error_msg, fg="red"),
+                        "error label update in restore thread"
+                    )
                     self.set_restore_progress(0, "Restore failed!")
                     return
                 
-                self.process_label.config(text="✓ All critical files validated")
+                safe_widget_update(
+                    self.process_label,
+                    lambda: self.process_label.config(text="✓ All critical files validated"),
+                    "process label update in restore thread"
+                )
                 print("File validation successful: config.php and data folder exist.")
             except Exception as val_err:
                 warning_msg = f"Warning: Could not validate files: {val_err}"
-                self.error_label.config(text=warning_msg, fg="orange")
+                safe_widget_update(
+                    self.error_label,
+                    lambda: self.error_label.config(text=warning_msg, fg="orange"),
+                    "error label update in restore thread"
+                )
                 print(f"Warning: file validation error: {val_err}")
             
             self.set_restore_progress(90, self.restore_steps[5])
-            self.process_label.config(text="Setting file permissions for web server...")
-            self.update_idletasks()
+            safe_widget_update(
+                self.process_label,
+                lambda: self.process_label.config(text="Setting file permissions for web server..."),
+                "process label update in restore thread"
+            )
+            try:
+                if self.winfo_exists():
+                    self.update_idletasks()
+            except tk.TclError:
+                logger.debug("TclError during update_idletasks - window may have been closed")
             try:
                 subprocess.run(
                     f'docker exec {nextcloud_container} chown -R www-data:www-data {nextcloud_path}/config {nextcloud_path}/data',
                     shell=True, check=True
                 )
-                self.process_label.config(text="✓ File permissions set correctly")
+                safe_widget_update(
+                    self.process_label,
+                    lambda: self.process_label.config(text="✓ File permissions set correctly"),
+                    "process label update in restore thread"
+                )
                 print("Permissions set successfully.")
             except subprocess.CalledProcessError as perm_err:
                 # Display warning but allow restore to continue
                 warning_msg = f"Warning: Could not set file permissions (chown failed). You may need to set permissions manually."
-                self.error_label.config(text=warning_msg, fg="orange")
-                self.process_label.config(text=f"Permission warning (continuing restore): {perm_err}")
+                safe_widget_update(
+                    self.error_label,
+                    lambda: self.error_label.config(text=warning_msg, fg="orange"),
+                    "error label update in restore thread"
+                )
+                safe_widget_update(
+                    self.process_label,
+                    lambda: self.process_label.config(text=f"Permission warning (continuing restore): {perm_err}"),
+                    "process label update in restore thread"
+                )
                 print(f"Warning: chown failed but continuing restore: {perm_err}")
             except Exception as perm_err:
                 # For other exceptions, show warning but also continue
                 warning_msg = f"Warning: Error setting permissions: {perm_err}. You may need to set permissions manually."
-                self.error_label.config(text=warning_msg, fg="orange")
-                self.process_label.config(text=f"Permission warning (continuing restore): {perm_err}")
+                safe_widget_update(
+                    self.error_label,
+                    lambda: self.error_label.config(text=warning_msg, fg="orange"),
+                    "error label update in restore thread"
+                )
+                safe_widget_update(
+                    self.process_label,
+                    lambda: self.process_label.config(text=f"Permission warning (continuing restore): {perm_err}"),
+                    "process label update in restore thread"
+                )
                 print(f"Warning: permission error but continuing restore: {perm_err}")
 
             # Restart Nextcloud container to apply all changes
             self.set_restore_progress(95, "Restarting Nextcloud container ...")
-            self.process_label.config(text="Restarting Nextcloud to apply changes...")
-            self.update_idletasks()
+            safe_widget_update(
+                self.process_label,
+                lambda: self.process_label.config(text="Restarting Nextcloud to apply changes..."),
+                "process label update in restore thread"
+            )
+            try:
+                if self.winfo_exists():
+                    self.update_idletasks()
+            except tk.TclError:
+                logger.debug("TclError during update_idletasks - window may have been closed")
             try:
                 subprocess.run(
                     f'docker restart {nextcloud_container}',
                     shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
                 )
-                self.process_label.config(text="✓ Nextcloud restarted successfully")
+                safe_widget_update(
+                    self.process_label,
+                    lambda: self.process_label.config(text="✓ Nextcloud restarted successfully"),
+                    "process label update in restore thread"
+                )
                 print(f"Nextcloud container restarted successfully.")
                 time.sleep(3)  # Give container time to start
             except Exception as restart_err:
                 warning_msg = f"Warning: Could not restart Nextcloud container: {restart_err}"
-                self.error_label.config(text=warning_msg, fg="orange")
+                safe_widget_update(
+                    self.error_label,
+                    lambda: self.error_label.config(text=warning_msg, fg="orange"),
+                    "error label update in restore thread"
+                )
                 print(f"Warning: container restart failed: {restart_err}")
 
             self.set_restore_progress(100, self.restore_steps[6])
-            self.process_label.config(text="✅ Restore completed successfully!")
+            safe_widget_update(
+                self.process_label,
+                lambda: self.process_label.config(text="✅ Restore completed successfully!"),
+                "process label update in restore thread"
+            )
             
             # Clear or show final status in error label
-            if hasattr(self, "error_label") and self.error_label:
-                current_text = self.error_label.cget("text")
-                if current_text and "Warning" in current_text:
-                    # Keep the warning message but add success note
-                    pass  # Keep the warning visible
-                else:
-                    self.error_label.config(text="", fg="red")
+            try:
+                if hasattr(self, "error_label") and self.error_label:
+                    current_text = self.error_label.cget("text")
+                    if current_text and "Warning" in current_text:
+                        # Keep the warning message but add success note
+                        pass  # Keep the warning visible
+                    else:
+                        safe_widget_update(
+                            self.error_label,
+                            lambda: self.error_label.config(text="", fg="red"),
+                            "error label update in restore thread"
+                        )
+            except tk.TclError:
+                logger.debug("TclError during final error label update - window may have been closed")
             
             # Show completion dialog with "Open Nextcloud" option
             self.show_restore_completion_dialog(nextcloud_container, self.restore_container_port)
