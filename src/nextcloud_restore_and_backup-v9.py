@@ -93,6 +93,40 @@ def setup_docker_error_logging():
 
 DOCKER_ERROR_LOG_PATH = setup_docker_error_logging()
 
+def safe_widget_update(widget, update_func, error_context="widget update"):
+    """
+    Safely update a widget, catching TclError if the widget has been destroyed.
+    
+    Args:
+        widget: The widget to update (or None)
+        update_func: A callable that performs the update
+        error_context: Description of what's being updated (for logging)
+    
+    Returns:
+        True if update succeeded, False otherwise
+    """
+    if widget is None:
+        logger.debug(f"Skipping {error_context}: widget is None")
+        return False
+    
+    try:
+        # Check if widget still exists
+        if not widget.winfo_exists():
+            logger.debug(f"Skipping {error_context}: widget no longer exists")
+            return False
+        
+        # Perform the update
+        update_func()
+        return True
+    except tk.TclError as e:
+        # Widget was destroyed between existence check and update
+        logger.debug(f"TclError during {error_context}: {e}")
+        return False
+    except Exception as e:
+        # Log unexpected errors but don't crash
+        logger.error(f"Unexpected error during {error_context}: {e}")
+        return False
+
 def log_docker_error(error_type, error_message, container_name=None, port=None, additional_info=None):
     """
     Log Docker error to dedicated error log file with timestamp and context.
@@ -250,7 +284,7 @@ def analyze_docker_error(stderr_output, container_name=None, port=None):
             "Run with proper permissions:\n"
             "  - Windows: Run as Administrator\n"
             "  - Linux: Add user to docker group or use sudo\n"
-            "    sudo usermod -aG docker $USER\n"
+            "    sudo usermod -aG docker $(whoami)\n"
             "    (logout and login again after running this)"
         )
     
@@ -1241,7 +1275,7 @@ def detect_docker_status():
             elif system == 'Linux':
                 suggested_action = (
                     "Add your user to the docker group:\n"
-                    "  sudo usermod -aG docker $USER\n\n"
+                    "  sudo usermod -aG docker $(whoami)\n\n"
                     "Then log out and log back in for changes to take effect.\n\n"
                     "Alternatively, run with sudo (not recommended for GUI apps)."
                 )
@@ -6493,12 +6527,28 @@ If the problem persists, please report this issue on GitHub.
     def set_restore_progress(self, percent, msg=""):
         # percent: 0-100
         if hasattr(self, "progressbar") and self.progressbar:
-            self.progressbar['value'] = percent
+            safe_widget_update(
+                self.progressbar,
+                lambda: setattr(self.progressbar, 'value', percent),
+                "progress bar value update"
+            )
         if hasattr(self, "progress_label") and self.progress_label:
-            self.progress_label.config(text=f"{percent}%")
-        if msg:
-            self.status_label.config(text=msg)
-        self.update_idletasks()
+            safe_widget_update(
+                self.progress_label,
+                lambda: self.progress_label.config(text=f"{percent}%"),
+                "progress label update"
+            )
+        if msg and hasattr(self, "status_label") and self.status_label:
+            safe_widget_update(
+                self.status_label,
+                lambda: self.status_label.config(text=msg),
+                "status label update"
+            )
+        try:
+            if self.winfo_exists():
+                self.update_idletasks()
+        except tk.TclError:
+            logger.debug("TclError during update_idletasks - window may have been closed")
 
     def auto_extract_backup(self, backup_path, password=None):
         """
@@ -7665,8 +7715,16 @@ php /tmp/update_config.php"
 
             # Auto-detect database type from config.php
             self.set_restore_progress(18, "Detecting database type ...")
-            self.process_label.config(text="Reading config.php to detect database type ...")
-            self.update_idletasks()
+            safe_widget_update(
+                self.process_label,
+                lambda: self.process_label.config(text="Reading config.php to detect database type ..."),
+                "process label update in restore thread"
+            )
+            try:
+                if self.winfo_exists():
+                    self.update_idletasks()
+            except tk.TclError:
+                logger.debug("TclError during update_idletasks - window may have been closed")
             logger.info("Step 2/7: Detecting database configuration...")
             
             dbtype, db_config = self.detect_database_type(extract_dir)
@@ -7694,8 +7752,16 @@ php /tmp/update_config.php"
                     "Using PostgreSQL as default. The restore will continue,\n"
                     "but please verify your database configuration matches your backup."
                 )
-                self.error_label.config(text=warning_msg, fg="orange")
-                self.process_label.config(text="Proceeding with PostgreSQL (default)...")
+                safe_widget_update(
+                    self.error_label,
+                    lambda: self.error_label.config(text=warning_msg, fg="orange"),
+                    "error label update in restore thread"
+                )
+                safe_widget_update(
+                    self.process_label,
+                    lambda: self.process_label.config(text="Proceeding with PostgreSQL (default)..."),
+                    "process label update in restore thread"
+                )
                 logger.warning("config.php not found - using PostgreSQL as default")
                 print(warning_msg)
                 dbtype = 'pgsql'
@@ -7707,8 +7773,16 @@ php /tmp/update_config.php"
             
             # Generate Docker Compose YAML automatically
             self.set_restore_progress(21, "Generating Docker Compose configuration...")
-            self.process_label.config(text="Creating docker-compose.yml with detected settings...")
-            self.update_idletasks()
+            safe_widget_update(
+                self.process_label,
+                lambda: self.process_label.config(text="Creating docker-compose.yml with detected settings..."),
+                "process label update in restore thread"
+            )
+            try:
+                if self.winfo_exists():
+                    self.update_idletasks()
+            except tk.TclError:
+                logger.debug("TclError during update_idletasks - window may have been closed")
             
             try:
                 # Generate docker-compose.yml based on detected configuration
@@ -7739,7 +7813,11 @@ php /tmp/update_config.php"
                 # Store the compose file path for later reference (e.g., advanced options)
                 self.last_generated_compose_file = str(compose_file_path)
                 
-                self.process_label.config(text=f"✓ Generated docker-compose.yml with {dbtype} configuration")
+                safe_widget_update(
+                    self.process_label,
+                    lambda: self.process_label.config(text=f"✓ Generated docker-compose.yml with {dbtype} configuration"),
+                    "process label update in restore thread"
+                )
                 logger.info(f"Docker Compose file saved to: {compose_file_path}")
                 print(f"Docker Compose file saved to internal storage: {compose_file_path}")
                 print(f"Configuration: {dbtype} database on port {self.restore_container_port}")
@@ -7747,13 +7825,25 @@ php /tmp/update_config.php"
             except Exception as yaml_err:
                 # Not fatal - continue with manual container creation
                 warning_msg = f"⚠️ Warning: Could not generate docker-compose.yml: {yaml_err}\nContinuing with manual container setup..."
-                self.error_label.config(text=warning_msg, fg="orange")
+                safe_widget_update(
+                    self.error_label,
+                    lambda: self.error_label.config(text=warning_msg, fg="orange"),
+                    "error label update in restore thread"
+                )
                 print(f"Warning: YAML generation failed: {yaml_err}")
                 time.sleep(2)
             
             # Auto-create required host folders before starting containers
-            self.process_label.config(text="Checking and creating required host folders...")
-            self.update_idletasks()
+            safe_widget_update(
+                self.process_label,
+                lambda: self.process_label.config(text="Checking and creating required host folders..."),
+                "process label update in restore thread"
+            )
+            try:
+                if self.winfo_exists():
+                    self.update_idletasks()
+            except tk.TclError:
+                logger.debug("TclError during update_idletasks - window may have been closed")
             
             try:
                 # Detect required folders from config.php and docker-compose.yml
@@ -8668,12 +8758,19 @@ php /tmp/update_config.php"
         scrollbar = tk.Scrollbar(main_container, command=canvas.yview)
         error_frame = tk.Frame(canvas, bg=self.theme_colors['bg'])
         
-        error_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
+        # Function to center content in canvas
+        def update_scroll_region(event=None):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            # Center the window horizontally
+            canvas_width = canvas.winfo_width()
+            frame_width = error_frame.winfo_reqwidth()
+            x_position = max(0, (canvas_width - frame_width) // 2)
+            canvas.coords(canvas_window, x_position, 0)
         
-        canvas.create_window((0, 0), window=error_frame, anchor="nw")
+        error_frame.bind("<Configure>", update_scroll_region)
+        canvas.bind("<Configure>", update_scroll_region)
+        
+        canvas_window = canvas.create_window((0, 0), window=error_frame, anchor="n")
         canvas.configure(yscrollcommand=scrollbar.set)
         
         # Header with error icon
