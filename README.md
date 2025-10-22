@@ -124,6 +124,40 @@ If you want to contribute to the project or run from source:
 
 For more details, see the `docs/DEVELOPER_GUIDE.md` file.
 
+## Application Screenshots: Effortless Nextcloud Backup & Restore
+
+Experience the simplicity and power of Nextcloud Restore GUI through these screenshots. Each page is designed to be intuitive and beginner-friendly, so anyone can confidently protect and restore their Nextcloud data with just a few clicks.
+
+### Landing Page
+![Landing Page](screenshots/landing%20page.png)
+
+**Your starting point.** Instantly access all major features from a clean and clear dashboard.
+
+### Start New Instance
+![Start New Instance](screenshots/start%20new%20instance.png)
+
+**Create a fresh Nextcloud environment** with guided setup. The wizard makes configuration effortless.
+
+### Restore from Backup
+![Restore from Backup](screenshots/restore%20from%20backup.png)
+
+**Restore your Nextcloud data easily.** The restore wizard provides step-by-step guidance and removes technical hurdles.
+
+### Schedual Backup
+![Schedual Backup](screenshots/schedual%20backup.png)
+
+**Automate backups** with simple scheduling controls. Set your preferred intervals and let the app handle the rest.
+
+### Backup History
+![Backup History](screenshots/backup%20history.png)
+
+**View and manage your backups.** Instantly see when backups occurred, their size, and status. Restore or delete with a click.
+
+### Remote Access
+![Remote Access](screenshots/remote%20access.png)
+
+**Enable secure remote access** using Tailscale. Connect to your instance from anywhere, with easy setup and clear status indicators.
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
