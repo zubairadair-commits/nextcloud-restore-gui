@@ -38,6 +38,34 @@ Traditional Nextcloud backup and restore requires:
 - **User-Friendly GUI**: Intuitive graphical interface - no command-line needed
 - **Cross-Platform**: Works on Windows, Linux, and other operating systems
 
+## GUI Overview
+
+Experience the simplicity and user-friendliness of our intuitive interface. Below are screenshots showcasing the key features and how easy it is to navigate through the application:
+
+### Main Dashboard
+![Landing Page](screenshots/01-landing-page.png)
+**The intuitive main dashboard** provides instant access to all essential functions with clearly labeled buttons. No confusing menus or hidden options - everything you need is right at your fingertips. Simply click on any option to get started with backing up, restoring, or managing your Nextcloud instance.
+
+### Restore from Backup
+![Restore Wizard](screenshots/02-restore-wizard.png)
+**Step-by-step restore wizard** makes recovering your Nextcloud instance effortless. The wizard guides you through each step with clear instructions and helpful tooltips. All technical complexities are handled automatically - just select your backup file and let the application do the rest.
+
+### Backup Your Data
+![Backup Wizard](screenshots/03-backup-wizard.png)
+**One-click backup wizard** simplifies the entire backup process. The interface clearly shows what will be backed up and where it will be stored. Advanced options are available if needed, but the smart defaults work perfectly for most users. Creating secure backups has never been easier!
+
+### Schedule Automated Backups
+![Schedule Backup](screenshots/04-schedule-backup.png)
+**Automated backup scheduling** allows you to set up recurring backups with just a few clicks. Choose your preferred schedule (daily, weekly, or custom intervals) and let the application handle everything automatically. The clean interface makes it easy to configure backup retention policies and encryption options.
+
+### Remote Access Setup
+![Remote Access](screenshots/05-remote-access.png)
+**Seamless Tailscale integration** for secure remote access to your Nextcloud instance from anywhere in the world. The setup process is fully automated - the application detects if Tailscale is installed and guides you through the configuration. Access your backups remotely without complex VPN or port forwarding setups.
+
+### Backup History & Management
+![Backup History](screenshots/06-backup-history.png)
+**Comprehensive backup history** gives you complete visibility into all your backup operations. View detailed information about each backup, including size, date, and status. Restore from any previous backup point with a single click. The organized layout makes it easy to manage and clean up old backups.
+
 ## Getting Started - It's Really This Simple!
 
 **Total Time: Less than 5 minutes from download to your first backup or restore!**
