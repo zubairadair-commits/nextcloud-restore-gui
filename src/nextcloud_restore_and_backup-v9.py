@@ -1541,6 +1541,7 @@ def get_docker_desktop_path():
 def start_docker_desktop():
     """
     Attempt to start Docker Desktop based on the platform.
+    Starts Docker silently in the background without showing the GUI window.
     Returns: True if launch was attempted, False otherwise
     """
     docker_path = get_docker_desktop_path()
@@ -1550,15 +1551,33 @@ def start_docker_desktop():
     
     try:
         system = platform.system()
-        creation_flags = get_subprocess_creation_flags()
         if system == "Windows":
-            logger.info(f"Starting Docker Desktop on Windows: {docker_path}")
-            subprocess.Popen([docker_path], shell=False, creationflags=creation_flags)
+            logger.info(f"Starting Docker Desktop on Windows silently: {docker_path}")
+            # Use STARTUPINFO to start Docker Desktop minimized/hidden
+            import subprocess
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 0  # SW_HIDE - start hidden/minimized
+            creation_flags = get_subprocess_creation_flags()
+            subprocess.Popen(
+                [docker_path], 
+                shell=False, 
+                creationflags=creation_flags,
+                startupinfo=startupinfo,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
         elif system == "Darwin":  # macOS
-            logger.info("Starting Docker Desktop on macOS")
+            logger.info("Starting Docker Desktop on macOS in background")
             # Use -g flag to run in background without bringing the app to foreground
-            # Use -j flag to hide the app from the Dock (optional)
-            subprocess.Popen(['open', '-g', '-a', 'Docker'])
+            # Use -j flag to hide the app from the Dock
+            subprocess.Popen(
+                ['open', '-g', '-j', '-a', 'Docker'],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
         return True
     except Exception as e:
         logger.error(f"Failed to start Docker Desktop: {e}")
@@ -4111,7 +4130,8 @@ class NextcloudRestoreWizard(tk.Tk):
     def check_docker_running(self):
         """
         Check if Docker is running and automatically attempt to start it if not.
-        Returns: True if Docker is running or was successfully started, False otherwise
+        Uses background thread to avoid UI freezing during Docker startup.
+        Returns: True if Docker is already running, False if not (including if starting)
         """
         # First check if Docker is already running
         if is_docker_running():
@@ -4126,54 +4146,62 @@ class NextcloudRestoreWizard(tk.Tk):
             
             # Show notification that Docker is starting
             self.status_label.config(
-                text="🐳 Docker is starting... Please wait (this may take 10-30 seconds)",
+                text="🐳 Docker is starting in the background... Please wait (this may take 10-30 seconds)",
                 fg=self.theme_colors['info_fg']
             )
             self.update_idletasks()
             
-            # Try to start Docker Desktop
-            if start_docker_desktop():
-                logger.info("Docker Desktop start command issued, waiting for Docker to become available...")
-                
-                # Wait for Docker to start (with retries)
-                max_wait_time = 30  # seconds
-                check_interval = 3  # seconds
-                elapsed = 0
-                
-                while elapsed < max_wait_time:
-                    time.sleep(check_interval)
-                    elapsed += check_interval
+            # Try to start Docker Desktop in background thread to keep UI responsive
+            def start_docker_background():
+                """Background thread function to start Docker and wait for it"""
+                if start_docker_desktop():
+                    logger.info("Docker Desktop start command issued, waiting for Docker to become available...")
                     
-                    # Update status with elapsed time
-                    self.status_label.config(
-                        text=f"🐳 Docker is starting... Please wait ({elapsed}s elapsed)",
-                        fg=self.theme_colors['info_fg']
-                    )
-                    self.update_idletasks()
+                    # Wait for Docker to start (with retries)
+                    max_wait_time = 30  # seconds
+                    check_interval = 3  # seconds
+                    elapsed = 0
                     
-                    if is_docker_running():
-                        logger.info(f"Docker started successfully after {elapsed} seconds")
-                        self.status_label.config(
-                            text="✓ Docker started successfully!",
-                            fg='#45bf55'
-                        )
-                        self.update_idletasks()
-                        time.sleep(1)  # Brief pause to show success message
-                        return True
+                    while elapsed < max_wait_time:
+                        time.sleep(check_interval)
+                        elapsed += check_interval
+                        
+                        # Update status with elapsed time using after() for thread safety
+                        self.root.after(0, lambda e=elapsed: self.status_label.config(
+                            text=f"🐳 Docker is starting... {e} seconds elapsed",
+                            fg=self.theme_colors['info_fg']
+                        ))
+                        
+                        if is_docker_running():
+                            logger.info(f"Docker started successfully after {elapsed} seconds")
+                            # Update UI on main thread with success message
+                            self.root.after(0, lambda: self.status_label.config(
+                                text="✓ Docker started successfully! You can now proceed with backup or restore.",
+                                fg='#45bf55'
+                            ))
+                            return
+                        
+                        logger.debug(f"Waiting for Docker to start... ({elapsed}s/{max_wait_time}s)")
                     
-                    logger.debug(f"Waiting for Docker to start... ({elapsed}s/{max_wait_time}s)")
-                
-                # Docker didn't start in time
-                error_msg = "Docker Desktop is starting but not ready yet. Please wait a moment and try again."
-                logger.error(error_msg)
-                self.status_label.config(text=error_msg, fg=self.theme_colors['error_fg'])
-                return False
-            else:
-                # Could not start Docker Desktop (not found or error)
-                error_msg = "Could not start Docker automatically. Please start Docker Desktop manually."
-                logger.error(error_msg)
-                self.status_label.config(text=error_msg, fg=self.theme_colors['error_fg'])
-                return False
+                    # Docker didn't start in time
+                    error_msg = "Docker Desktop is starting but not ready yet. Please wait a moment and try again."
+                    logger.error(error_msg)
+                    self.root.after(0, lambda: self.status_label.config(
+                        text=error_msg, 
+                        fg=self.theme_colors['error_fg']
+                    ))
+                else:
+                    # Could not start Docker Desktop (not found or error)
+                    error_msg = "Could not start Docker automatically. Please start Docker Desktop manually."
+                    logger.error(error_msg)
+                    self.root.after(0, lambda: self.status_label.config(
+                        text=error_msg, 
+                        fg=self.theme_colors['error_fg']
+                    ))
+            
+            # Start Docker in background thread to keep UI responsive
+            threading.Thread(target=start_docker_background, daemon=True).start()
+            return False  # Return False as Docker is not running yet (starting in background)
         else:
             # Docker is not installed or other error
             error_msg = docker_status['message']
