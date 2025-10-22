@@ -2992,9 +2992,9 @@ def extract_config_php_only(archive_path, extract_to):
         raise Exception(f"Extraction failed: {e}")
 
 
-def fast_extract_tar_gz(archive_path, extract_to):
+def fast_extract_tar_gz(archive_path, extract_to, progress_callback=None, batch_size=50):
     """
-    Extract full tar.gz archive using Python's tarfile module.
+    Extract full tar.gz archive using Python's tarfile module with live progress updates.
     
     This function performs a complete extraction of all files in the backup archive.
     It should only be called during the actual restore process, not during initial
@@ -3007,6 +3007,10 @@ def fast_extract_tar_gz(archive_path, extract_to):
     Args:
         archive_path: Path to the .tar.gz backup archive
         extract_to: Directory where all files should be extracted
+        progress_callback: Optional callback function(files_extracted, total_files, current_file)
+                          that gets called after each batch of files is extracted
+        batch_size: Number of files to extract before calling the progress callback
+                   (default: 50, adjust based on archive size for UI responsiveness)
     
     Raises:
         Exception: If archive is corrupted, unreadable, or extraction fails
@@ -3014,9 +3018,33 @@ def fast_extract_tar_gz(archive_path, extract_to):
     os.makedirs(extract_to, exist_ok=True)
     try:
         with tarfile.open(archive_path, 'r:gz') as tar:
-            # Extract all members
-            tar.extractall(path=extract_to)
-        print(f"✓ Successfully extracted full archive to {extract_to}")
+            # Get all members to know total count
+            members = tar.getmembers()
+            total_files = len(members)
+            
+            # If no progress callback, use old behavior for backwards compatibility
+            if progress_callback is None:
+                tar.extractall(path=extract_to)
+                print(f"✓ Successfully extracted full archive to {extract_to}")
+                return
+            
+            # Extract files one by one (or in batches) with progress updates
+            files_extracted = 0
+            batch_count = 0
+            
+            for member in members:
+                # Extract single member
+                tar.extract(member, path=extract_to)
+                files_extracted += 1
+                batch_count += 1
+                
+                # Call progress callback after each batch
+                if batch_count >= batch_size or files_extracted == total_files:
+                    current_file = os.path.basename(member.name) if member.name else "..."
+                    progress_callback(files_extracted, total_files, current_file)
+                    batch_count = 0
+            
+        print(f"✓ Successfully extracted {total_files} files to {extract_to}")
     except tarfile.ReadError as e:
         raise Exception(f"Invalid or corrupted archive: {e}")
     except OSError as e:
@@ -6917,13 +6945,64 @@ If the problem persists, please report this issue on GitHub.
             except tk.TclError:
                 logger.debug("TclError during update_idletasks - window may have been closed")
             
-            # Start extraction in a background thread with progress updates
+            # Initialize extraction tracking
             extraction_done = [False]  # Use list for mutable flag
+            extraction_start_time = [time.time()]  # Track extraction start time
+            
+            def extraction_progress_callback(files_extracted, total_files, current_file):
+                """
+                Callback function to update UI with extraction progress.
+                Called after each batch of files is extracted.
+                """
+                try:
+                    # Calculate progress percentage (10-18% range for extraction phase)
+                    if total_files > 0:
+                        file_percent = (files_extracted / total_files) * 100
+                        # Map to 10-18% range for extraction phase
+                        progress_val = 10 + int((file_percent / 100) * 8)
+                    else:
+                        progress_val = 10
+                    
+                    # Calculate elapsed time and estimate
+                    elapsed = time.time() - extraction_start_time[0]
+                    if files_extracted > 0 and elapsed > 0:
+                        rate = files_extracted / elapsed
+                        remaining_files = total_files - files_extracted
+                        est_remaining = remaining_files / rate if rate > 0 else 0
+                        
+                        elapsed_str = self._format_time(elapsed)
+                        est_str = self._format_time(est_remaining)
+                        
+                        status_msg = f"Extracting files: {files_extracted}/{total_files} | Elapsed: {elapsed_str} | Est: {est_str}"
+                    else:
+                        status_msg = f"Extracting files: {files_extracted}/{total_files}"
+                    
+                    # Update progress bar and status
+                    self.set_restore_progress(progress_val, status_msg)
+                    
+                    # Update process label with current file
+                    if current_file and len(current_file) > 0:
+                        file_display = current_file[:50] + "..." if len(current_file) > 50 else current_file
+                        safe_widget_update(
+                            self.process_label,
+                            lambda: self.process_label.config(text=f"Extracting: {file_display}"),
+                            "process label update during extraction"
+                        )
+                    
+                    # Force UI update
+                    try:
+                        if self.winfo_exists():
+                            self.update_idletasks()
+                    except tk.TclError:
+                        pass
+                except Exception as ex:
+                    logger.debug(f"Error in extraction progress callback: {ex}")
             
             def do_extraction():
                 try:
                     # Extract ALL files from the backup (not just config.php)
-                    fast_extract_tar_gz(extracted_file, extract_temp)
+                    # Pass progress callback for live updates
+                    fast_extract_tar_gz(extracted_file, extract_temp, progress_callback=extraction_progress_callback)
                     extraction_done[0] = True
                 except Exception as ex:
                     extraction_done[0] = ex
@@ -6931,20 +7010,6 @@ If the problem persists, please report this issue on GitHub.
             # Start extraction in a thread
             extraction_thread = threading.Thread(target=do_extraction, daemon=True)
             extraction_thread.start()
-            
-            # Update progress while extraction is running
-            progress_val = 10
-            while extraction_thread.is_alive():
-                if progress_val < 18:
-                    progress_val += 2
-                    self.set_restore_progress(progress_val, "Extracting backup archive ...")
-                    try:
-                        if self.winfo_exists():
-                            self.update_idletasks()
-                    except tk.TclError:
-                        logger.debug("TclError during update_idletasks - window may have been closed")
-                        break  # Exit loop if window is closed
-                time.sleep(0.5)  # Check every 0.5 seconds
             
             # Wait for thread to finish
             extraction_thread.join()
