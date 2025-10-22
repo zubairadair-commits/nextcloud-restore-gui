@@ -1541,7 +1541,12 @@ def get_docker_desktop_path():
 def start_docker_desktop():
     """
     Attempt to start Docker Desktop based on the platform.
-    Starts Docker silently in the background without showing the GUI window.
+    Starts Docker silently in the background with minimal window visibility.
+    
+    Note: Docker Desktop may still briefly show its window during startup as this
+    is controlled by the Docker Desktop application itself. The flags used here
+    minimize but may not completely eliminate window visibility.
+    
     Returns: True if launch was attempted, False otherwise
     """
     docker_path = get_docker_desktop_path()
@@ -1553,12 +1558,16 @@ def start_docker_desktop():
         system = platform.system()
         if system == "Windows":
             logger.info(f"Starting Docker Desktop on Windows silently: {docker_path}")
-            # Use STARTUPINFO to start Docker Desktop minimized/hidden
+            # Use STARTUPINFO to start Docker Desktop minimized
+            # Note: SW_HIDE (0) doesn't work well with Docker Desktop as it manages its own windows
+            # SW_SHOWMINNOACTIVE (7) is more reliable - starts minimized without focus
             import subprocess
             startupinfo = subprocess.STARTUPINFO()
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            startupinfo.wShowWindow = 0  # SW_HIDE - start hidden/minimized
+            startupinfo.wShowWindow = 7  # SW_SHOWMINNOACTIVE - minimized, no activation
             creation_flags = get_subprocess_creation_flags()
+            
+            # Start Docker Desktop
             subprocess.Popen(
                 [docker_path], 
                 shell=False, 
@@ -1568,16 +1577,22 @@ def start_docker_desktop():
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL
             )
+            
+            logger.info("Docker Desktop started minimized. Window may briefly appear during startup.")
+            
         elif system == "Darwin":  # macOS
             logger.info("Starting Docker Desktop on macOS in background")
             # Use -g flag to run in background without bringing the app to foreground
-            # Use -j flag to hide the app from the Dock
+            # Use -j flag to hide the app from the Dock (may not work for all macOS versions)
             subprocess.Popen(
                 ['open', '-g', '-j', '-a', 'Docker'],
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL
             )
+            
+            logger.info("Docker Desktop started in background. GUI managed by Docker Desktop itself.")
+            
         return True
     except Exception as e:
         logger.error(f"Failed to start Docker Desktop: {e}")
@@ -4144,16 +4159,15 @@ class NextcloudRestoreWizard(tk.Tk):
         if docker_status['status'] == 'not_running':
             logger.info("Docker is not running, attempting to start Docker Desktop automatically...")
             
-            # Show notification that Docker is starting
-            self.status_label.config(
-                text="🐳 Docker is starting in the background... Please wait (this may take 10-30 seconds)",
-                fg=self.theme_colors['info_fg']
-            )
-            self.update_idletasks()
-            
             # Try to start Docker Desktop in background thread to keep UI responsive
             def start_docker_background():
                 """Background thread function to start Docker and wait for it"""
+                # Update UI on main thread to show Docker is starting
+                self.after(0, lambda: self.status_label.config(
+                    text="🐳 Docker is starting in the background... Please wait",
+                    fg=self.theme_colors['info_fg']
+                ))
+                
                 if start_docker_desktop():
                     logger.info("Docker Desktop start command issued, waiting for Docker to become available...")
                     
@@ -4166,27 +4180,31 @@ class NextcloudRestoreWizard(tk.Tk):
                         time.sleep(check_interval)
                         elapsed += check_interval
                         
-                        # Update status with elapsed time using after() for thread safety
-                        self.root.after(0, lambda e=elapsed: self.status_label.config(
-                            text=f"🐳 Docker is starting... {e} seconds elapsed",
-                            fg=self.theme_colors['info_fg']
-                        ))
-                        
+                        # Check if Docker is running
                         if is_docker_running():
                             logger.info(f"Docker started successfully after {elapsed} seconds")
                             # Update UI on main thread with success message
-                            self.root.after(0, lambda: self.status_label.config(
+                            self.after(0, lambda: self.status_label.config(
                                 text="✓ Docker started successfully! You can now proceed with backup or restore.",
                                 fg='#45bf55'
                             ))
                             return
                         
+                        # Update status with elapsed time using after() for thread safety
+                        # Create a proper closure by defining update function with current elapsed value
+                        def update_status(current_elapsed):
+                            self.status_label.config(
+                                text=f"🐳 Docker is starting... {current_elapsed} seconds elapsed",
+                                fg=self.theme_colors['info_fg']
+                            )
+                        
+                        self.after(0, lambda e=elapsed: update_status(e))
                         logger.debug(f"Waiting for Docker to start... ({elapsed}s/{max_wait_time}s)")
                     
                     # Docker didn't start in time
                     error_msg = "Docker Desktop is starting but not ready yet. Please wait a moment and try again."
                     logger.error(error_msg)
-                    self.root.after(0, lambda: self.status_label.config(
+                    self.after(0, lambda: self.status_label.config(
                         text=error_msg, 
                         fg=self.theme_colors['error_fg']
                     ))
@@ -4194,7 +4212,7 @@ class NextcloudRestoreWizard(tk.Tk):
                     # Could not start Docker Desktop (not found or error)
                     error_msg = "Could not start Docker automatically. Please start Docker Desktop manually."
                     logger.error(error_msg)
-                    self.root.after(0, lambda: self.status_label.config(
+                    self.after(0, lambda: self.status_label.config(
                         text=error_msg, 
                         fg=self.theme_colors['error_fg']
                     ))
