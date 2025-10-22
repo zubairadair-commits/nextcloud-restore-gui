@@ -38,34 +38,6 @@ Traditional Nextcloud backup and restore requires:
 - **User-Friendly GUI**: Intuitive graphical interface - no command-line needed
 - **Cross-Platform**: Works on Windows, Linux, and other operating systems
 
-## GUI Overview
-
-Experience the simplicity and user-friendliness of our intuitive interface. Below are screenshots showcasing the key features and how easy it is to navigate through the application:
-
-### Main Dashboard
-![Landing Page](screenshots/01-landing-page.png)
-**The intuitive main dashboard** provides instant access to all essential functions with clearly labeled buttons. No confusing menus or hidden options - everything you need is right at your fingertips.
-
-### Restore from Backup
-![Restore Wizard](screenshots/02-restore-wizard.png)
-**Step-by-step restore wizard** makes recovering your Nextcloud instance effortless. The wizard guides you through each step with clear instructions and helpful tooltips. All technical complexities are handled in the background.
-
-### New Instance Setup
-![New Instance](screenshots/Screenshot 2025-10-22 165921.png)
-**Guided new instance setup** allows you to create a fresh Nextcloud environment with easy configuration of storage paths, database, and encryption options. The wizard ensures all required components are installed and ready before launching your instance.
-
-### Schedule Automated Backups
-![Schedule Backup](screenshots/Screenshot 2025-10-22 165957.png)
-**Automated backup scheduling** allows you to set up recurring backups with just a few clicks. Choose your preferred schedule (daily, weekly, or custom intervals) and let the application handle everything automatically.
-
-### Backup History & Management
-![Backup History](screenshots/Screenshot 2025-10-22 170016.png)
-**Comprehensive backup history** gives you complete visibility into all your backup operations. View detailed information about each backup, including size, date, and status. Restore from any previous backup or delete old backups with ease.
-
-### Remote Access Configuration
-![Remote Access](screenshots/Screenshot 2025-10-22 170043.png)
-**Seamless Tailscale integration** for secure remote access to your Nextcloud instance from anywhere in the world. The setup process is fully automated - the application detects if Tailscale is installed and guides you through enabling secure connections.
-
 ## Getting Started - It's Really This Simple!
 
 **Total Time: Less than 5 minutes from download to your first backup or restore!**
