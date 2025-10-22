@@ -10,6 +10,34 @@ This beginner-friendly application was designed to make Nextcloud backup and res
 ✅ **Minimal User Input** - Just a few clicks to complete backup or restore operations  
 ✅ **Smart Automation** - Detects your system configuration and handles technical details automatically  
 
+## Screenshots
+
+See the intuitive interface in action:
+
+### Main Menu
+![Landing Page](assets/01_landing.png)
+*The main menu provides easy access to backup and restore operations*
+
+### Restore Wizard
+![Restore Wizard Overview](assets/02_restore_wizard.png)
+*The restore wizard guides you through the restoration process step by step*
+
+### Full Restore Interface
+![Complete Restore View](assets/03_restore_wizard_full.png)
+*Full view of the restore interface with all options clearly displayed*
+
+### Configuration - Step 1
+![Wizard Page 1](assets/04_wizard_page1.png)
+*Easy-to-follow configuration wizard - choose your backup source*
+
+### Configuration - Step 2
+![Wizard Page 2](assets/05_wizard_page2.png)
+*Select your restoration options with helpful descriptions*
+
+### Configuration - Step 3
+![Wizard Page 3](assets/06_wizard_page3.png)
+*Review your settings before starting the restore process*
+
 ## Why This App Makes Everything Easy
 
 Traditional Nextcloud backup and restore requires:
