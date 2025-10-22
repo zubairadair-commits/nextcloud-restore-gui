@@ -1556,7 +1556,9 @@ def start_docker_desktop():
             subprocess.Popen([docker_path], shell=False, creationflags=creation_flags)
         elif system == "Darwin":  # macOS
             logger.info("Starting Docker Desktop on macOS")
-            subprocess.Popen(['open', '-a', 'Docker'])
+            # Use -g flag to run in background without bringing the app to foreground
+            # Use -j flag to hide the app from the Dock (optional)
+            subprocess.Popen(['open', '-g', '-a', 'Docker'])
         return True
     except Exception as e:
         logger.error(f"Failed to start Docker Desktop: {e}")
@@ -4122,6 +4124,13 @@ class NextcloudRestoreWizard(tk.Tk):
         if docker_status['status'] == 'not_running':
             logger.info("Docker is not running, attempting to start Docker Desktop automatically...")
             
+            # Show notification that Docker is starting
+            self.status_label.config(
+                text="🐳 Docker is starting... Please wait (this may take 10-30 seconds)",
+                fg=self.theme_colors['info_fg']
+            )
+            self.update_idletasks()
+            
             # Try to start Docker Desktop
             if start_docker_desktop():
                 logger.info("Docker Desktop start command issued, waiting for Docker to become available...")
@@ -4135,8 +4144,21 @@ class NextcloudRestoreWizard(tk.Tk):
                     time.sleep(check_interval)
                     elapsed += check_interval
                     
+                    # Update status with elapsed time
+                    self.status_label.config(
+                        text=f"🐳 Docker is starting... Please wait ({elapsed}s elapsed)",
+                        fg=self.theme_colors['info_fg']
+                    )
+                    self.update_idletasks()
+                    
                     if is_docker_running():
                         logger.info(f"Docker started successfully after {elapsed} seconds")
+                        self.status_label.config(
+                            text="✓ Docker started successfully!",
+                            fg='#45bf55'
+                        )
+                        self.update_idletasks()
+                        time.sleep(1)  # Brief pause to show success message
                         return True
                     
                     logger.debug(f"Waiting for Docker to start... ({elapsed}s/{max_wait_time}s)")
@@ -4862,6 +4884,12 @@ If the problem persists, please report this issue on GitHub.
             pass
 
     def show_landing(self):
+        # Clean up wizard mouse wheel bindings if coming from wizard
+        if hasattr(self, 'wizard_canvas'):
+            self.unbind_all("<MouseWheel>")
+            self.unbind_all("<Button-4>")
+            self.unbind_all("<Button-5>")
+        
         self.current_page = 'landing'
         for widget in self.body_frame.winfo_children():
             widget.destroy()
@@ -5454,24 +5482,69 @@ If the problem persists, please report this issue on GitHub.
         self.create_wizard()
 
     def create_wizard(self):
-        """Create multi-page restore wizard"""
+        """Create multi-page restore wizard with scrollable canvas"""
         # Reset wizard state
         self.wizard_page = 1
         
-        # Create a centered content frame with fixed width using place() for true horizontal centering
-        # This ensures the content block is centered as a unit, not just individual widgets
-        # Using place(relx=0.5, anchor="n") centers the frame horizontally regardless of window size
-        # Fixed width of 600px provides a consistent centered block
-        self.wizard_scrollable_frame = tk.Frame(self.body_frame, width=600, bg=self.theme_colors['bg'])
+        # Create canvas with scrollbar for scrollable content
+        self.wizard_canvas = tk.Canvas(
+            self.body_frame,
+            bg=self.theme_colors['bg'],
+            highlightthickness=0
+        )
+        self.wizard_scrollbar = tk.Scrollbar(
+            self.body_frame,
+            orient="vertical",
+            command=self.wizard_canvas.yview
+        )
         
-        # Bind to configure event to maintain centering and fixed width
-        def maintain_width(event):
-            # Ensure frame maintains fixed width
-            if event.width != 600:
-                self.wizard_scrollable_frame.config(width=600)
+        # Create frame inside canvas for content
+        self.wizard_scrollable_frame = tk.Frame(
+            self.wizard_canvas,
+            width=600,
+            bg=self.theme_colors['bg']
+        )
         
-        self.wizard_scrollable_frame.bind('<Configure>', maintain_width)
-        self.wizard_scrollable_frame.place(relx=0.5, anchor="n", y=10)
+        # Configure canvas
+        self.wizard_canvas.configure(yscrollcommand=self.wizard_scrollbar.set)
+        
+        # Pack scrollbar and canvas
+        self.wizard_scrollbar.pack(side="right", fill="y")
+        self.wizard_canvas.pack(side="left", fill="both", expand=True)
+        
+        # Create window in canvas
+        self.wizard_canvas_window = self.wizard_canvas.create_window(
+            (0, 0),
+            window=self.wizard_scrollable_frame,
+            anchor="nw"
+        )
+        
+        # Configure scroll region when content changes
+        def configure_scroll_region(event=None):
+            self.wizard_canvas.configure(scrollregion=self.wizard_canvas.bbox("all"))
+            # Center the content horizontally
+            canvas_width = self.wizard_canvas.winfo_width()
+            if canvas_width > 1:
+                content_width = min(600, canvas_width - 20)
+                x_offset = (canvas_width - content_width) // 2
+                self.wizard_canvas.itemconfig(self.wizard_canvas_window, width=content_width)
+                self.wizard_canvas.coords(self.wizard_canvas_window, x_offset, 10)
+        
+        self.wizard_scrollable_frame.bind("<Configure>", configure_scroll_region)
+        self.wizard_canvas.bind("<Configure>", configure_scroll_region)
+        
+        # Add mouse wheel scrolling support
+        def on_mouse_wheel(event):
+            """Handle mouse wheel scrolling"""
+            if event.num == 5 or event.delta < 0:
+                self.wizard_canvas.yview_scroll(1, "units")
+            elif event.num == 4 or event.delta > 0:
+                self.wizard_canvas.yview_scroll(-1, "units")
+        
+        # Bind mouse wheel events (supporting Windows, Mac, and Linux)
+        self.wizard_canvas.bind_all("<MouseWheel>", on_mouse_wheel)  # Windows/Mac
+        self.wizard_canvas.bind_all("<Button-4>", on_mouse_wheel)    # Linux scroll up
+        self.wizard_canvas.bind_all("<Button-5>", on_mouse_wheel)    # Linux scroll down
         
         # Show first page
         self.show_wizard_page(1)
@@ -6598,29 +6671,78 @@ If the problem persists, please report this issue on GitHub.
 
     def set_restore_progress(self, percent, msg=""):
         # percent: 0-100
+        # Initialize start time on first call
+        if not hasattr(self, 'restore_start_time') or percent == 0:
+            self.restore_start_time = time.time()
+            self.last_progress_percent = 0
+        
+        # Update progress bar
         if hasattr(self, "progressbar") and self.progressbar:
             safe_widget_update(
                 self.progressbar,
                 lambda: setattr(self.progressbar, 'value', percent),
                 "progress bar value update"
             )
+        
+        # Calculate elapsed time and estimate
+        elapsed_time = time.time() - self.restore_start_time
+        elapsed_str = self._format_time(elapsed_time)
+        
+        # Estimate remaining time if progress > 0
+        if percent > 0 and percent < 100:
+            total_estimated = (elapsed_time / percent) * 100
+            remaining_time = total_estimated - elapsed_time
+            remaining_str = self._format_time(remaining_time)
+            progress_text = f"{percent}% | Elapsed: {elapsed_str} | Est. remaining: {remaining_str}"
+        elif percent == 100:
+            progress_text = f"100% | Total time: {elapsed_str}"
+        else:
+            progress_text = f"{percent}%"
+        
+        # Update progress label with time info
         if hasattr(self, "progress_label") and self.progress_label:
             safe_widget_update(
                 self.progress_label,
-                lambda: self.progress_label.config(text=f"{percent}%"),
+                lambda: self.progress_label.config(text=progress_text),
                 "progress label update"
             )
+        
+        # Update status message
         if msg and hasattr(self, "status_label") and self.status_label:
             safe_widget_update(
                 self.status_label,
                 lambda: self.status_label.config(text=msg),
                 "status label update"
             )
+        
+        # Update process label with current step
+        if msg and hasattr(self, "process_label") and self.process_label:
+            safe_widget_update(
+                self.process_label,
+                lambda: self.process_label.config(text=f"Current step: {msg}"),
+                "process label update"
+            )
+        
+        self.last_progress_percent = percent
+        
         try:
             if self.winfo_exists():
                 self.update_idletasks()
         except tk.TclError:
             logger.debug("TclError during update_idletasks - window may have been closed")
+    
+    def _format_time(self, seconds):
+        """Format time in seconds to human-readable format"""
+        if seconds < 60:
+            return f"{int(seconds)}s"
+        elif seconds < 3600:
+            minutes = int(seconds / 60)
+            secs = int(seconds % 60)
+            return f"{minutes}m {secs}s"
+        else:
+            hours = int(seconds / 3600)
+            minutes = int((seconds % 3600) / 60)
+            return f"{hours}h {minutes}m"
 
     def auto_extract_backup(self, backup_path, password=None):
         """
