@@ -6869,7 +6869,10 @@ If the problem persists, please report this issue on GitHub.
                                                folder_name, progress_start, progress_end, 
                                                progress_callback=None):
         """
-        Copy a folder to a Docker container with live file-by-file progress updates.
+        Copy a folder to a Docker container with live progress updates.
+        
+        On Windows, uses robocopy for faster and more reliable copying.
+        On other platforms, uses the original file-by-file method.
         
         Args:
             local_path: Local folder path to copy from
@@ -6882,6 +6885,179 @@ If the problem persists, please report this issue on GitHub.
         
         Returns:
             True on success, False on failure
+        """
+        # Check if we're on Windows and can use robocopy
+        is_windows = platform.system() == 'Windows'
+        
+        if is_windows:
+            return self._copy_folder_with_robocopy(
+                local_path, container_name, container_path, 
+                folder_name, progress_start, progress_end, 
+                progress_callback
+            )
+        else:
+            return self._copy_folder_file_by_file(
+                local_path, container_name, container_path, 
+                folder_name, progress_start, progress_end, 
+                progress_callback
+            )
+    
+    def _copy_folder_with_robocopy(self, local_path, container_name, container_path, 
+                                    folder_name, progress_start, progress_end, 
+                                    progress_callback=None):
+        """
+        Copy a folder using Windows robocopy for faster and more reliable copying.
+        
+        Uses robocopy to prepare files in a staging area, then docker cp to transfer to container.
+        """
+        try:
+            # First, remove existing folder in container
+            subprocess.run(
+                f'docker exec {container_name} rm -rf {container_path}/{folder_name}',
+                shell=True, check=False  # Don't fail if folder doesn't exist
+            )
+            
+            # Create destination folder in container
+            subprocess.run(
+                f'docker exec {container_name} mkdir -p {container_path}/{folder_name}',
+                shell=True, check=True
+            )
+            
+            # Count total files for progress tracking
+            total_files = 0
+            for dirpath, dirnames, filenames in os.walk(local_path):
+                total_files += len(filenames)
+            
+            if total_files == 0:
+                logger.info(f"No files to copy in {folder_name}")
+                return True
+            
+            logger.info(f"Copying {total_files} files from {folder_name} to container using robocopy...")
+            
+            # Create a temporary staging directory for robocopy
+            staging_dir = os.path.join(tempfile.gettempdir(), f"nextcloud_copy_staging_{folder_name}")
+            staging_folder_path = os.path.join(staging_dir, folder_name)
+            
+            # Clean up any existing staging directory
+            if os.path.exists(staging_dir):
+                shutil.rmtree(staging_dir, ignore_errors=True)
+            os.makedirs(staging_folder_path, exist_ok=True)
+            
+            copy_start_time = time.time()
+            
+            # Update progress to indicate robocopy is starting
+            if progress_callback:
+                progress_callback(0, total_files, "Preparing robocopy...", progress_start, 0)
+            
+            # Build robocopy command with recommended options
+            # /E - Copy all subdirectories, including empty ones
+            # /NFL - No file list (suppress file names in output for faster operation)
+            # /NDL - No directory list (suppress directory names in output)
+            # /MT:8 - Multi-threaded copying with 8 threads
+            # /R:2 - Retry 2 times on failed copies
+            # /W:2 - Wait 2 seconds between retries
+            # /NP - No progress percentage in output (we track our own)
+            robocopy_cmd = [
+                'robocopy',
+                local_path,
+                staging_folder_path,
+                '/E',           # Copy subdirectories including empty ones
+                '/NFL',         # No file list - faster output
+                '/NDL',         # No directory list - faster output  
+                '/MT:8',        # Multi-threaded with 8 threads
+                '/R:2',         # Retry 2 times on failures
+                '/W:2',         # Wait 2 seconds between retries
+                '/NP'           # No progress percentage
+            ]
+            
+            logger.info(f"Running robocopy command: {' '.join(robocopy_cmd)}")
+            
+            # Update status to indicate robocopy is running
+            if progress_callback:
+                progress_callback(0, total_files, "Using robocopy for fast copying...", 
+                                progress_start + 1, time.time() - copy_start_time)
+            
+            # Run robocopy
+            creation_flags = get_subprocess_creation_flags()
+            result = subprocess.run(
+                robocopy_cmd,
+                capture_output=True,
+                text=True,
+                creationflags=creation_flags
+            )
+            
+            # Robocopy return codes:
+            # 0 = No files copied (all up to date)
+            # 1 = Files copied successfully
+            # 2 = Extra files or directories detected (still successful)
+            # 3 = Some files copied, some mismatches
+            # 4+ = Errors occurred
+            # We consider 0-3 as success
+            if result.returncode > 3:
+                logger.error(f"Robocopy failed with exit code {result.returncode}")
+                logger.error(f"Robocopy stderr: {result.stderr}")
+                logger.error(f"Robocopy stdout: {result.stdout}")
+                # Fall back to file-by-file method
+                logger.info("Falling back to file-by-file copy method...")
+                shutil.rmtree(staging_dir, ignore_errors=True)
+                return self._copy_folder_file_by_file(
+                    local_path, container_name, container_path, 
+                    folder_name, progress_start, progress_end, 
+                    progress_callback
+                )
+            
+            logger.info(f"Robocopy completed successfully with exit code {result.returncode}")
+            
+            # Update progress - robocopy done, now transferring to container
+            mid_progress = progress_start + int((progress_end - progress_start) * 0.7)
+            if progress_callback:
+                elapsed = time.time() - copy_start_time
+                progress_callback(int(total_files * 0.7), total_files, 
+                                "Transferring to Docker container...", 
+                                mid_progress, elapsed)
+            
+            # Now use docker cp to copy the entire folder at once from staging to container
+            # This is much faster than copying individual files
+            container_dest = f"{container_path}/{folder_name}"
+            docker_cp_cmd = f'docker cp "{staging_folder_path}/." {container_name}:"{container_dest}"'
+            
+            logger.info(f"Transferring folder to container: {docker_cp_cmd}")
+            
+            result = subprocess.run(
+                docker_cp_cmd,
+                shell=True,
+                check=True,
+                capture_output=True,
+                text=True
+            )
+            
+            # Clean up staging directory
+            shutil.rmtree(staging_dir, ignore_errors=True)
+            
+            # Update final progress
+            if progress_callback:
+                elapsed = time.time() - copy_start_time
+                progress_callback(total_files, total_files, "Complete", progress_end, elapsed)
+            
+            logger.info(f"Successfully copied {total_files} files from {folder_name} using robocopy")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error copying folder {folder_name} with robocopy: {e}")
+            # Clean up staging directory on error
+            try:
+                if 'staging_dir' in locals() and os.path.exists(staging_dir):
+                    shutil.rmtree(staging_dir, ignore_errors=True)
+            except:
+                pass
+            return False
+    
+    def _copy_folder_file_by_file(self, local_path, container_name, container_path, 
+                                   folder_name, progress_start, progress_end, 
+                                   progress_callback=None):
+        """
+        Copy a folder to a Docker container with live file-by-file progress updates.
+        This is the original implementation used on non-Windows platforms or as fallback.
         """
         try:
             # First, remove existing folder in container
@@ -8747,6 +8923,11 @@ php /tmp/update_config.php"
             
             logger.info(f"Total files to copy: {total_files_all_folders} across {len(folders_to_copy)} folders")
             
+            # Determine copy method based on platform
+            is_windows = platform.system() == 'Windows'
+            copy_method = "robocopy (fast multi-threaded)" if is_windows else "docker cp"
+            logger.info(f"Using copy method: {copy_method}")
+            
             # Copy each folder with live progress updates
             files_copied_so_far = 0
             copy_start_time_all = time.time()
@@ -8761,10 +8942,16 @@ php /tmp/update_config.php"
                     folder_size = folder_sizes.get(folder, 0)
                     file_count = folder_file_counts.get(folder, 0)
                     
-                    self.set_restore_progress(folder_start_progress, f"Copying {folder} folder ({file_count} files)...")
+                    # Update status message to indicate copy method
+                    if is_windows:
+                        status_msg = f"Copying {folder} folder ({file_count} files) using robocopy..."
+                    else:
+                        status_msg = f"Copying {folder} folder ({file_count} files)..."
+                    
+                    self.set_restore_progress(folder_start_progress, status_msg)
                     safe_widget_update(
                         self.process_label,
-                        lambda f=folder, fc=file_count: self.process_label.config(text=f"Copying {f} folder ({fc} files)..."),
+                        lambda msg=status_msg: self.process_label.config(text=msg),
                         "process label update in restore thread"
                     )
                     try:
