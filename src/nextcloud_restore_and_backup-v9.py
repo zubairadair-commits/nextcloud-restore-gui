@@ -8602,125 +8602,177 @@ php /tmp/update_config.php"
             # Note: We need to remove existing folders first, then copy the backup folders
             folders_to_copy = ["config", "data", "apps", "custom_apps"]
             
-            # Calculate total size and files for progress tracking
-            folder_sizes = {}
-            total_size = 0
+            # Count total files across all folders for accurate progress tracking
+            logger.info("Counting files for copy progress tracking...")
+            total_files_to_copy = 0
+            folder_file_counts = {}  # Store file count per folder
+            
             for folder in folders_to_copy:
                 local_path = os.path.join(extract_dir, folder)
                 if os.path.isdir(local_path):
-                    folder_size = 0
+                    file_count = 0
                     try:
                         for dirpath, dirnames, filenames in os.walk(local_path):
-                            for filename in filenames:
-                                filepath = os.path.join(dirpath, filename)
-                                try:
-                                    folder_size += os.path.getsize(filepath)
-                                except:
-                                    pass
+                            file_count += len(filenames)
+                        folder_file_counts[folder] = file_count
+                        total_files_to_copy += file_count
+                        logger.debug(f"Folder '{folder}': {file_count} files")
                     except Exception as e:
-                        logger.debug(f"Could not calculate size for {folder}: {e}")
-                    folder_sizes[folder] = folder_size
-                    total_size += folder_size
+                        logger.debug(f"Could not count files for {folder}: {e}")
+                        folder_file_counts[folder] = 0
             
-            bytes_copied = 0
+            logger.info(f"Total files to copy: {total_files_to_copy}")
+            
+            # Copy files with progress tracking
+            files_copied = 0
+            copy_start_time = time.time()
+            
             for idx, folder in enumerate(folders_to_copy):
                 local_path = os.path.join(extract_dir, folder)
-                if os.path.isdir(local_path):
-                    # Calculate base progress for this folder (30-60% range, 30% total / 4 folders = 7.5% per folder)
-                    folder_start_progress = 30 + int((idx / len(folders_to_copy)) * 30)
-                    folder_end_progress = 30 + int(((idx + 1) / len(folders_to_copy)) * 30)
+                if not os.path.isdir(local_path):
+                    continue
+                
+                file_count = folder_file_counts.get(folder, 0)
+                if file_count == 0:
+                    logger.debug(f"Skipping empty folder: {folder}")
+                    continue
+                
+                logger.info(f"Copying {file_count} files from {folder}...")
+                
+                try:
+                    # Remove existing folder in container (if it exists)
+                    subprocess.run(
+                        f'docker exec {nextcloud_container} rm -rf {nextcloud_path}/{folder}',
+                        shell=True, check=False  # Don't fail if folder doesn't exist
+                    )
                     
-                    self.set_restore_progress(folder_start_progress, f"Copying {folder} folder to container...")
+                    # Use docker cp with folder-level copy for better performance
+                    # but with a monitoring thread to update progress
+                    copy_done = [False]
+                    copy_error = [None]
+                    
+                    def do_folder_copy():
+                        try:
+                            subprocess.run(
+                                f'docker cp "{local_path}/." {nextcloud_container}:{nextcloud_path}/{folder}/',
+                                shell=True, check=True
+                            )
+                            copy_done[0] = True
+                        except Exception as e:
+                            copy_error[0] = e
+                            copy_done[0] = True
+                    
+                    # Start the copy in a background thread
+                    copy_thread = threading.Thread(target=do_folder_copy, daemon=True)
+                    copy_thread.start()
+                    
+                    # Monitor progress while copying
+                    folder_start_files = files_copied
+                    last_update = time.time()
+                    
+                    while not copy_done[0]:
+                        current_time = time.time()
+                        elapsed = current_time - copy_start_time
+                        
+                        # Estimate files copied for this folder based on elapsed time
+                        # Simple linear interpolation
+                        folder_elapsed = current_time - last_update
+                        if file_count > 0 and folder_elapsed > 0:
+                            # Estimate based on average speed
+                            if files_copied > folder_start_files:
+                                estimated_speed = (files_copied - folder_start_files) / folder_elapsed
+                            else:
+                                # Use a reasonable default estimate (100 files/sec for small files)
+                                estimated_speed = min(file_count / 5, 100)  # At least 5 seconds
+                            
+                            estimated_files_done = min(int(folder_elapsed * estimated_speed), file_count)
+                            current_files = folder_start_files + estimated_files_done
+                        else:
+                            current_files = files_copied
+                        
+                        # Update UI every 0.3 seconds
+                        if current_time - last_update >= 0.3:
+                            # Calculate progress percentage (30-60% range)
+                            if total_files_to_copy > 0:
+                                copy_percent = (current_files / total_files_to_copy) * 100
+                                progress_val = 30 + int((copy_percent / 100) * 30)  # Map to 30-60% range
+                            else:
+                                progress_val = 30 + int((idx / len(folders_to_copy)) * 30)
+                            
+                            # Calculate elapsed and estimated time
+                            if current_files > 0 and elapsed > 0:
+                                files_per_sec = current_files / elapsed
+                                remaining_files = total_files_to_copy - current_files
+                                est_remaining = remaining_files / files_per_sec if files_per_sec > 0 else 0
+                                elapsed_str = self._format_time(elapsed)
+                                est_str = self._format_time(est_remaining)
+                                status_msg = f"Copying {folder}: {current_files}/{total_files_to_copy} files | Elapsed: {elapsed_str} | Est: {est_str}"
+                            else:
+                                status_msg = f"Copying {folder}: {current_files}/{total_files_to_copy} files"
+                            
+                            # Update progress bar and status
+                            def update_copy_progress(pval=progress_val, msg=status_msg, f=folder, fc=current_files, tf=total_files_to_copy):
+                                try:
+                                    self.set_restore_progress(pval, msg)
+                                    if hasattr(self, "process_label") and self.process_label:
+                                        self.process_label.config(text=f"Copying {f}: {fc}/{tf} files")
+                                    if self.winfo_exists():
+                                        self.update_idletasks()
+                                except tk.TclError:
+                                    pass
+                                except Exception as ex:
+                                    logger.debug(f"Error updating copy progress: {ex}")
+                            
+                            # Schedule UI update on main thread
+                            try:
+                                self.after(0, update_copy_progress)
+                            except tk.TclError:
+                                pass
+                            
+                            last_update = current_time
+                        
+                        time.sleep(0.1)
+                    
+                    # Wait for copy thread to complete
+                    copy_thread.join()
+                    
+                    # Check if copy failed
+                    if copy_error[0]:
+                        raise copy_error[0]
+                    
+                    # Update counter with actual files copied
+                    files_copied += file_count
+                    
+                    # Final update for this folder
+                    progress_val = 30 + int((files_copied / total_files_to_copy) * 30)
+                    self.set_restore_progress(progress_val, f"✓ Copied {folder} ({file_count} files)")
                     safe_widget_update(
                         self.process_label,
-                        lambda f=folder: self.process_label.config(text=f"Copying {f} folder to container..."),
+                        lambda f=folder, fc=file_count: self.process_label.config(text=f"✓ Copied {f} ({fc} files)"),
                         "process label update in restore thread"
                     )
-                    try:
-                        if self.winfo_exists():
-                            self.update_idletasks()
-                    except tk.TclError:
-                        logger.debug("TclError during update_idletasks - window may have been closed")
+                    logger.info(f"Successfully copied {file_count} files from {folder} to container")
                     
-                    try:
-                        # Remove existing folder in container (if it exists)
-                        subprocess.run(
-                            f'docker exec {nextcloud_container} rm -rf {nextcloud_path}/{folder}',
-                            shell=True, check=False  # Don't fail if folder doesn't exist
-                        )
-                        
-                        # Start copying with progress tracking
-                        folder_size = folder_sizes.get(folder, 0)
-                        copy_start_time = time.time()
-                        
-                        # Use a thread to perform the copy while we update progress
-                        copy_done = [False]
-                        copy_error = [None]
-                        
-                        def do_copy():
-                            try:
-                                subprocess.run(
-                                    f'docker cp "{local_path}/." {nextcloud_container}:{nextcloud_path}/{folder}/',
-                                    shell=True, check=True
-                                )
-                                copy_done[0] = True
-                            except Exception as e:
-                                copy_error[0] = e
-                                copy_done[0] = True
-                        
-                        copy_thread = threading.Thread(target=do_copy, daemon=True)
-                        copy_thread.start()
-                        
-                        # Update progress while copying
-                        last_update = time.time()
-                        while not copy_done[0]:
-                            current_time = time.time()
-                            elapsed = current_time - copy_start_time
-                            
-                            # Update progress every 0.5 seconds
-                            if current_time - last_update >= 0.5:
-                                # Estimate progress based on folder size and elapsed time
-                                # Assume average copy speed, update progress within folder's range
-                                if folder_size > 0 and elapsed > 0:
-                                    # Simple linear interpolation within the folder's progress range
-                                    estimated_progress = min(elapsed / max(folder_size / (50 * 1024 * 1024), 1), 0.95)  # Cap at 95%
-                                    current_progress = folder_start_progress + int((folder_end_progress - folder_start_progress) * estimated_progress)
-                                else:
-                                    # Just increment slightly
-                                    current_progress = min(folder_start_progress + int(elapsed * 0.5), folder_end_progress - 1)
-                                
-                                size_str = self._format_bytes(folder_size) if folder_size > 0 else "calculating..."
-                                self.set_restore_progress(current_progress, f"Copying {folder} ({size_str})...")
-                                last_update = current_time
-                            
-                            time.sleep(0.1)
-                        
-                        copy_thread.join()
-                        
-                        # Check if copy failed
-                        if copy_error[0]:
-                            raise copy_error[0]
-                        
-                        bytes_copied += folder_size
-                        self.set_restore_progress(folder_end_progress, f"✓ Copied {folder} folder")
-                        safe_widget_update(
-                            self.process_label,
-                            lambda f=folder: self.process_label.config(text=f"✓ Copied {f} folder"),
-                            "process label update in restore thread"
-                        )
-                        logger.info(f"Successfully copied {folder} to container ({self._format_bytes(folder_size)})")
-                        
-                    except Exception as copy_err:
-                        tb = traceback.format_exc()
-                        safe_widget_update(
-                            self.error_label,
-                            lambda f=folder, e=copy_err, t=tb: self.error_label.config(text=f"Error copying {f}: {e}\n{t}"),
-                            "error label update in restore thread"
-                        )
-                        logger.error(f"Error copying {folder}: {copy_err}")
-                        print(tb)
-                        self.set_restore_progress(0, "Restore failed!")
-                        return
+                except Exception as copy_err:
+                    tb = traceback.format_exc()
+                    safe_widget_update(
+                        self.error_label,
+                        lambda f=folder, e=copy_err, t=tb: self.error_label.config(text=f"Error copying {f}: {e}\n{t}"),
+                        "error label update in restore thread"
+                    )
+                    logger.error(f"Error copying {folder}: {copy_err}")
+                    print(tb)
+                    self.set_restore_progress(0, "Restore failed!")
+                    return
+            
+            # Final update
+            self.set_restore_progress(60, f"✓ Copied all files ({files_copied} files)")
+            safe_widget_update(
+                self.process_label,
+                lambda: self.process_label.config(text=f"✓ Copied all files ({files_copied} total)"),
+                "process label update in restore thread"
+            )
+            logger.info(f"File copy complete: {files_copied}/{total_files_to_copy} files copied")
 
             # Database restore - branch based on detected database type (60-75% range)
             self.set_restore_progress(60, self.restore_steps[4])
