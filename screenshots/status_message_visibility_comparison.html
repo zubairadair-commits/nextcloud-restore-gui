@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Status Message Visibility Improvement - Visual Comparison</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 40px;
+        }
+        .theme-section {
+            margin-bottom: 50px;
+        }
+        .theme-title {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            color: #333;
+            border-bottom: 3px solid #3daee9;
+            padding-bottom: 10px;
+        }
+        .comparison {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .before, .after {
+            flex: 1;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .label {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .status-message {
+            margin: 15px 0;
+            padding: 15px;
+            border-radius: 5px;
+            line-height: 1.6;
+        }
+        
+        /* Light Theme - Before */
+        .light-theme.before {
+            background: #f0f0f0;
+        }
+        .light-theme.before .label {
+            color: #d32f2f;
+        }
+        .light-theme.before .status-message {
+            color: #0000ff; /* Old blue */
+            background: rgba(255,255,255,0.5);
+        }
+        
+        /* Light Theme - After */
+        .light-theme.after {
+            background: #f0f0f0;
+        }
+        .light-theme.after .label {
+            color: #2e7d32;
+        }
+        .light-theme.after .status-message {
+            color: #1565c0; /* New dark blue */
+            font-weight: bold;
+            background: rgba(255,255,255,0.5);
+        }
+        
+        /* Dark Theme - Before */
+        .dark-theme.before {
+            background: #1e1e1e;
+        }
+        .dark-theme.before .label {
+            color: #ef5350;
+        }
+        .dark-theme.before .status-message {
+            color: #0000ff; /* Old blue */
+            background: rgba(255,255,255,0.05);
+        }
+        
+        /* Dark Theme - After */
+        .dark-theme.after {
+            background: #1e1e1e;
+        }
+        .dark-theme.after .label {
+            color: #7cb342;
+        }
+        .dark-theme.after .status-message {
+            color: #ffd966; /* New bright yellow */
+            font-weight: bold;
+            background: rgba(255,255,255,0.05);
+        }
+        
+        .info-box {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 40px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .info-box h3 {
+            margin-top: 0;
+            color: #3daee9;
+        }
+        .info-box ul {
+            line-height: 1.8;
+        }
+        .color-swatch {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border-radius: 3px;
+            margin-right: 8px;
+            vertical-align: middle;
+            border: 1px solid #ccc;
+        }
+        .visibility-rating {
+            font-size: 14px;
+            margin-top: 10px;
+            text-align: center;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Status Message Visibility Improvement</h1>
+        <p class="subtitle">Before and After Comparison for Nextcloud Restore GUI</p>
+        
+        <!-- Light Theme Comparison -->
+        <div class="theme-section">
+            <div class="theme-title">☀️ Light Theme</div>
+            <div class="comparison">
+                <div class="before light-theme">
+                    <div class="label">❌ BEFORE (Old Blue)</div>
+                    <div class="status-message">
+                        ⏳ Extracting and detecting database type...<br>
+                        Please wait, this may take a moment...
+                    </div>
+                    <div class="status-message">
+                        ⏳ Verifying scheduled backup... Checking backup files and logs...
+                    </div>
+                    <div class="visibility-rating">
+                        Visibility: ★★☆☆☆ (Poor)<br>
+                        Color: <span class="color-swatch" style="background: #0000ff;"></span> #0000FF (Bright Blue)<br>
+                        Font: Normal weight
+                    </div>
+                </div>
+                
+                <div class="after light-theme">
+                    <div class="label">✅ AFTER (New Dark Blue + Bold)</div>
+                    <div class="status-message">
+                        ⏳ Extracting and detecting database type...<br>
+                        Please wait, this may take a moment...
+                    </div>
+                    <div class="status-message">
+                        ⏳ Verifying scheduled backup... Checking backup files and logs...
+                    </div>
+                    <div class="visibility-rating">
+                        Visibility: ★★★★★ (Excellent)<br>
+                        Color: <span class="color-swatch" style="background: #1565c0;"></span> #1565c0 (Dark Blue)<br>
+                        Font: Bold weight
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Dark Theme Comparison -->
+        <div class="theme-section">
+            <div class="theme-title">🌙 Dark Theme</div>
+            <div class="comparison">
+                <div class="before dark-theme">
+                    <div class="label">❌ BEFORE (Old Blue)</div>
+                    <div class="status-message">
+                        ⏳ Extracting and detecting database type...<br>
+                        Please wait, this may take a moment...
+                    </div>
+                    <div class="status-message">
+                        ⏳ Verifying scheduled backup... Checking backup files and logs...
+                    </div>
+                    <div class="visibility-rating" style="color: #b0b0b0;">
+                        Visibility: ★★★☆☆ (Moderate)<br>
+                        Color: <span class="color-swatch" style="background: #0000ff;"></span> #0000FF (Bright Blue)<br>
+                        Font: Normal weight
+                    </div>
+                </div>
+                
+                <div class="after dark-theme">
+                    <div class="label">✅ AFTER (New Yellow + Bold)</div>
+                    <div class="status-message">
+                        ⏳ Extracting and detecting database type...<br>
+                        Please wait, this may take a moment...
+                    </div>
+                    <div class="status-message">
+                        ⏳ Verifying scheduled backup... Checking backup files and logs...
+                    </div>
+                    <div class="visibility-rating" style="color: #b0b0b0;">
+                        Visibility: ★★★★★ (Excellent)<br>
+                        Color: <span class="color-swatch" style="background: #ffd966;"></span> #ffd966 (Bright Yellow)<br>
+                        Font: Bold weight
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Information Box -->
+        <div class="info-box">
+            <h3>📊 Key Improvements</h3>
+            <ul>
+                <li><strong>Theme-Aware Colors:</strong> Different colors for light and dark themes ensure optimal readability</li>
+                <li><strong>Enhanced Contrast:</strong> Dark blue in light theme and bright yellow in dark theme provide excellent contrast</li>
+                <li><strong>Bold Font:</strong> Makes status messages stand out from regular text</li>
+                <li><strong>Better UX:</strong> Users can easily identify when operations are in progress</li>
+                <li><strong>Design Consistency:</strong> Fully integrated with the application's theme system</li>
+            </ul>
+            
+            <h3>🎯 Changes Made</h3>
+            <ul>
+                <li>Added <code>progress_fg</code> color to THEMES dictionary</li>
+                <li>Updated 3 status message configurations</li>
+                <li>Applied bold font styling to all progress messages</li>
+                <li>Zero breaking changes - fully backward compatible</li>
+            </ul>
+            
+            <h3>✅ Testing & Quality</h3>
+            <ul>
+                <li>Automated test suite created and passing</li>
+                <li>CodeQL security scan: 0 alerts</li>
+                <li>Existing tests continue to pass</li>
+                <li>No syntax errors or warnings</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>
