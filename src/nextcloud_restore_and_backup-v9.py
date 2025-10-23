@@ -19,6 +19,7 @@ from logging.handlers import RotatingFileHandler
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
+import shlex
 
 # Configure persistent logging with rotation
 # Log file location: Documents/NextcloudLogs/nextcloud_restore_gui.log
@@ -7275,7 +7276,10 @@ If the problem persists, please report this issue on GitHub.
         # Prepare admin credentials environment variables if available
         admin_env = ""
         if hasattr(self, 'restore_admin_user') and self.restore_admin_user:
-            admin_env = f'-e NEXTCLOUD_ADMIN_USER={self.restore_admin_user} -e NEXTCLOUD_ADMIN_PASSWORD={self.restore_admin_password} '
+            # Use shlex.quote to safely escape credentials and prevent command injection
+            safe_user = shlex.quote(self.restore_admin_user)
+            safe_password = shlex.quote(self.restore_admin_password)
+            admin_env = f'-e NEXTCLOUD_ADMIN_USER={safe_user} -e NEXTCLOUD_ADMIN_PASSWORD={safe_password} '
         
         if dbtype == 'sqlite':
             # SQLite - no database container, start without linking
@@ -10065,8 +10069,12 @@ php /tmp/update_config.php"
             update_status(spin(), "Creating Nextcloud container...", 
                          f"Starting container on port {port}")
             
+            # Use shlex.quote to safely escape credentials and prevent command injection
+            safe_admin_user = shlex.quote(admin_user)
+            safe_admin_password = shlex.quote(admin_password)
+            
             result = subprocess.run(
-                f'docker run -d --name {NEXTCLOUD_CONTAINER_NAME} -e NEXTCLOUD_ADMIN_USER={admin_user} -e NEXTCLOUD_ADMIN_PASSWORD={admin_password} --network bridge -p {port}:80 {NEXTCLOUD_IMAGE}',
+                f'docker run -d --name {NEXTCLOUD_CONTAINER_NAME} -e NEXTCLOUD_ADMIN_USER={safe_admin_user} -e NEXTCLOUD_ADMIN_PASSWORD={safe_admin_password} --network bridge -p {port}:80 {NEXTCLOUD_IMAGE}',
                 shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
             )
             
