@@ -6911,7 +6911,7 @@ If the problem persists, please report this issue on GitHub.
                 return None
             decrypted_file = os.path.splitext(backup_path)[0]  # remove .gpg
             try:
-                self.set_restore_progress(5, "Decrypting backup archive ...")
+                self.set_restore_progress(0, "Decrypting backup archive ...")
                 safe_widget_update(
                     self.process_label,
                     lambda: self.process_label.config(text=f"Decrypting: {os.path.basename(backup_path)}"),
@@ -6937,10 +6937,10 @@ If the problem persists, please report this issue on GitHub.
                 decryption_thread = threading.Thread(target=do_decryption, daemon=True)
                 decryption_thread.start()
                 
-                # Update progress while decryption is running
-                progress_val = 5
+                # Update progress while decryption is running (0-10% range)
+                progress_val = 0
                 while decryption_thread.is_alive():
-                    if progress_val < 9:
+                    if progress_val < 10:
                         progress_val += 1
                         self.set_restore_progress(progress_val, "Decrypting backup archive ...")
                         self.update_idletasks()
@@ -7010,16 +7010,19 @@ If the problem persists, please report this issue on GitHub.
                 """
                 try:
                     # Calculate progress percentage
+                    # Extraction phase: 0-20% of overall restore progress
                     if total_files is not None and total_files > 0:
                         # File count-based progress (accurate when total is known)
                         file_percent = (files_extracted / total_files) * 100
-                        progress_val = int(file_percent)
+                        # Map extraction progress to 0-20% range
+                        progress_val = int((file_percent / 100) * 20)
                         status_msg = f"Extracting: {files_extracted}/{total_files} files"
                     elif total_bytes > 0 and bytes_processed > 0:
                         # Byte-based progress (estimated from compressed bytes read)
                         byte_percent = (bytes_processed / total_bytes) * 100
-                        progress_val = min(int(byte_percent), 99)  # Cap at 99% until complete
-                        status_msg = f"Extracting: {files_extracted} files (~{progress_val}% by size)"
+                        # Map extraction progress to 0-20% range
+                        progress_val = min(int((byte_percent / 100) * 20), 19)  # Cap at 19% until complete
+                        status_msg = f"Extracting: {files_extracted} files (~{int(byte_percent)}% by size)"
                     else:
                         # Unknown progress, show activity
                         progress_val = 0
@@ -7152,7 +7155,7 @@ If the problem persists, please report this issue on GitHub.
             shutil.rmtree(extract_temp, ignore_errors=True)
             return None
 
-        self.set_restore_progress(100, "Extraction complete!")
+        self.set_restore_progress(20, "Extraction complete!")
         safe_widget_update(
             self.process_label,
             lambda: self.process_label.config(text="Extraction complete."),
@@ -7489,6 +7492,8 @@ If the problem persists, please report this issue on GitHub.
             db_files = []
             data_dir = os.path.join(extract_dir, "data")
             
+            self.set_restore_progress(62, "Checking for SQLite database...")
+            
             if os.path.exists(data_dir):
                 for file in os.listdir(data_dir):
                     if file.endswith('.db'):
@@ -7496,7 +7501,11 @@ If the problem persists, please report this issue on GitHub.
             
             if not db_files:
                 warning_msg = "Warning: No SQLite .db file found in backup data folder. Database restore skipped."
-                self.error_label.config(text=warning_msg, fg="orange")
+                safe_widget_update(
+                    self.error_label,
+                    lambda: self.error_label.config(text=warning_msg, fg="orange"),
+                    "error label update"
+                )
                 print(warning_msg)
                 return False
             
@@ -7504,25 +7513,49 @@ If the problem persists, please report this issue on GitHub.
             db_file = db_files[0]
             db_path = os.path.join(data_dir, db_file)
             
-            self.process_label.config(text=f"Restoring SQLite database: {db_file}")
-            self.update_idletasks()
+            # Get file size for progress display
+            db_size = os.path.getsize(db_path) if os.path.exists(db_path) else 0
+            db_size_str = self._format_bytes(db_size)
+            
+            self.set_restore_progress(65, f"Verifying SQLite database: {db_file} ({db_size_str})")
+            safe_widget_update(
+                self.process_label,
+                lambda: self.process_label.config(text=f"Verifying SQLite database: {db_file} ({db_size_str})"),
+                "process label update"
+            )
+            try:
+                if self.winfo_exists():
+                    self.update_idletasks()
+            except tk.TclError:
+                logger.debug("TclError during update_idletasks - window may have been closed")
             
             # The .db file should already be copied with the data folder
             # Just verify it exists
+            self.set_restore_progress(70, f"Validating SQLite database in container...")
             check_cmd = f'docker exec {nextcloud_container} test -f {nextcloud_path}/data/{db_file}'
             result = subprocess.run(check_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             
             if result.returncode == 0:
-                print(f"SQLite database file {db_file} successfully restored")
+                self.set_restore_progress(75, f"✓ SQLite database restored successfully")
+                logger.info(f"SQLite database file {db_file} successfully restored")
                 return True
             else:
                 error_msg = f"Error: SQLite database file {db_file} not found in container after copy"
-                self.error_label.config(text=error_msg, fg="red")
+                safe_widget_update(
+                    self.error_label,
+                    lambda: self.error_label.config(text=error_msg, fg="red"),
+                    "error label update"
+                )
                 return False
                 
         except Exception as e:
             tb = traceback.format_exc()
-            self.error_label.config(text=f"SQLite database restore error: {e}\n{tb}")
+            safe_widget_update(
+                self.error_label,
+                lambda: self.error_label.config(text=f"SQLite database restore error: {e}\n{tb}"),
+                "error label update"
+            )
+            logger.error(f"SQLite restore error: {e}")
             print(tb)
             return False
     
@@ -7537,23 +7570,81 @@ If the problem persists, please report this issue on GitHub.
             return False
         
         try:
-            self.process_label.config(text="Restoring MySQL database (this may take a few minutes) ...")
-            self.update_idletasks()
+            # Get file size for progress estimation
+            sql_size = os.path.getsize(sql_path)
+            sql_size_str = self._format_bytes(sql_size)
+            
+            self.set_restore_progress(62, f"Restoring MySQL database ({sql_size_str})...")
+            safe_widget_update(
+                self.process_label,
+                lambda: self.process_label.config(text=f"Restoring MySQL database ({sql_size_str})..."),
+                "process label update"
+            )
+            try:
+                if self.winfo_exists():
+                    self.update_idletasks()
+            except tk.TclError:
+                logger.debug("TclError during update_idletasks - window may have been closed")
             
             # Use credentials from GUI - MySQL version
             restore_cmd = f'docker exec -i {db_container} bash -c "mysql -u {self.restore_db_user} -p{self.restore_db_password} {self.restore_db_name}"'
             
-            with open(sql_path, "rb") as f:
-                proc = subprocess.Popen(restore_cmd, shell=True, stdin=f, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                stdout, stderr = proc.communicate()
-                if proc.returncode != 0:
-                    error_msg = stderr.decode('utf-8', errors='replace') if stderr else "Unknown error"
-                    self.error_label.config(text=f"MySQL database restore failed: {error_msg}")
-                    return False
+            # Start restore in thread with progress updates
+            restore_done = [False]
+            restore_result = [None, None]  # [returncode, stderr]
+            
+            def do_restore():
+                try:
+                    with open(sql_path, "rb") as f:
+                        proc = subprocess.Popen(restore_cmd, shell=True, stdin=f, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        stdout, stderr = proc.communicate()
+                        restore_result[0] = proc.returncode
+                        restore_result[1] = stderr
+                    restore_done[0] = True
+                except Exception as e:
+                    restore_result[0] = -1
+                    restore_result[1] = str(e).encode()
+                    restore_done[0] = True
+            
+            restore_thread = threading.Thread(target=do_restore, daemon=True)
+            restore_thread.start()
+            
+            # Update progress while restoring (62-72% range)
+            progress = 62
+            last_update = time.time()
+            while not restore_done[0]:
+                current_time = time.time()
+                if current_time - last_update >= 1.0 and progress < 72:
+                    progress += 1
+                    self.set_restore_progress(progress, f"Restoring MySQL database ({sql_size_str})...")
+                    last_update = current_time
+                time.sleep(0.2)
+            
+            restore_thread.join()
+            
+            # Check results
+            if restore_result[0] != 0:
+                error_msg = restore_result[1].decode('utf-8', errors='replace') if restore_result[1] else "Unknown error"
+                safe_widget_update(
+                    self.error_label,
+                    lambda: self.error_label.config(text=f"MySQL database restore failed: {error_msg}"),
+                    "error label update"
+                )
+                return False
             
             # Validate that database tables were imported
-            self.process_label.config(text="Validating MySQL database restore ...")
-            self.update_idletasks()
+            self.set_restore_progress(73, "Validating MySQL database restore...")
+            safe_widget_update(
+                self.process_label,
+                lambda: self.process_label.config(text="Validating MySQL database restore..."),
+                "process label update"
+            )
+            try:
+                if self.winfo_exists():
+                    self.update_idletasks()
+            except tk.TclError:
+                logger.debug("TclError during update_idletasks - window may have been closed")
+            
             check_cmd = f'docker exec {db_container} bash -c "mysql -u {self.restore_db_user} -p{self.restore_db_password} {self.restore_db_name} -e \'SHOW TABLES;\'"'
             result = subprocess.run(check_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             
@@ -7583,23 +7674,81 @@ If the problem persists, please report this issue on GitHub.
             return False
         
         try:
-            self.process_label.config(text="Restoring PostgreSQL database (this may take a few minutes) ...")
-            self.update_idletasks()
+            # Get file size for progress estimation
+            sql_size = os.path.getsize(sql_path)
+            sql_size_str = self._format_bytes(sql_size)
+            
+            self.set_restore_progress(62, f"Restoring PostgreSQL database ({sql_size_str})...")
+            safe_widget_update(
+                self.process_label,
+                lambda: self.process_label.config(text=f"Restoring PostgreSQL database ({sql_size_str})..."),
+                "process label update"
+            )
+            try:
+                if self.winfo_exists():
+                    self.update_idletasks()
+            except tk.TclError:
+                logger.debug("TclError during update_idletasks - window may have been closed")
             
             # Use credentials from GUI
             restore_cmd = f'docker exec -i {db_container} bash -c "PGPASSWORD={self.restore_db_password} psql -U {self.restore_db_user} -d {self.restore_db_name}"'
             
-            with open(sql_path, "rb") as f:
-                proc = subprocess.Popen(restore_cmd, shell=True, stdin=f, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                stdout, stderr = proc.communicate()
-                if proc.returncode != 0:
-                    error_msg = stderr.decode('utf-8', errors='replace') if stderr else "Unknown error"
-                    self.error_label.config(text=f"PostgreSQL database restore failed: {error_msg}")
-                    return False
+            # Start restore in thread with progress updates
+            restore_done = [False]
+            restore_result = [None, None]  # [returncode, stderr]
+            
+            def do_restore():
+                try:
+                    with open(sql_path, "rb") as f:
+                        proc = subprocess.Popen(restore_cmd, shell=True, stdin=f, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        stdout, stderr = proc.communicate()
+                        restore_result[0] = proc.returncode
+                        restore_result[1] = stderr
+                    restore_done[0] = True
+                except Exception as e:
+                    restore_result[0] = -1
+                    restore_result[1] = str(e).encode()
+                    restore_done[0] = True
+            
+            restore_thread = threading.Thread(target=do_restore, daemon=True)
+            restore_thread.start()
+            
+            # Update progress while restoring (62-72% range)
+            progress = 62
+            last_update = time.time()
+            while not restore_done[0]:
+                current_time = time.time()
+                if current_time - last_update >= 1.0 and progress < 72:
+                    progress += 1
+                    self.set_restore_progress(progress, f"Restoring PostgreSQL database ({sql_size_str})...")
+                    last_update = current_time
+                time.sleep(0.2)
+            
+            restore_thread.join()
+            
+            # Check results
+            if restore_result[0] != 0:
+                error_msg = restore_result[1].decode('utf-8', errors='replace') if restore_result[1] else "Unknown error"
+                safe_widget_update(
+                    self.error_label,
+                    lambda: self.error_label.config(text=f"PostgreSQL database restore failed: {error_msg}"),
+                    "error label update"
+                )
+                return False
             
             # Validate that database tables were imported
-            self.process_label.config(text="Validating PostgreSQL database restore ...")
-            self.update_idletasks()
+            self.set_restore_progress(73, "Validating PostgreSQL database restore...")
+            safe_widget_update(
+                self.process_label,
+                lambda: self.process_label.config(text="Validating PostgreSQL database restore..."),
+                "process label update"
+            )
+            try:
+                if self.winfo_exists():
+                    self.update_idletasks()
+            except tk.TclError:
+                logger.debug("TclError during update_idletasks - window may have been closed")
+            
             check_cmd = f'docker exec {db_container} bash -c "PGPASSWORD={self.restore_db_password} psql -U {self.restore_db_user} -d {self.restore_db_name} -c \'\\dt\'"'
             result = subprocess.run(check_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             
@@ -8179,7 +8328,7 @@ php /tmp/update_config.php"
                 logger.debug(f"Database User: {self.restore_db_user}")
             logger.info("=" * 60)
             
-            self.set_restore_progress(5, self.restore_steps[0])
+            # Extraction happens in auto_extract_backup and will set progress to 0-20%
             logger.info("Step 1/7: Extracting backup...")
             extract_dir = self.auto_extract_backup(backup_path, password)
             if not extract_dir:
@@ -8189,8 +8338,8 @@ php /tmp/update_config.php"
             if self.verbose_logging:
                 logger.debug(f"Extraction directory: {extract_dir}")
 
-            # Auto-detect database type from config.php
-            self.set_restore_progress(18, "Detecting database type ...")
+            # Auto-detect database type from config.php (20-22% range)
+            self.set_restore_progress(20, "Detecting database type ...")
             safe_widget_update(
                 self.process_label,
                 lambda: self.process_label.config(text="Reading config.php to detect database type ..."),
@@ -8244,11 +8393,12 @@ php /tmp/update_config.php"
                 self.detected_dbtype = dbtype
                 time.sleep(3)  # Give user more time to see the warning
 
-            self.set_restore_progress(20, self.restore_steps[1])
+            # Docker configuration (22-25% range)
+            self.set_restore_progress(22, self.restore_steps[1])
             logger.info("Step 3/7: Generating Docker Compose configuration...")
             
             # Generate Docker Compose YAML automatically
-            self.set_restore_progress(21, "Generating Docker Compose configuration...")
+            self.set_restore_progress(23, "Generating Docker Compose configuration...")
             safe_widget_update(
                 self.process_label,
                 lambda: self.process_label.config(text="Creating docker-compose.yml with detected settings..."),
@@ -8380,8 +8530,8 @@ php /tmp/update_config.php"
                 print(f"⚠️ {warning_msg}")
                 time.sleep(2)
             
-            # Update to step 2 with detailed messaging
-            self.set_restore_progress(40, self.restore_steps[2])
+            # Update to step 2 with detailed messaging (25-30% range for container setup)
+            self.set_restore_progress(25, self.restore_steps[2])
             logger.info("Step 4/7: Setting up Docker containers...")
             
             # For SQLite, we don't need a separate database container
@@ -8445,17 +8595,42 @@ php /tmp/update_config.php"
                 "process label update in restore thread"
             )
 
-            self.set_restore_progress(50, self.restore_steps[3])
+            # Copying files to container (30-60% range for file copying)
+            self.set_restore_progress(30, self.restore_steps[3])
             nextcloud_path = "/var/www/html"
             # Copy config/data/apps/custom_apps into container
             # Note: We need to remove existing folders first, then copy the backup folders
             folders_to_copy = ["config", "data", "apps", "custom_apps"]
+            
+            # Calculate total size and files for progress tracking
+            folder_sizes = {}
+            total_size = 0
+            for folder in folders_to_copy:
+                local_path = os.path.join(extract_dir, folder)
+                if os.path.isdir(local_path):
+                    folder_size = 0
+                    try:
+                        for dirpath, dirnames, filenames in os.walk(local_path):
+                            for filename in filenames:
+                                filepath = os.path.join(dirpath, filename)
+                                try:
+                                    folder_size += os.path.getsize(filepath)
+                                except:
+                                    pass
+                    except Exception as e:
+                        logger.debug(f"Could not calculate size for {folder}: {e}")
+                    folder_sizes[folder] = folder_size
+                    total_size += folder_size
+            
+            bytes_copied = 0
             for idx, folder in enumerate(folders_to_copy):
                 local_path = os.path.join(extract_dir, folder)
                 if os.path.isdir(local_path):
-                    # Calculate progress (50-65% for file copying)
-                    progress = 50 + int((idx / len(folders_to_copy)) * 15)
-                    self.set_restore_progress(progress, self.restore_steps[3])
+                    # Calculate base progress for this folder (30-60% range, 30% total / 4 folders = 7.5% per folder)
+                    folder_start_progress = 30 + int((idx / len(folders_to_copy)) * 30)
+                    folder_end_progress = 30 + int(((idx + 1) / len(folders_to_copy)) * 30)
+                    
+                    self.set_restore_progress(folder_start_progress, f"Copying {folder} folder to container...")
                     safe_widget_update(
                         self.process_label,
                         lambda f=folder: self.process_label.config(text=f"Copying {f} folder to container..."),
@@ -8466,23 +8641,75 @@ php /tmp/update_config.php"
                             self.update_idletasks()
                     except tk.TclError:
                         logger.debug("TclError during update_idletasks - window may have been closed")
+                    
                     try:
                         # Remove existing folder in container (if it exists)
                         subprocess.run(
                             f'docker exec {nextcloud_container} rm -rf {nextcloud_path}/{folder}',
                             shell=True, check=False  # Don't fail if folder doesn't exist
                         )
-                        # Copy folder from backup - use /. to copy contents, not the folder itself
-                        subprocess.run(
-                            f'docker cp "{local_path}/." {nextcloud_container}:{nextcloud_path}/{folder}/',
-                            shell=True, check=True
-                        )
+                        
+                        # Start copying with progress tracking
+                        folder_size = folder_sizes.get(folder, 0)
+                        copy_start_time = time.time()
+                        
+                        # Use a thread to perform the copy while we update progress
+                        copy_done = [False]
+                        copy_error = [None]
+                        
+                        def do_copy():
+                            try:
+                                subprocess.run(
+                                    f'docker cp "{local_path}/." {nextcloud_container}:{nextcloud_path}/{folder}/',
+                                    shell=True, check=True
+                                )
+                                copy_done[0] = True
+                            except Exception as e:
+                                copy_error[0] = e
+                                copy_done[0] = True
+                        
+                        copy_thread = threading.Thread(target=do_copy, daemon=True)
+                        copy_thread.start()
+                        
+                        # Update progress while copying
+                        last_update = time.time()
+                        while not copy_done[0]:
+                            current_time = time.time()
+                            elapsed = current_time - copy_start_time
+                            
+                            # Update progress every 0.5 seconds
+                            if current_time - last_update >= 0.5:
+                                # Estimate progress based on folder size and elapsed time
+                                # Assume average copy speed, update progress within folder's range
+                                if folder_size > 0 and elapsed > 0:
+                                    # Simple linear interpolation within the folder's progress range
+                                    estimated_progress = min(elapsed / max(folder_size / (50 * 1024 * 1024), 1), 0.95)  # Cap at 95%
+                                    current_progress = folder_start_progress + int((folder_end_progress - folder_start_progress) * estimated_progress)
+                                else:
+                                    # Just increment slightly
+                                    current_progress = min(folder_start_progress + int(elapsed * 0.5), folder_end_progress - 1)
+                                
+                                size_str = self._format_bytes(folder_size) if folder_size > 0 else "calculating..."
+                                self.set_restore_progress(current_progress, f"Copying {folder} ({size_str})...")
+                                last_update = current_time
+                            
+                            time.sleep(0.1)
+                        
+                        copy_thread.join()
+                        
+                        # Check if copy failed
+                        if copy_error[0]:
+                            raise copy_error[0]
+                        
+                        bytes_copied += folder_size
+                        self.set_restore_progress(folder_end_progress, f"✓ Copied {folder} folder")
                         safe_widget_update(
                             self.process_label,
                             lambda f=folder: self.process_label.config(text=f"✓ Copied {f} folder"),
                             "process label update in restore thread"
                         )
-                        print(f"Successfully copied {folder} to container")
+                        logger.info(f"Successfully copied {folder} to container ({self._format_bytes(folder_size)})")
+                        
                     except Exception as copy_err:
                         tb = traceback.format_exc()
                         safe_widget_update(
@@ -8490,12 +8717,13 @@ php /tmp/update_config.php"
                             lambda f=folder, e=copy_err, t=tb: self.error_label.config(text=f"Error copying {f}: {e}\n{t}"),
                             "error label update in restore thread"
                         )
+                        logger.error(f"Error copying {folder}: {copy_err}")
                         print(tb)
                         self.set_restore_progress(0, "Restore failed!")
                         return
 
-            # Database restore - branch based on detected database type
-            self.set_restore_progress(70, self.restore_steps[4])
+            # Database restore - branch based on detected database type (60-75% range)
+            self.set_restore_progress(60, self.restore_steps[4])
             logger.info("Step 5/7: Restoring database...")
             
             db_restore_success = False
@@ -8539,8 +8767,8 @@ php /tmp/update_config.php"
                 )
                 print(warning_msg)
             
-            # Update config.php with database credentials
-            self.set_restore_progress(75, "Updating Nextcloud configuration ...")
+            # Update config.php with database credentials (75-80% range)
+            self.set_restore_progress(76, "Updating Nextcloud configuration ...")
             safe_widget_update(
                 self.process_label,
                 lambda: self.process_label.config(text="Updating config.php with database credentials ..."),
@@ -8569,8 +8797,8 @@ php /tmp/update_config.php"
                 )
                 print(f"Warning: config.php update failed: {config_err}")
 
-            # Validate that required files exist
-            self.set_restore_progress(85, "Validating restored files ...")
+            # Validate that required files exist (80-85% range)
+            self.set_restore_progress(81, "Validating restored files ...")
             safe_widget_update(
                 self.process_label,
                 lambda: self.process_label.config(text="Validating config and data folders ..."),
@@ -8627,7 +8855,8 @@ php /tmp/update_config.php"
                 )
                 print(f"Warning: file validation error: {val_err}")
             
-            self.set_restore_progress(90, self.restore_steps[5])
+            # Setting permissions (85-90% range)
+            self.set_restore_progress(86, self.restore_steps[5])
             safe_widget_update(
                 self.process_label,
                 lambda: self.process_label.config(text="Setting file permissions for web server..."),
@@ -8678,8 +8907,8 @@ php /tmp/update_config.php"
                 )
                 print(f"Warning: permission error but continuing restore: {perm_err}")
 
-            # Restart Nextcloud container to apply all changes
-            self.set_restore_progress(95, "Restarting Nextcloud container ...")
+            # Restart Nextcloud container to apply all changes (90-95% range)
+            self.set_restore_progress(91, "Restarting Nextcloud container ...")
             safe_widget_update(
                 self.process_label,
                 lambda: self.process_label.config(text="Restarting Nextcloud to apply changes..."),
