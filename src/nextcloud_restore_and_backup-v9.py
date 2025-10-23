@@ -6786,7 +6786,7 @@ If the problem persists, please report this issue on GitHub.
         if hasattr(self, "progressbar") and self.progressbar:
             safe_widget_update(
                 self.progressbar,
-                lambda: setattr(self.progressbar, 'value', percent),
+                lambda: self.progressbar.__setitem__('value', percent),
                 "progress bar value update"
             )
         
