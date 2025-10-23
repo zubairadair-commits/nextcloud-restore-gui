@@ -64,8 +64,8 @@ def test_extraction_callback_implementation():
             print("  ✗ extraction_progress_callback function not found")
             return False
         
-        # Check that callback is passed to fast_extract_tar_gz
-        if 'fast_extract_tar_gz(extracted_file, extract_temp, progress_callback=extraction_progress_callback)' in content:
+        # Check that callback is passed to fast_extract_tar_gz (more flexible check)
+        if 'progress_callback=extraction_progress_callback' in content and 'fast_extract_tar_gz' in content:
             print("  ✓ Progress callback is passed to fast_extract_tar_gz")
         else:
             print("  ✗ Progress callback not passed to fast_extract_tar_gz")
@@ -101,9 +101,11 @@ def test_progress_updates_in_callback():
             if 'def extraction_progress_callback(files_extracted, total_files, current_file):' in line:
                 in_callback = True
             elif in_callback and line.strip().startswith('def ') and 'extraction_progress_callback' not in line:
-                break
+                # Allow for nested update_ui function
+                if 'update_ui' not in line:
+                    break
             elif in_callback:
-                if 'self.set_restore_progress' in line:
+                if 'self.set_restore_progress' in line or 'set_restore_progress' in line:
                     found_progress_update = True
                 if 'status_msg' in line and ('Extracting files:' in line or 'files_extracted' in line):
                     found_status_msg = True

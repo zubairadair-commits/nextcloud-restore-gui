@@ -195,7 +195,9 @@ def test_functional_with_prepare_callback():
                 f.write(f"Test content {i}\n" * 100)
         
         # Create archive
-        archive_path = tempfile.mktemp(suffix=".tar.gz", prefix="test_archive_")
+        with tempfile.NamedTemporaryFile(suffix=".tar.gz", prefix="test_archive_", delete=False) as tmp_archive:
+            archive_path = tmp_archive.name
+        
         with tarfile.open(archive_path, 'w:gz') as tar:
             tar.add(temp_dir, arcname='.')
         
