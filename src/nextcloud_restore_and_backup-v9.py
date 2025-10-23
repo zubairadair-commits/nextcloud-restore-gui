@@ -2992,7 +2992,7 @@ def extract_config_php_only(archive_path, extract_to):
         raise Exception(f"Extraction failed: {e}")
 
 
-def fast_extract_tar_gz(archive_path, extract_to, progress_callback=None, batch_size=50):
+def fast_extract_tar_gz(archive_path, extract_to, progress_callback=None, batch_size=1, prepare_callback=None):
     """
     Extract full tar.gz archive using Python's tarfile module with live progress updates.
     
@@ -3010,13 +3010,19 @@ def fast_extract_tar_gz(archive_path, extract_to, progress_callback=None, batch_
         progress_callback: Optional callback function(files_extracted, total_files, current_file)
                           that gets called after each batch of files is extracted
         batch_size: Number of files to extract before calling the progress callback
-                   (default: 50, adjust based on archive size for UI responsiveness)
+                   (default: 1 for real-time updates like 7-Zip)
+        prepare_callback: Optional callback function() called before opening archive
+                         to show "Preparing extraction..." message
     
     Raises:
         Exception: If archive is corrupted, unreadable, or extraction fails
     """
     os.makedirs(extract_to, exist_ok=True)
     try:
+        # Call prepare callback to show immediate feedback before blocking operations
+        if prepare_callback:
+            prepare_callback()
+        
         with tarfile.open(archive_path, 'r:gz') as tar:
             # Get all members to know total count
             members = tar.getmembers()
@@ -6952,7 +6958,8 @@ If the problem persists, please report this issue on GitHub.
             def extraction_progress_callback(files_extracted, total_files, current_file):
                 """
                 Callback function to update UI with extraction progress.
-                Called after each batch of files is extracted.
+                Called after each file is extracted (batch_size=1 for real-time updates).
+                Uses Tkinter's after() method for thread-safe UI updates.
                 """
                 try:
                     # Calculate progress percentage (10-18% range for extraction phase)
@@ -6977,32 +6984,67 @@ If the problem persists, please report this issue on GitHub.
                     else:
                         status_msg = f"Extracting files: {files_extracted}/{total_files}"
                     
-                    # Update progress bar and status
-                    self.set_restore_progress(progress_val, status_msg)
+                    # Use after() for thread-safe UI updates instead of direct widget updates
+                    def update_ui():
+                        try:
+                            # Update progress bar and status
+                            self.set_restore_progress(progress_val, status_msg)
+                            
+                            # Update process label with current file
+                            if current_file and len(current_file) > 0:
+                                file_display = current_file[:50] + "..." if len(current_file) > 50 else current_file
+                                if hasattr(self, "process_label") and self.process_label:
+                                    self.process_label.config(text=f"Extracting: {file_display}")
+                            
+                            # Force UI update
+                            if self.winfo_exists():
+                                self.update_idletasks()
+                        except tk.TclError:
+                            pass
+                        except Exception as ex:
+                            logger.debug(f"Error updating UI: {ex}")
                     
-                    # Update process label with current file
-                    if current_file and len(current_file) > 0:
-                        file_display = current_file[:50] + "..." if len(current_file) > 50 else current_file
-                        safe_widget_update(
-                            self.process_label,
-                            lambda: self.process_label.config(text=f"Extracting: {file_display}"),
-                            "process label update during extraction"
-                        )
-                    
-                    # Force UI update
+                    # Schedule UI update on main thread
                     try:
-                        if self.winfo_exists():
-                            self.update_idletasks()
+                        self.after(0, update_ui)
                     except tk.TclError:
                         pass
                 except Exception as ex:
                     logger.debug(f"Error in extraction progress callback: {ex}")
             
+            def prepare_extraction_callback():
+                """
+                Callback to show immediate feedback before blocking archive operations.
+                This is called before tarfile.open() which can take time for large archives.
+                """
+                def show_preparing():
+                    try:
+                        self.set_restore_progress(10, "Preparing extraction...")
+                        if hasattr(self, "process_label") and self.process_label:
+                            self.process_label.config(text="Opening archive and preparing extraction...")
+                        if self.winfo_exists():
+                            self.update_idletasks()
+                    except tk.TclError:
+                        pass
+                    except Exception as ex:
+                        logger.debug(f"Error showing preparing message: {ex}")
+                
+                try:
+                    self.after(0, show_preparing)
+                except tk.TclError:
+                    pass
+            
             def do_extraction():
                 try:
                     # Extract ALL files from the backup (not just config.php)
-                    # Pass progress callback for live updates
-                    fast_extract_tar_gz(extracted_file, extract_temp, progress_callback=extraction_progress_callback)
+                    # Pass progress callback for live updates with batch_size=1 for real-time updates
+                    fast_extract_tar_gz(
+                        extracted_file, 
+                        extract_temp, 
+                        progress_callback=extraction_progress_callback,
+                        batch_size=1,  # Update for every file, like 7-Zip
+                        prepare_callback=prepare_extraction_callback
+                    )
                     extraction_done[0] = True
                 except Exception as ex:
                     extraction_done[0] = ex
