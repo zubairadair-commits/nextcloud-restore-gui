@@ -6944,7 +6944,7 @@ If the problem persists, please report this issue on GitHub.
         # This is where the complete backup (apps, config, data, database) is extracted
         # Unlike early detection which only extracted config.php, this extracts everything
         try:
-            self.set_restore_progress(10, "Extracting full backup archive...")
+            self.set_restore_progress(0, "Extracting full backup archive...")
             try:
                 if self.winfo_exists():
                     self.update_idletasks()
@@ -6962,13 +6962,13 @@ If the problem persists, please report this issue on GitHub.
                 Uses Tkinter's after() method for thread-safe UI updates.
                 """
                 try:
-                    # Calculate progress percentage (10-18% range for extraction phase)
+                    # Calculate progress percentage (0-100% range for extraction phase, like 7-Zip)
                     if total_files > 0:
                         file_percent = (files_extracted / total_files) * 100
-                        # Map to 10-18% range for extraction phase
-                        progress_val = 10 + int((file_percent / 100) * 8)
+                        # Use full 0-100% range for smooth, live progress updates
+                        progress_val = int(file_percent)
                     else:
-                        progress_val = 10
+                        progress_val = 0
                     
                     # Calculate elapsed time and estimate
                     elapsed = time.time() - extraction_start_time[0]
@@ -7019,7 +7019,7 @@ If the problem persists, please report this issue on GitHub.
                 """
                 def show_preparing():
                     try:
-                        self.set_restore_progress(10, "Preparing extraction...")
+                        self.set_restore_progress(0, "Preparing extraction...")
                         if hasattr(self, "process_label") and self.process_label:
                             self.process_label.config(text="Opening archive and preparing extraction...")
                         if self.winfo_exists():
@@ -7085,7 +7085,7 @@ If the problem persists, please report this issue on GitHub.
             shutil.rmtree(extract_temp, ignore_errors=True)
             return None
 
-        self.set_restore_progress(20, "Extraction complete!")
+        self.set_restore_progress(100, "Extraction complete!")
         safe_widget_update(
             self.process_label,
             lambda: self.process_label.config(text="Extraction complete."),
