@@ -19,6 +19,7 @@ from logging.handlers import RotatingFileHandler
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
+import shlex
 
 # Configure persistent logging with rotation
 # Log file location: Documents/NextcloudLogs/nextcloud_restore_gui.log
@@ -7370,18 +7371,27 @@ If the problem persists, please report this issue on GitHub.
         
         # For SQLite, do NOT attempt to link to database container
         # For MySQL/PostgreSQL, try to link to database container for proper Docker networking
+        
+        # Prepare admin credentials environment variables if available
+        admin_env = ""
+        if hasattr(self, 'restore_admin_user') and self.restore_admin_user:
+            # Use shlex.quote to safely escape credentials and prevent command injection
+            safe_user = shlex.quote(self.restore_admin_user)
+            safe_password = shlex.quote(self.restore_admin_password)
+            admin_env = f'-e NEXTCLOUD_ADMIN_USER={safe_user} -e NEXTCLOUD_ADMIN_PASSWORD={safe_password} '
+        
         if dbtype == 'sqlite':
             # SQLite - no database container, start without linking
             logger.info("SQLite detected - starting Nextcloud container without database linking")
             result = subprocess.run(
-                f'docker run -d --name {new_container_name} --network bridge -p {port}:80 {NEXTCLOUD_IMAGE}',
+                f'docker run -d --name {new_container_name} {admin_env}--network bridge -p {port}:80 {NEXTCLOUD_IMAGE}',
                 shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
             )
         else:
             # MySQL/PostgreSQL - try to link to database container
             # First attempt with link and explicit bridge network
             result = subprocess.run(
-                f'docker run -d --name {new_container_name} --network bridge --link {POSTGRES_CONTAINER_NAME}:db -p {port}:80 {NEXTCLOUD_IMAGE}',
+                f'docker run -d --name {new_container_name} {admin_env}--network bridge --link {POSTGRES_CONTAINER_NAME}:db -p {port}:80 {NEXTCLOUD_IMAGE}',
                 shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
             )
             
@@ -7389,7 +7399,7 @@ If the problem persists, please report this issue on GitHub.
             if result.returncode != 0 and "Could not find" in result.stderr:
                 print(f"Warning: Could not link to database container, starting without link: {result.stderr}")
                 result = subprocess.run(
-                    f'docker run -d --name {new_container_name} --network bridge -p {port}:80 {NEXTCLOUD_IMAGE}',
+                    f'docker run -d --name {new_container_name} {admin_env}--network bridge -p {port}:80 {NEXTCLOUD_IMAGE}',
                     shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
                 )
         
@@ -10061,6 +10071,31 @@ php /tmp/update_config.php"
                 custom_port_entry.pack_forget()
 
         port_combo.bind("<<ComboboxSelected>>", on_combo_change)
+        
+        # Add admin credentials section
+        tk.Label(entry_frame, text="", font=("Arial", 6), bg=self.theme_colors['bg']).pack()  # Spacer
+        tk.Label(entry_frame, text="Admin Credentials", font=("Arial", 14, "bold"),
+                bg=self.theme_colors['bg'], fg=self.theme_colors['fg']).pack(pady=(10, 8))
+        tk.Label(entry_frame, text="These credentials will be used to log into Nextcloud.", 
+                font=("Arial", 11), bg=self.theme_colors['bg'], fg=self.theme_colors['hint_fg']).pack(pady=(0, 10))
+        
+        # Admin username
+        tk.Label(entry_frame, text="Admin Username:", font=("Arial", 11),
+                bg=self.theme_colors['bg'], fg=self.theme_colors['fg']).pack(pady=(5, 2))
+        admin_user_entry = tk.Entry(entry_frame, font=("Arial", 13), width=25,
+                                     bg=self.theme_colors['entry_bg'], fg=self.theme_colors['entry_fg'],
+                                     insertbackground=self.theme_colors['entry_fg'])
+        admin_user_entry.insert(0, "admin")
+        admin_user_entry.pack(pady=3)
+        
+        # Admin password
+        tk.Label(entry_frame, text="Admin Password:", font=("Arial", 11),
+                bg=self.theme_colors['bg'], fg=self.theme_colors['fg']).pack(pady=(5, 2))
+        admin_password_entry = tk.Entry(entry_frame, show="*", font=("Arial", 13), width=25,
+                                         bg=self.theme_colors['entry_bg'], fg=self.theme_colors['entry_fg'],
+                                         insertbackground=self.theme_colors['entry_fg'])
+        admin_password_entry.insert(0, "admin")
+        admin_password_entry.pack(pady=3)
 
         start_btn = tk.Button(entry_frame, text="Start Nextcloud Instance", font=("Arial", 13, "bold"), bg="#f7b32b", fg="white", width=24)
         start_btn.pack(pady=18)
@@ -10073,14 +10108,25 @@ php /tmp/update_config.php"
             if not port.isdigit() or not (1 <= int(port) <= 65535):
                 messagebox.showerror("Invalid Port", "Please enter a valid port number (1-65535).")
                 return
+            
+            admin_user = admin_user_entry.get().strip()
+            admin_password = admin_password_entry.get()
+            
+            if not admin_user:
+                messagebox.showerror("Invalid Input", "Please enter an admin username.")
+                return
+            if not admin_password:
+                messagebox.showerror("Invalid Input", "Please enter an admin password.")
+                return
+            
             start_btn.config(state="disabled")
-            threading.Thread(target=self.launch_nextcloud_instance, args=(int(port),), daemon=True).start()
+            threading.Thread(target=self.launch_nextcloud_instance, args=(int(port), admin_user, admin_password), daemon=True).start()
         start_btn.config(command=on_start)
         
         # Apply theme recursively to all widgets in the panel
         self.apply_theme_recursive(entry_frame)
 
-    def launch_nextcloud_instance(self, port):
+    def launch_nextcloud_instance(self, port, admin_user="admin", admin_password="admin"):
         try:
             # Clear body and show progress UI
             for widget in self.body_frame.winfo_children():
@@ -10161,8 +10207,12 @@ php /tmp/update_config.php"
             update_status(spin(), "Creating Nextcloud container...", 
                          f"Starting container on port {port}")
             
+            # Use shlex.quote to safely escape credentials and prevent command injection
+            safe_admin_user = shlex.quote(admin_user)
+            safe_admin_password = shlex.quote(admin_password)
+            
             result = subprocess.run(
-                f'docker run -d --name {NEXTCLOUD_CONTAINER_NAME} --network bridge -p {port}:80 {NEXTCLOUD_IMAGE}',
+                f'docker run -d --name {NEXTCLOUD_CONTAINER_NAME} -e NEXTCLOUD_ADMIN_USER={safe_admin_user} -e NEXTCLOUD_ADMIN_PASSWORD={safe_admin_password} --network bridge -p {port}:80 {NEXTCLOUD_IMAGE}',
                 shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
             )
             
