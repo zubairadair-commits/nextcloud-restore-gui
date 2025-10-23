@@ -2994,63 +2994,89 @@ def extract_config_php_only(archive_path, extract_to):
 
 def fast_extract_tar_gz(archive_path, extract_to, progress_callback=None, batch_size=1, prepare_callback=None):
     """
-    Extract full tar.gz archive using Python's tarfile module with live progress updates.
+    Extract tar.gz archive using streaming extraction with live progress updates.
     
-    This function performs a complete extraction of all files in the backup archive.
-    It should only be called during the actual restore process, not during initial
-    database detection (use extract_config_php_only for that).
+    This function uses streaming extraction to start extracting files immediately
+    without an upfront full scan of the archive. Progress is tracked by bytes
+    read/extracted, and the UI shows the current filename as each file is processed.
     
-    Rationale: Full extraction is a heavy operation that can take minutes for large
-    backups (several GB). By deferring this until the user confirms they want to
-    proceed with the restore, we keep the initial UI responsive and fast.
+    Key features:
+    - Streaming extraction: starts immediately without full archive scan
+    - Byte-based progress: tracks actual bytes read for accurate progress
+    - Real-time filename updates: shows current file being extracted
+    - Adaptive progress: switches to file count when total is discovered
+    - Non-blocking: no 'preparing extraction...' delay
     
     Args:
         archive_path: Path to the .tar.gz backup archive
         extract_to: Directory where all files should be extracted
-        progress_callback: Optional callback function(files_extracted, total_files, current_file)
-                          that gets called after each batch of files is extracted
+        progress_callback: Optional callback function(files_extracted, total_files, current_file, 
+                          bytes_processed, total_bytes) that gets called after each batch of files
         batch_size: Number of files to extract before calling the progress callback
-                   (default: 1 for real-time updates like 7-Zip)
+                   (default: 1 for real-time updates)
         prepare_callback: Optional callback function() called before opening archive
-                         to show "Preparing extraction..." message
     
     Raises:
         Exception: If archive is corrupted, unreadable, or extraction fails
     """
     os.makedirs(extract_to, exist_ok=True)
+    
+    # Get archive size for progress tracking
+    # Note: We track position in compressed stream, not uncompressed file sizes
+    archive_size = os.path.getsize(archive_path)
+    
     try:
-        # Call prepare callback to show immediate feedback before blocking operations
+        # Call prepare callback for immediate feedback (non-blocking)
         if prepare_callback:
             prepare_callback()
         
-        with tarfile.open(archive_path, 'r:gz') as tar:
-            # Get all members to know total count
-            members = tar.getmembers()
-            total_files = len(members)
-            
-            # If no progress callback, use old behavior for backwards compatibility
-            if progress_callback is None:
-                tar.extractall(path=extract_to)
-                print(f"✓ Successfully extracted full archive to {extract_to}")
-                return
-            
-            # Extract files one by one (or in batches) with progress updates
-            files_extracted = 0
-            batch_count = 0
-            
-            for member in members:
-                # Extract single member
-                tar.extract(member, path=extract_to)
-                files_extracted += 1
-                batch_count += 1
+        # Open archive file to track read position
+        with open(archive_path, 'rb') as archive_file:
+            # Open tarfile in streaming mode (doesn't scan entire archive upfront)
+            with tarfile.open(fileobj=archive_file, mode='r|gz') as tar:
+                # Streaming mode: we don't know total file count upfront
+                # Track progress by compressed bytes read from archive
+                files_extracted = 0
+                total_files = None  # Unknown until we finish
+                batch_count = 0
+                last_position = 0
                 
-                # Call progress callback after each batch
-                if batch_count >= batch_size or files_extracted == total_files:
-                    current_file = os.path.basename(member.name) if member.name else "..."
-                    progress_callback(files_extracted, total_files, current_file)
-                    batch_count = 0
+                # If no progress callback, extract all at once
+                if progress_callback is None:
+                    for member in tar:
+                        tar.extract(member, path=extract_to)
+                    print(f"✓ Successfully extracted full archive to {extract_to}")
+                    return
+                
+                # Stream through archive members as they're read
+                for member in tar:
+                    # Extract this file
+                    tar.extract(member, path=extract_to)
+                    files_extracted += 1
+                    batch_count += 1
+                    
+                    # Get current position in compressed archive
+                    current_position = archive_file.tell()
+                    
+                    # Call progress callback after each batch
+                    if batch_count >= batch_size:
+                        current_file = os.path.basename(member.name) if member.name else "..."
+                        # Report with None for total_files since we don't know yet
+                        # Use current position in archive for byte-based progress
+                        progress_callback(files_extracted, total_files, current_file, 
+                                        current_position, archive_size)
+                        batch_count = 0
+                        last_position = current_position
+                
+                # Final callback with complete information
+                if progress_callback and (batch_count > 0 or files_extracted == 0):
+                    current_file = "Complete"
+                    total_files = files_extracted  # Now we know the total
+                    current_position = archive_file.tell()
+                    progress_callback(files_extracted, total_files, current_file,
+                                    current_position, archive_size)
             
-        print(f"✓ Successfully extracted {total_files} files to {extract_to}")
+        print(f"✓ Successfully extracted {files_extracted} files to {extract_to}")
     except tarfile.ReadError as e:
         raise Exception(f"Invalid or corrupted archive: {e}")
     except OSError as e:
@@ -6823,6 +6849,17 @@ If the problem persists, please report this issue on GitHub.
             hours = int(seconds / 3600)
             minutes = int((seconds % 3600) / 60)
             return f"{hours}h {minutes}m"
+    
+    def _format_bytes(self, bytes_count):
+        """Format bytes to human-readable format (KB, MB, GB)"""
+        if bytes_count < 1024:
+            return f"{bytes_count}B"
+        elif bytes_count < 1024 * 1024:
+            return f"{bytes_count / 1024:.1f}KB"
+        elif bytes_count < 1024 * 1024 * 1024:
+            return f"{bytes_count / (1024 * 1024):.1f}MB"
+        else:
+            return f"{bytes_count / (1024 * 1024 * 1024):.2f}GB"
 
     def auto_extract_backup(self, backup_path, password=None):
         """
@@ -6955,34 +6992,64 @@ If the problem persists, please report this issue on GitHub.
             extraction_done = [False]  # Use list for mutable flag
             extraction_start_time = [time.time()]  # Track extraction start time
             
-            def extraction_progress_callback(files_extracted, total_files, current_file):
+            def extraction_progress_callback(files_extracted, total_files, current_file, bytes_processed=0, total_bytes=0):
                 """
                 Callback function to update UI with extraction progress.
                 Called after each file is extracted (batch_size=1 for real-time updates).
                 Uses Tkinter's after() method for thread-safe UI updates.
+                
+                Supports both byte-based progress (when total_files is None) and
+                file-count-based progress (when total_files is known).
+                
+                Args:
+                    files_extracted: Number of files extracted so far
+                    total_files: Total files (None if unknown in streaming mode)
+                    current_file: Name of current file being extracted
+                    bytes_processed: Bytes read from compressed archive so far
+                    total_bytes: Total size of compressed archive
                 """
                 try:
-                    # Calculate progress percentage (0-100% range for extraction phase, like 7-Zip)
-                    if total_files > 0:
+                    # Calculate progress percentage
+                    if total_files is not None and total_files > 0:
+                        # File count-based progress (accurate when total is known)
                         file_percent = (files_extracted / total_files) * 100
-                        # Use full 0-100% range for smooth, live progress updates
                         progress_val = int(file_percent)
+                        status_msg = f"Extracting: {files_extracted}/{total_files} files"
+                    elif total_bytes > 0 and bytes_processed > 0:
+                        # Byte-based progress (estimated from compressed bytes read)
+                        byte_percent = (bytes_processed / total_bytes) * 100
+                        progress_val = min(int(byte_percent), 99)  # Cap at 99% until complete
+                        status_msg = f"Extracting: {files_extracted} files (~{progress_val}% by size)"
                     else:
+                        # Unknown progress, show activity
                         progress_val = 0
+                        status_msg = f"Extracting: {files_extracted} files..."
                     
                     # Calculate elapsed time and estimate
                     elapsed = time.time() - extraction_start_time[0]
                     if files_extracted > 0 and elapsed > 0:
                         rate = files_extracted / elapsed
-                        remaining_files = total_files - files_extracted
-                        est_remaining = remaining_files / rate if rate > 0 else 0
                         
                         elapsed_str = self._format_time(elapsed)
+                        
+                        # Estimate remaining time
+                        if total_files is not None and total_files > 0:
+                            # File-based estimate
+                            remaining_files = total_files - files_extracted
+                            est_remaining = remaining_files / rate if rate > 0 else 0
+                        elif total_bytes > 0 and bytes_processed > 0:
+                            # Byte-based estimate
+                            remaining_bytes = total_bytes - bytes_processed
+                            bytes_per_sec = bytes_processed / elapsed if elapsed > 0 else 0
+                            est_remaining = remaining_bytes / bytes_per_sec if bytes_per_sec > 0 else 0
+                        else:
+                            est_remaining = 0
+                        
                         est_str = self._format_time(est_remaining)
                         
-                        status_msg = f"Extracting files: {files_extracted}/{total_files} | Elapsed: {elapsed_str} | Est: {est_str}"
-                    else:
-                        status_msg = f"Extracting files: {files_extracted}/{total_files}"
+                        status_msg += f" | Elapsed: {elapsed_str}"
+                        if est_remaining > 0:
+                            status_msg += f" | Est: {est_str}"
                     
                     # Use after() for thread-safe UI updates instead of direct widget updates
                     def update_ui():
@@ -7014,14 +7081,14 @@ If the problem persists, please report this issue on GitHub.
             
             def prepare_extraction_callback():
                 """
-                Callback to show immediate feedback before blocking archive operations.
-                This is called before tarfile.open() which can take time for large archives.
+                Callback to show immediate feedback before extraction starts.
+                With streaming extraction, there's no blocking archive scan.
                 """
                 def show_preparing():
                     try:
-                        self.set_restore_progress(0, "Preparing extraction...")
+                        self.set_restore_progress(0, "Starting extraction...")
                         if hasattr(self, "process_label") and self.process_label:
-                            self.process_label.config(text="Opening archive and preparing extraction...")
+                            self.process_label.config(text="Initializing streaming extraction...")
                         if self.winfo_exists():
                             self.update_idletasks()
                     except tk.TclError:
