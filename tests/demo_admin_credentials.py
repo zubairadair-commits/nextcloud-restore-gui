@@ -4,6 +4,13 @@ Demonstration script showing how admin credentials are now properly passed to Ne
 
 This script simulates the credential passing logic without actually running Docker.
 It shows the exact commands that would be executed with various credentials.
+
+SECURITY NOTE: This is a demonstration/testing script that intentionally displays
+example passwords in clear text for educational purposes. This is safe because:
+- It's not production code
+- It uses example passwords only
+- The actual application code (src/nextcloud_restore_and_backup-v9.py) does NOT log passwords
+- Credentials in the real app are passed securely via environment variables
 """
 
 import shlex
