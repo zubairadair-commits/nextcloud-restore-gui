@@ -909,6 +909,7 @@ THEMES = {
         'warning_fg': '#2e7d32',
         'error_fg': '#d32f2f',
         'hint_fg': '#666666',
+        'progress_fg': '#1565c0',  # Dark blue for light theme - better readability than bright blue
         # Button-specific colors (maintain original button colors but adjust for theme)
         'backup_btn': '#3daee9',
         'restore_btn': '#45bf55',
@@ -933,6 +934,7 @@ THEMES = {
         'warning_fg': '#7cb342',
         'error_fg': '#ef5350',
         'hint_fg': '#999999',
+        'progress_fg': '#ffd966',  # Bright yellow for dark theme - high visibility
         # Button-specific colors (darker versions for dark theme)
         'backup_btn': '#2c8ab8',
         'restore_btn': '#378d44',
@@ -6478,7 +6480,7 @@ If the problem persists, please report this issue on GitHub.
         
         # Show progress spinner with message
         logger.info("Starting config.php extraction and database type detection")
-        self.error_label.config(text="⏳ Extracting and detecting database type...\nPlease wait, this may take a moment...", fg="blue")
+        self.error_label.config(text="⏳ Extracting and detecting database type...\nPlease wait, this may take a moment...", fg=self.theme_colors['progress_fg'], font=("Arial", 12, "bold"))
         self.update_idletasks()
         
         # Disable navigation buttons to prevent user actions during detection
@@ -6516,7 +6518,8 @@ If the problem persists, please report this issue on GitHub.
                 spinner_state['idx'] = (spinner_state['idx'] + 1) % len(spinner_chars)
                 self.error_label.config(
                     text=f"{spinner_chars[spinner_state['idx']]} Extracting and detecting database type...\nPlease wait, this may take a moment...", 
-                    fg="blue"
+                    fg=self.theme_colors['progress_fg'],
+                    font=("Arial", 12, "bold")
                 )
                 # Schedule next check in 100ms (non-blocking)
                 self.after(100, check_detection_progress)
@@ -11323,7 +11326,7 @@ php /tmp/update_config.php"
         
         # Show inline progress message
         if hasattr(self, 'schedule_message_label'):
-            self.schedule_message_label.config(text="⏳ Verifying scheduled backup... Checking backup files and logs...", fg="blue")
+            self.schedule_message_label.config(text="⏳ Verifying scheduled backup... Checking backup files and logs...", fg=self.theme_colors['progress_fg'], font=("Arial", 11, "bold"))
         
         def run_verification():
             verification = verify_scheduled_backup_ran(backup_dir, task_name)
