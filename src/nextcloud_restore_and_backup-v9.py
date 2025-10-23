@@ -7276,13 +7276,13 @@ If the problem persists, please report this issue on GitHub.
         
         # Check if we should use existing container
         if container and self.restore_use_existing:
-            self.set_restore_progress(30, f"Using existing Nextcloud container: {container}")
+            self.set_restore_progress(20, f"Using existing Nextcloud container: {container}")
             self.process_label.config(text=f"Using container: {container}")
             self.update_idletasks()
             
             # Check and attach to bridge network if not connected
             if not check_container_network(container, "bridge"):
-                self.set_restore_progress(32, f"Attaching {container} to bridge network...")
+                self.set_restore_progress(20, f"Attaching {container} to bridge network...")
                 self.process_label.config(text=f"Connecting container to bridge network...")
                 self.update_idletasks()
                 
@@ -7300,7 +7300,7 @@ If the problem persists, please report this issue on GitHub.
                     messagebox.showerror("Network Connection Failed", error_msg)
                     return None
                 
-                self.set_restore_progress(33, f"Container {container} attached to bridge network")
+                self.set_restore_progress(20, f"Container {container} attached to bridge network")
             
             return container
         
@@ -7308,7 +7308,7 @@ If the problem persists, please report this issue on GitHub.
         new_container_name = self.restore_container_name
         port = self.restore_container_port
         
-        self.set_restore_progress(28, "Checking for Nextcloud image...")
+        self.set_restore_progress(20, "Checking for Nextcloud image...")
         self.process_label.config(text="Checking if Nextcloud image is available...")
         self.update_idletasks()
         
@@ -7320,7 +7320,7 @@ If the problem persists, please report this issue on GitHub.
         
         if not check_image.stdout.strip():
             # Need to pull image
-            self.set_restore_progress(29, "Pulling Nextcloud image (first-time setup)...")
+            self.set_restore_progress(20, "Pulling Nextcloud image (first-time setup)...")
             self.process_label.config(text="Downloading Nextcloud image from Docker Hub...")
             self.update_idletasks()
             
@@ -7356,16 +7356,16 @@ If the problem persists, please report this issue on GitHub.
                 
                 return None
             
-            self.set_restore_progress(30, "Image downloaded successfully")
+            self.set_restore_progress(20, "Image downloaded successfully")
             self.process_label.config(text="✓ Nextcloud image ready")
         else:
-            self.set_restore_progress(30, "Using cached Nextcloud image")
+            self.set_restore_progress(20, "Using cached Nextcloud image")
             self.process_label.config(text="✓ Nextcloud image found")
         
         self.update_idletasks()
         time.sleep(0.5)
         
-        self.set_restore_progress(31, f"Creating Nextcloud container on port {port}...")
+        self.set_restore_progress(20, f"Creating Nextcloud container on port {port}...")
         self.process_label.config(text=f"Creating container: {new_container_name}")
         self.update_idletasks()
         
@@ -7443,11 +7443,11 @@ If the problem persists, please report this issue on GitHub.
             return None
         
         container_id = new_container_name
-        self.set_restore_progress(33, f"Container created: {container_id}")
+        self.set_restore_progress(20, f"Container created: {container_id}")
         self.process_label.config(text=f"✓ Container created on port {port}")
         self.update_idletasks()
         
-        self.set_restore_progress(35, "Waiting for Nextcloud to initialize...")
+        self.set_restore_progress(20, "Waiting for Nextcloud to initialize...")
         self.process_label.config(text="Waiting for container to be ready...")
         self.update_idletasks()
         time.sleep(5)
@@ -7464,7 +7464,7 @@ If the problem persists, please report this issue on GitHub.
         if db_container:
             # Check and attach to bridge network if not connected
             if not check_container_network(db_container, "bridge"):
-                self.set_restore_progress(42, f"Attaching {db_container} to bridge network...")
+                self.set_restore_progress(20, f"Attaching {db_container} to bridge network...")
                 self.process_label.config(text=f"Connecting DB container to bridge network...")
                 self.update_idletasks()
                 
@@ -7482,11 +7482,11 @@ If the problem persists, please report this issue on GitHub.
                     messagebox.showerror("Network Connection Failed", error_msg)
                     return None
                 
-                self.set_restore_progress(43, f"Database container {db_container} attached to bridge network")
+                self.set_restore_progress(20, f"Database container {db_container} attached to bridge network")
             
             return db_container
         
-        self.set_restore_progress(38, "Checking for database image...")
+        self.set_restore_progress(20, "Checking for database image...")
         self.process_label.config(text="Checking if database image is available...")
         self.update_idletasks()
         
@@ -7497,7 +7497,7 @@ If the problem persists, please report this issue on GitHub.
         )
         
         if not check_db_image.stdout.strip():
-            self.set_restore_progress(39, "Pulling PostgreSQL image...")
+            self.set_restore_progress(20, "Pulling PostgreSQL image...")
             self.process_label.config(text="Downloading PostgreSQL image...")
             self.update_idletasks()
             
@@ -7533,7 +7533,7 @@ If the problem persists, please report this issue on GitHub.
                 
                 return None
         
-        self.set_restore_progress(40, "Creating database container...")
+        self.set_restore_progress(20, "Creating database container...")
         self.process_label.config(text=f"Starting DB container: {POSTGRES_CONTAINER_NAME}")
         self.update_idletasks()
         
@@ -7588,7 +7588,7 @@ If the problem persists, please report this issue on GitHub.
             return None
         
         db_container_id = POSTGRES_CONTAINER_NAME
-        self.set_restore_progress(45, f"Started DB container: {db_container_id}")
+        self.set_restore_progress(20, f"Started DB container: {db_container_id}")
         self.process_label.config(text=f"Started DB container: {db_container_id}")
         self.update_idletasks()
         time.sleep(5)
@@ -7601,7 +7601,7 @@ If the problem persists, please report this issue on GitHub.
             db_files = []
             data_dir = os.path.join(extract_dir, "data")
             
-            self.set_restore_progress(62, "Checking for SQLite database...")
+            self.set_restore_progress(82, "Checking for SQLite database...")
             
             if os.path.exists(data_dir):
                 for file in os.listdir(data_dir):
@@ -7626,7 +7626,7 @@ If the problem persists, please report this issue on GitHub.
             db_size = os.path.getsize(db_path) if os.path.exists(db_path) else 0
             db_size_str = self._format_bytes(db_size)
             
-            self.set_restore_progress(65, f"Verifying SQLite database: {db_file} ({db_size_str})")
+            self.set_restore_progress(85, f"Verifying SQLite database: {db_file} ({db_size_str})")
             safe_widget_update(
                 self.process_label,
                 lambda: self.process_label.config(text=f"Verifying SQLite database: {db_file} ({db_size_str})"),
@@ -7640,12 +7640,12 @@ If the problem persists, please report this issue on GitHub.
             
             # The .db file should already be copied with the data folder
             # Just verify it exists
-            self.set_restore_progress(70, f"Validating SQLite database in container...")
+            self.set_restore_progress(87, f"Validating SQLite database in container...")
             check_cmd = f'docker exec {nextcloud_container} test -f {nextcloud_path}/data/{db_file}'
             result = subprocess.run(check_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             
             if result.returncode == 0:
-                self.set_restore_progress(75, f"✓ SQLite database restored successfully")
+                self.set_restore_progress(90, f"✓ SQLite database restored successfully")
                 logger.info(f"SQLite database file {db_file} successfully restored")
                 return True
             else:
@@ -7683,7 +7683,7 @@ If the problem persists, please report this issue on GitHub.
             sql_size = os.path.getsize(sql_path)
             sql_size_str = self._format_bytes(sql_size)
             
-            self.set_restore_progress(62, f"Restoring MySQL database ({sql_size_str})...")
+            self.set_restore_progress(82, f"Restoring MySQL database ({sql_size_str})...")
             safe_widget_update(
                 self.process_label,
                 lambda: self.process_label.config(text=f"Restoring MySQL database ({sql_size_str})..."),
@@ -7718,12 +7718,12 @@ If the problem persists, please report this issue on GitHub.
             restore_thread = threading.Thread(target=do_restore, daemon=True)
             restore_thread.start()
             
-            # Update progress while restoring (62-72% range)
-            progress = 62
+            # Update progress while restoring (82-89% range)
+            progress = 82
             last_update = time.time()
             while not restore_done[0]:
                 current_time = time.time()
-                if current_time - last_update >= 1.0 and progress < 72:
+                if current_time - last_update >= 1.0 and progress < 89:
                     progress += 1
                     self.set_restore_progress(progress, f"Restoring MySQL database ({sql_size_str})...")
                     last_update = current_time
@@ -7742,7 +7742,7 @@ If the problem persists, please report this issue on GitHub.
                 return False
             
             # Validate that database tables were imported
-            self.set_restore_progress(73, "Validating MySQL database restore...")
+            self.set_restore_progress(90, "Validating MySQL database restore...")
             safe_widget_update(
                 self.process_label,
                 lambda: self.process_label.config(text="Validating MySQL database restore..."),
@@ -7787,7 +7787,7 @@ If the problem persists, please report this issue on GitHub.
             sql_size = os.path.getsize(sql_path)
             sql_size_str = self._format_bytes(sql_size)
             
-            self.set_restore_progress(62, f"Restoring PostgreSQL database ({sql_size_str})...")
+            self.set_restore_progress(82, f"Restoring PostgreSQL database ({sql_size_str})...")
             safe_widget_update(
                 self.process_label,
                 lambda: self.process_label.config(text=f"Restoring PostgreSQL database ({sql_size_str})..."),
@@ -7822,12 +7822,12 @@ If the problem persists, please report this issue on GitHub.
             restore_thread = threading.Thread(target=do_restore, daemon=True)
             restore_thread.start()
             
-            # Update progress while restoring (62-72% range)
-            progress = 62
+            # Update progress while restoring (82-89% range)
+            progress = 82
             last_update = time.time()
             while not restore_done[0]:
                 current_time = time.time()
-                if current_time - last_update >= 1.0 and progress < 72:
+                if current_time - last_update >= 1.0 and progress < 89:
                     progress += 1
                     self.set_restore_progress(progress, f"Restoring PostgreSQL database ({sql_size_str})...")
                     last_update = current_time
@@ -7846,7 +7846,7 @@ If the problem persists, please report this issue on GitHub.
                 return False
             
             # Validate that database tables were imported
-            self.set_restore_progress(73, "Validating PostgreSQL database restore...")
+            self.set_restore_progress(90, "Validating PostgreSQL database restore...")
             safe_widget_update(
                 self.process_label,
                 lambda: self.process_label.config(text="Validating PostgreSQL database restore..."),
@@ -8447,7 +8447,7 @@ php /tmp/update_config.php"
             if self.verbose_logging:
                 logger.debug(f"Extraction directory: {extract_dir}")
 
-            # Auto-detect database type from config.php (20-22% range)
+            # Auto-detect database type from config.php (20% - brief transition)
             self.set_restore_progress(20, "Detecting database type ...")
             safe_widget_update(
                 self.process_label,
@@ -8502,12 +8502,12 @@ php /tmp/update_config.php"
                 self.detected_dbtype = dbtype
                 time.sleep(3)  # Give user more time to see the warning
 
-            # Docker configuration (22-25% range)
-            self.set_restore_progress(22, self.restore_steps[1])
+            # Docker configuration (20% - brief setup before copying)
+            self.set_restore_progress(20, self.restore_steps[1])
             logger.info("Step 3/7: Generating Docker Compose configuration...")
             
             # Generate Docker Compose YAML automatically
-            self.set_restore_progress(23, "Generating Docker Compose configuration...")
+            self.set_restore_progress(20, "Generating Docker Compose configuration...")
             safe_widget_update(
                 self.process_label,
                 lambda: self.process_label.config(text="Creating docker-compose.yml with detected settings..."),
@@ -8640,7 +8640,7 @@ php /tmp/update_config.php"
                 time.sleep(2)
             
             # Update to step 2 with detailed messaging (25-30% range for container setup)
-            self.set_restore_progress(25, self.restore_steps[2])
+            self.set_restore_progress(20, self.restore_steps[2])
             logger.info("Step 4/7: Setting up Docker containers...")
             
             # For SQLite, we don't need a separate database container
@@ -8704,8 +8704,8 @@ php /tmp/update_config.php"
                 "process label update in restore thread"
             )
 
-            # Copying files to container (30-60% range for file copying)
-            self.set_restore_progress(30, self.restore_steps[3])
+            # Copying files to container (20-80% range for file copying)
+            self.set_restore_progress(20, self.restore_steps[3])
             nextcloud_path = "/var/www/html"
             # Copy config/data/apps/custom_apps into container
             # Note: We need to remove existing folders first, then copy the backup folders
@@ -8754,9 +8754,9 @@ php /tmp/update_config.php"
             for idx, folder in enumerate(folders_to_copy):
                 local_path = os.path.join(extract_dir, folder)
                 if os.path.isdir(local_path):
-                    # Calculate base progress for this folder (30-60% range, 30% total / 4 folders = 7.5% per folder)
-                    folder_start_progress = 30 + int((idx / len(folders_to_copy)) * 30)
-                    folder_end_progress = 30 + int(((idx + 1) / len(folders_to_copy)) * 30)
+                    # Calculate base progress for this folder (20-80% range, 60% total / 4 folders = 15% per folder)
+                    folder_start_progress = 20 + int((idx / len(folders_to_copy)) * 60)
+                    folder_end_progress = 20 + int(((idx + 1) / len(folders_to_copy)) * 60)
                     
                     folder_size = folder_sizes.get(folder, 0)
                     file_count = folder_file_counts.get(folder, 0)
@@ -8870,8 +8870,8 @@ php /tmp/update_config.php"
             total_elapsed = time.time() - copy_start_time_all
             logger.info(f"Completed copying {files_copied_so_far} files in {self._format_time(total_elapsed)}")
 
-            # Database restore - branch based on detected database type (60-75% range)
-            self.set_restore_progress(60, self.restore_steps[4])
+            # Database restore - branch based on detected database type (80-90% range)
+            self.set_restore_progress(80, self.restore_steps[4])
             logger.info("Step 5/7: Restoring database...")
             
             db_restore_success = False
@@ -8915,8 +8915,8 @@ php /tmp/update_config.php"
                 )
                 print(warning_msg)
             
-            # Update config.php with database credentials (75-80% range)
-            self.set_restore_progress(76, "Updating Nextcloud configuration ...")
+            # Update config.php with database credentials (90-92% range)
+            self.set_restore_progress(90, "Updating Nextcloud configuration ...")
             safe_widget_update(
                 self.process_label,
                 lambda: self.process_label.config(text="Updating config.php with database credentials ..."),
@@ -8945,8 +8945,8 @@ php /tmp/update_config.php"
                 )
                 print(f"Warning: config.php update failed: {config_err}")
 
-            # Validate that required files exist (80-85% range)
-            self.set_restore_progress(81, "Validating restored files ...")
+            # Validate that required files exist (92-94% range)
+            self.set_restore_progress(92, "Validating restored files ...")
             safe_widget_update(
                 self.process_label,
                 lambda: self.process_label.config(text="Validating config and data folders ..."),
@@ -9003,8 +9003,8 @@ php /tmp/update_config.php"
                 )
                 print(f"Warning: file validation error: {val_err}")
             
-            # Setting permissions (85-90% range)
-            self.set_restore_progress(86, self.restore_steps[5])
+            # Setting permissions (94-96% range)
+            self.set_restore_progress(94, self.restore_steps[5])
             safe_widget_update(
                 self.process_label,
                 lambda: self.process_label.config(text="Setting file permissions for web server..."),
@@ -9055,8 +9055,8 @@ php /tmp/update_config.php"
                 )
                 print(f"Warning: permission error but continuing restore: {perm_err}")
 
-            # Restart Nextcloud container to apply all changes (90-95% range)
-            self.set_restore_progress(91, "Restarting Nextcloud container ...")
+            # Restart Nextcloud container to apply all changes (96-99% range)
+            self.set_restore_progress(96, "Restarting Nextcloud container ...")
             safe_widget_update(
                 self.process_label,
                 lambda: self.process_label.config(text="Restarting Nextcloud to apply changes..."),
