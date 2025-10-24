@@ -120,7 +120,7 @@ def demonstrate_copying_progress():
     print("\n" + "="*70)
     print("DEMONSTRATION: Live File-by-File Copying Progress")
     print("="*70)
-    print("\nThis demo simulates the copying phase of Nextcloud restore (30-60%)")
+    print("\nThis demo simulates the copying phase of Nextcloud restore (20-80%)")
     print("Showing live progress updates as files are copied to the container.\n")
     
     # Create test structure
@@ -135,10 +135,10 @@ def demonstrate_copying_progress():
         
         # Simulate copying each folder
         folder_list = [
-            ("config", folders["config"], 30, 37),
-            ("data", folders["data"], 37, 45),
-            ("apps", folders["apps"], 45, 52),
-            ("custom_apps", folders["custom_apps"], 52, 60),
+            ("config", folders["config"], 20, 35),
+            ("data", folders["data"], 35, 50),
+            ("apps", folders["apps"], 50, 65),
+            ("custom_apps", folders["custom_apps"], 65, 80),
         ]
         
         overall_start = time.time()
@@ -153,13 +153,13 @@ def demonstrate_copying_progress():
         print("COPYING PHASE COMPLETE")
         print("="*70)
         print(f"✓ Copied {total_files} files in {format_time(overall_elapsed)}")
-        print(f"✓ Progress: 30% → 60% (completed)")
+        print(f"✓ Progress: 20% → 80% (completed)")
         print("\nKey Features Demonstrated:")
         print("  • Live progress updates during copying")
         print("  • File count tracking (X/Y files)")
         print("  • Current file display")
         print("  • Elapsed and estimated time")
-        print("  • Smooth progress bar updates (30-60% range)")
+        print("  • Smooth progress bar updates (20-80% range)")
         print("  • Thread-safe UI updates (using self.after())")
         
     finally:
@@ -193,10 +193,9 @@ def show_progress_comparison():
     
     print("\n📈 Progress Range:")
     print("  0-20%  : Extraction (already enhanced)")
-    print("  20-30% : Transition")
-    print("  30-60% : Copying files ✨ NEW: Live file-by-file updates")
-    print("  60-75% : Database restore")
-    print("  75-100%: Config updates and finalization")
+    print("  20-80% : Copying files ✨ NEW: Live file-by-file updates (60% of total)")
+    print("  80-90% : Database restore")
+    print("  90-100%: Config updates and finalization")
 
 if __name__ == "__main__":
     try:
