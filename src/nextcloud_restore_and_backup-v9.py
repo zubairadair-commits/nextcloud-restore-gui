@@ -12996,15 +12996,21 @@ php /tmp/update_config.php"
         def on_mouse_wheel(event):
             """Handle mouse wheel scrolling for the canvas"""
             # Windows and MacOS
-            if event.num == 5 or event.delta < 0:
+            if event.delta:
+                canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+            # Linux
+            elif event.num == 5:
                 canvas.yview_scroll(1, "units")
-            if event.num == 4 or event.delta > 0:
+            elif event.num == 4:
                 canvas.yview_scroll(-1, "units")
         
-        # Bind mouse wheel events (both Windows/Mac and Linux)
-        canvas.bind_all("<MouseWheel>", on_mouse_wheel)  # Windows and MacOS
-        canvas.bind_all("<Button-4>", on_mouse_wheel)    # Linux scroll up
-        canvas.bind_all("<Button-5>", on_mouse_wheel)    # Linux scroll down
+        # Bind mouse wheel events to canvas and content (not bind_all to avoid conflicts)
+        canvas.bind("<MouseWheel>", on_mouse_wheel)  # Windows and MacOS
+        canvas.bind("<Button-4>", on_mouse_wheel)    # Linux scroll up
+        canvas.bind("<Button-5>", on_mouse_wheel)    # Linux scroll down
+        content.bind("<MouseWheel>", on_mouse_wheel)  # Also bind to content frame
+        content.bind("<Button-4>", on_mouse_wheel)
+        content.bind("<Button-5>", on_mouse_wheel)
         
         logger.info("TAILSCALE CONFIG: Content frame configured with responsive layout and mouse wheel scrolling")
         
@@ -13569,15 +13575,21 @@ php /tmp/update_config.php"
             def on_domain_mouse_wheel(event):
                 """Handle mouse wheel scrolling for the domain list canvas"""
                 # Windows and MacOS
-                if event.num == 5 or event.delta < 0:
+                if event.delta:
+                    canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+                # Linux
+                elif event.num == 5:
                     canvas.yview_scroll(1, "units")
-                if event.num == 4 or event.delta > 0:
+                elif event.num == 4:
                     canvas.yview_scroll(-1, "units")
             
             # Bind mouse wheel events for domain list
             canvas.bind("<MouseWheel>", on_domain_mouse_wheel)  # Windows and MacOS
             canvas.bind("<Button-4>", on_domain_mouse_wheel)    # Linux scroll up
             canvas.bind("<Button-5>", on_domain_mouse_wheel)    # Linux scroll down
+            domains_frame.bind("<MouseWheel>", on_domain_mouse_wheel)  # Also bind to domains frame
+            domains_frame.bind("<Button-4>", on_domain_mouse_wheel)
+            domains_frame.bind("<Button-5>", on_domain_mouse_wheel)
             
             # Display each domain with status icon and remove button
             for domain in current_domains:
@@ -14021,11 +14033,13 @@ Would you like to open the detailed guide?
             
             # Get Tailscale status with increased timeout
             try:
+                creation_flags = get_subprocess_creation_flags()
                 result = subprocess.run(
                     [tailscale_cmd, "status", "--json"],
                     capture_output=True,
                     text=True,
-                    timeout=15
+                    timeout=15,
+                    creationflags=creation_flags
                 )
             except subprocess.TimeoutExpired:
                 error_msg = "Tailscale command timed out. The service may be unresponsive."
