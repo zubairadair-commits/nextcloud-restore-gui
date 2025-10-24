@@ -6757,18 +6757,15 @@ If the problem persists, please report this issue on GitHub.
                 "progress bar value update"
             )
         
-        # Calculate elapsed time and estimate
+        # Calculate elapsed time
         elapsed_time = time.time() - self.restore_start_time
         elapsed_str = self._format_time(elapsed_time)
         
-        # Estimate remaining time if progress > 0
-        if percent > 0 and percent < 100:
-            total_estimated = (elapsed_time / percent) * 100
-            remaining_time = total_estimated - elapsed_time
-            remaining_str = self._format_time(remaining_time)
-            progress_text = f"{percent}% | Elapsed: {elapsed_str} | Est. remaining: {remaining_str}"
-        elif percent == 100:
+        # Format progress text with percentage and elapsed time only
+        if percent == 100:
             progress_text = f"100% | Total time: {elapsed_str}"
+        elif percent > 0:
+            progress_text = f"{percent}% | Elapsed: {elapsed_str}"
         else:
             progress_text = f"{percent}%"
         
@@ -7348,31 +7345,11 @@ If the problem persists, please report this issue on GitHub.
                         progress_val = 0
                         status_msg = f"Extracting: {files_extracted} files..."
                     
-                    # Calculate elapsed time and estimate
+                    # Calculate elapsed time
                     elapsed = time.time() - extraction_start_time[0]
                     if files_extracted > 0 and elapsed > 0:
-                        rate = files_extracted / elapsed
-                        
                         elapsed_str = self._format_time(elapsed)
-                        
-                        # Estimate remaining time
-                        if total_files is not None and total_files > 0:
-                            # File-based estimate
-                            remaining_files = total_files - files_extracted
-                            est_remaining = remaining_files / rate if rate > 0 else 0
-                        elif total_bytes > 0 and bytes_processed > 0:
-                            # Byte-based estimate
-                            remaining_bytes = total_bytes - bytes_processed
-                            bytes_per_sec = bytes_processed / elapsed if elapsed > 0 else 0
-                            est_remaining = remaining_bytes / bytes_per_sec if bytes_per_sec > 0 else 0
-                        else:
-                            est_remaining = 0
-                        
-                        est_str = self._format_time(est_remaining)
-                        
                         status_msg += f" | Elapsed: {elapsed_str}"
-                        if est_remaining > 0:
-                            status_msg += f" | Est: {est_str}"
                     
                     # Use after() for thread-safe UI updates instead of direct widget updates
                     def update_ui():
@@ -9016,16 +8993,11 @@ php /tmp/update_config.php"
                             if len(file_display) > 60:
                                 file_display = "..." + file_display[-57:]
                             
-                            # Calculate time estimates
+                            # Calculate elapsed time
                             elapsed_str = self._format_time(elapsed)
                             
                             if total_files > 0 and files_copied > 0:
-                                rate = files_copied / elapsed if elapsed > 0 else 0
-                                remaining_files = total_files - files_copied
-                                est_remaining = remaining_files / rate if rate > 0 else 0
-                                est_str = self._format_time(est_remaining)
-                                
-                                status_msg = f"Copying {folder}: {files_copied}/{total_files} files | Elapsed: {elapsed_str} | Est: {est_str}"
+                                status_msg = f"Copying {folder}: {files_copied}/{total_files} files | Elapsed: {elapsed_str}"
                             else:
                                 status_msg = f"Copying {folder}: {files_copied} files | Elapsed: {elapsed_str}"
                             
