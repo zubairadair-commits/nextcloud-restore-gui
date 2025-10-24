@@ -8840,6 +8840,8 @@ php /tmp/update_config.php"
                     self.set_restore_progress(0, "Restore failed!")
                     return
                 logger.info(f"Database container ready: {db_container}")
+                # Store db_container for later use
+                self.restore_db_container = db_container
                 safe_widget_update(
                     self.process_label,
                     lambda: self.process_label.config(text=f"✓ Database container ready: {db_container}"),
@@ -9298,8 +9300,27 @@ php /tmp/update_config.php"
             except tk.TclError:
                 logger.debug("TclError during final error label update - window may have been closed")
             
+            # Extract admin username from restored database
+            admin_username = None
+            try:
+                logger.info("Step 7/7: Extracting admin username from database...")
+                safe_widget_update(
+                    self.process_label,
+                    lambda: self.process_label.config(text="Extracting admin username..."),
+                    "process label update in restore thread"
+                )
+                time.sleep(1)  # Brief delay for database to be ready
+                admin_username = self.extract_admin_username(nextcloud_container, dbtype)
+                if admin_username:
+                    logger.info(f"Successfully extracted admin username: {admin_username}")
+                else:
+                    logger.info("Could not extract admin username - will show completion without it")
+            except Exception as extract_err:
+                logger.warning(f"Failed to extract admin username: {extract_err}")
+                # Continue without admin username - not critical
+            
             # Show completion dialog with "Open Nextcloud" option
-            self.show_restore_completion_dialog(nextcloud_container, self.restore_container_port)
+            self.show_restore_completion_dialog(nextcloud_container, self.restore_container_port, admin_username)
             shutil.rmtree(extract_dir, ignore_errors=True)
         except tk.TclError as e:
             # Widget was destroyed - likely user closed window or navigated away
@@ -9323,10 +9344,107 @@ php /tmp/update_config.php"
             self.show_restore_error_dialog(e, tb)
             print(tb)
 
-    def show_restore_completion_dialog(self, container_name, port):
+    def extract_admin_username(self, container_name, dbtype):
+        """
+        Extract admin username from the restored Nextcloud database.
+        
+        Args:
+            container_name: Name of the Nextcloud container
+            dbtype: Database type ('sqlite', 'mysql', 'pgsql')
+        
+        Returns:
+            str: Admin username or None if extraction fails
+        """
+        try:
+            logger.info("Extracting admin username from restored database...")
+            
+            if dbtype == 'sqlite':
+                # For SQLite, query the database file directly inside the container
+                # Get the first user with admin privileges (uid in admin group)
+                query = "SELECT u.uid FROM oc_users u INNER JOIN oc_group_user g ON u.uid = g.uid WHERE g.gid = 'admin' LIMIT 1;"
+                cmd = f"docker exec {container_name} sqlite3 /var/www/html/data/nextcloud.db \"{query}\""
+                
+                result = subprocess.run(
+                    cmd,
+                    shell=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=10
+                )
+                
+                if result.returncode == 0 and result.stdout.strip():
+                    admin_username = result.stdout.strip()
+                    logger.info(f"Successfully extracted admin username: {admin_username}")
+                    return admin_username
+                else:
+                    logger.warning(f"Could not extract admin username from SQLite: {result.stderr}")
+                    return None
+                    
+            elif dbtype in ['mysql', 'mariadb']:
+                # For MySQL/MariaDB, query the database container
+                db_container = self.restore_db_container if hasattr(self, 'restore_db_container') else f"{container_name.replace('nextcloud', 'db')}"
+                query = "SELECT u.uid FROM oc_users u INNER JOIN oc_group_user g ON u.uid = g.uid WHERE g.gid = 'admin' LIMIT 1;"
+                cmd = f"docker exec {db_container} mysql -u{self.restore_db_user} -p{self.restore_db_password} {self.restore_db_name} -sN -e \"{query}\""
+                
+                result = subprocess.run(
+                    cmd,
+                    shell=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=10
+                )
+                
+                if result.returncode == 0 and result.stdout.strip():
+                    admin_username = result.stdout.strip()
+                    logger.info(f"Successfully extracted admin username: {admin_username}")
+                    return admin_username
+                else:
+                    logger.warning(f"Could not extract admin username from MySQL: {result.stderr}")
+                    return None
+                    
+            elif dbtype == 'pgsql':
+                # For PostgreSQL, query the database container
+                db_container = self.restore_db_container if hasattr(self, 'restore_db_container') else f"{container_name.replace('nextcloud', 'db')}"
+                query = "SELECT u.uid FROM oc_users u INNER JOIN oc_group_user g ON u.uid = g.uid WHERE g.gid = 'admin' LIMIT 1;"
+                cmd = f"docker exec {db_container} psql -U {self.restore_db_user} -d {self.restore_db_name} -t -c \"{query}\""
+                
+                result = subprocess.run(
+                    cmd,
+                    shell=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=10
+                )
+                
+                if result.returncode == 0 and result.stdout.strip():
+                    admin_username = result.stdout.strip()
+                    logger.info(f"Successfully extracted admin username: {admin_username}")
+                    return admin_username
+                else:
+                    logger.warning(f"Could not extract admin username from PostgreSQL: {result.stderr}")
+                    return None
+            
+            return None
+            
+        except subprocess.TimeoutExpired:
+            logger.warning("Timeout while extracting admin username")
+            return None
+        except Exception as e:
+            logger.warning(f"Error extracting admin username: {e}")
+            return None
+
+    def show_restore_completion_dialog(self, container_name, port, admin_username=None):
         """
         Show a completion dialog with an option to open Nextcloud in browser.
         This provides a beginner-friendly post-restore action.
+        
+        Args:
+            container_name: Name of the Nextcloud container
+            port: Port number
+            admin_username: Optional admin username extracted from database
         """
         # Create completion message frame
         for widget in self.body_frame.winfo_children():
@@ -9355,14 +9473,27 @@ php /tmp/update_config.php"
         info_label.pack(pady=10)
         
         # Container info
+        container_info_text = f"Container: {container_name}\nPort: {port}"
         container_info = tk.Label(
             completion_frame,
-            text=f"Container: {container_name}\nPort: {port}",
+            text=container_info_text,
             font=("Arial", 11),
             bg=self.theme_colors['bg'],
             fg=self.theme_colors['hint_fg']
         )
         container_info.pack(pady=10)
+        
+        # Admin credentials info (if available)
+        if admin_username:
+            admin_info = tk.Label(
+                completion_frame,
+                text=f"Log in with your previous admin credentials.\nYour admin username is: {admin_username}",
+                font=("Arial", 12, "bold"),
+                bg=self.theme_colors['bg'],
+                fg="#3daee9"
+            )
+            admin_info.pack(pady=15)
+            logger.info(f"Displaying admin username to user: {admin_username}")
         
         # Button frame
         button_frame = tk.Frame(completion_frame, bg=self.theme_colors['bg'])
