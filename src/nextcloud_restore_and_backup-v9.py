@@ -6979,20 +6979,101 @@ If the problem persists, please report this issue on GitHub.
                                 "Transferring to Docker container...", 
                                 mid_progress, elapsed)
             
+            # Switch progress bar to indeterminate mode for bulk docker cp operation
+            def switch_to_indeterminate():
+                """Switch progress bar to indeterminate (animated) mode"""
+                try:
+                    if hasattr(self, 'progressbar') and self.progressbar:
+                        safe_widget_update(
+                            self.progressbar,
+                            lambda: self.progressbar.config(mode='indeterminate'),
+                            "progress bar switch to indeterminate"
+                        )
+                        # Start the animation
+                        safe_widget_update(
+                            self.progressbar,
+                            lambda: self.progressbar.start(10),  # 10ms interval for smooth animation
+                            "progress bar start animation"
+                        )
+                except Exception as e:
+                    logger.debug(f"Error switching to indeterminate mode: {e}")
+            
+            def switch_to_determinate():
+                """Switch progress bar back to determinate mode"""
+                try:
+                    if hasattr(self, 'progressbar') and self.progressbar:
+                        # Stop the animation
+                        safe_widget_update(
+                            self.progressbar,
+                            lambda: self.progressbar.stop(),
+                            "progress bar stop animation"
+                        )
+                        # Switch back to determinate mode
+                        safe_widget_update(
+                            self.progressbar,
+                            lambda: self.progressbar.config(mode='determinate'),
+                            "progress bar switch to determinate"
+                        )
+                except Exception as e:
+                    logger.debug(f"Error switching to determinate mode: {e}")
+            
+            # Switch to indeterminate mode on main thread
+            try:
+                self.after(0, switch_to_indeterminate)
+            except Exception as e:
+                logger.debug(f"Error scheduling indeterminate mode: {e}")
+            
             # Now use docker cp to copy the entire folder at once from staging to container
-            # This is much faster than copying individual files
+            # Run this in a separate thread to keep UI responsive
             container_dest = f"{container_path}/{folder_name}"
             docker_cp_cmd = f'docker cp "{staging_folder_path}/." {container_name}:"{container_dest}"'
             
             logger.info(f"Transferring folder to container: {docker_cp_cmd}")
             
-            result = subprocess.run(
-                docker_cp_cmd,
-                shell=True,
-                check=True,
-                capture_output=True,
-                text=True
-            )
+            # Thread-safe result storage
+            docker_cp_result = {'success': False, 'error': None}
+            docker_cp_complete = threading.Event()
+            
+            def run_docker_cp():
+                """Run docker cp in background thread"""
+                try:
+                    result = subprocess.run(
+                        docker_cp_cmd,
+                        shell=True,
+                        check=True,
+                        capture_output=True,
+                        text=True
+                    )
+                    docker_cp_result['success'] = True
+                except Exception as e:
+                    docker_cp_result['success'] = False
+                    docker_cp_result['error'] = str(e)
+                finally:
+                    docker_cp_complete.set()
+            
+            # Start docker cp in background thread
+            docker_thread = threading.Thread(target=run_docker_cp, daemon=True)
+            docker_thread.start()
+            
+            # Wait for completion while keeping UI responsive
+            while not docker_cp_complete.is_set():
+                docker_cp_complete.wait(timeout=0.1)  # Check every 100ms
+                try:
+                    if self.winfo_exists():
+                        self.update_idletasks()  # Keep UI responsive
+                except:
+                    pass
+            
+            # Switch back to determinate mode on main thread
+            try:
+                self.after(0, switch_to_determinate)
+            except Exception as e:
+                logger.debug(f"Error scheduling determinate mode: {e}")
+            
+            # Check if docker cp succeeded
+            if not docker_cp_result['success']:
+                error_msg = docker_cp_result.get('error', 'Unknown error')
+                raise Exception(f"Docker cp failed: {error_msg}")
             
             # Clean up staging directory
             shutil.rmtree(staging_dir, ignore_errors=True)
