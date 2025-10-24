@@ -2884,6 +2884,256 @@ def _setup_macos_launchagent(port, enable):
         logger.error(f"Error managing macOS LaunchAgent: {e}")
         return False, f"Error: {str(e)}"
 
+def check_scheduled_task_status():
+    """
+    Check if the Tailscale Serve scheduled task exists and get its status.
+    
+    Returns:
+        dict: {
+            'exists': bool,
+            'enabled': bool,
+            'status': str,
+            'next_run': str,
+            'last_run': str,
+            'port': int or None
+        }
+    """
+    system = platform.system()
+    task_name = "NextcloudTailscaleServe"
+    
+    result = {
+        'exists': False,
+        'enabled': False,
+        'status': 'Not configured',
+        'next_run': 'N/A',
+        'last_run': 'N/A',
+        'port': None
+    }
+    
+    try:
+        if system == "Windows":
+            # Query the scheduled task
+            creation_flags = get_subprocess_creation_flags()
+            query_result = subprocess.run(
+                ['schtasks', '/Query', '/TN', task_name, '/FO', 'LIST', '/V'],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                creationflags=creation_flags
+            )
+            
+            if query_result.returncode == 0:
+                result['exists'] = True
+                output = query_result.stdout
+                
+                # Parse task details
+                for line in output.split('\n'):
+                    line = line.strip()
+                    if line.startswith('Status:'):
+                        status = line.split(':', 1)[1].strip()
+                        result['enabled'] = (status != 'Disabled')
+                        result['status'] = status
+                    elif line.startswith('Next Run Time:'):
+                        result['next_run'] = line.split(':', 1)[1].strip()
+                    elif line.startswith('Last Run Time:'):
+                        result['last_run'] = line.split(':', 1)[1].strip()
+                    elif 'http://localhost:' in line:
+                        # Extract port from task arguments
+                        import re
+                        match = re.search(r'http://localhost:(\d+)', line)
+                        if match:
+                            result['port'] = int(match.group(1))
+                
+                logger.info(f"Scheduled task '{task_name}' found: {result}")
+            else:
+                logger.info(f"Scheduled task '{task_name}' not found")
+        
+        elif system == "Linux":
+            service_name = "nextcloud-tailscale-serve.service"
+            # Check systemd service status
+            check_result = subprocess.run(
+                ['systemctl', 'is-enabled', service_name],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            if check_result.returncode == 0 and check_result.stdout.strip() == 'enabled':
+                result['exists'] = True
+                result['enabled'] = True
+                result['status'] = 'Enabled'
+                
+                # Get service status
+                status_result = subprocess.run(
+                    ['systemctl', 'status', service_name, '--no-pager'],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                
+                # Try to extract port from service file
+                try:
+                    service_path = f"/etc/systemd/system/{service_name}"
+                    if os.path.exists(service_path):
+                        with open(service_path, 'r') as f:
+                            content = f.read()
+                            import re
+                            match = re.search(r'http://localhost:(\d+)', content)
+                            if match:
+                                result['port'] = int(match.group(1))
+                except:
+                    pass
+        
+        elif system == "Darwin":
+            agent_label = "com.nextcloud.tailscale-serve"
+            agent_plist = os.path.expanduser(f"~/Library/LaunchAgents/{agent_label}.plist")
+            
+            if os.path.exists(agent_plist):
+                result['exists'] = True
+                result['enabled'] = True
+                result['status'] = 'Enabled'
+                
+                # Try to extract port from plist
+                try:
+                    with open(agent_plist, 'r') as f:
+                        content = f.read()
+                        import re
+                        match = re.search(r'http://localhost:(\d+)', content)
+                        if match:
+                            result['port'] = int(match.group(1))
+                except:
+                    pass
+    
+    except Exception as e:
+        logger.error(f"Error checking scheduled task status: {e}")
+    
+    return result
+
+def disable_scheduled_task():
+    """
+    Disable the Tailscale Serve scheduled task without removing it.
+    
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    system = platform.system()
+    
+    try:
+        if system == "Windows":
+            task_name = "NextcloudTailscaleServe"
+            creation_flags = get_subprocess_creation_flags()
+            
+            # Disable the task
+            result = subprocess.run(
+                ['schtasks', '/Change', '/TN', task_name, '/DISABLE'],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                creationflags=creation_flags
+            )
+            
+            if result.returncode == 0:
+                logger.info(f"Scheduled task '{task_name}' disabled successfully")
+                return True, "Scheduled task disabled successfully."
+            else:
+                logger.error(f"Failed to disable scheduled task: {result.stderr}")
+                return False, f"Failed to disable task: {result.stderr}"
+        
+        elif system == "Linux":
+            service_name = "nextcloud-tailscale-serve.service"
+            result = subprocess.run(
+                ['sudo', 'systemctl', 'disable', service_name],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode == 0:
+                return True, "Service disabled successfully."
+            else:
+                return False, f"Failed to disable service: {result.stderr}"
+        
+        elif system == "Darwin":
+            agent_label = "com.nextcloud.tailscale-serve"
+            agent_plist = os.path.expanduser(f"~/Library/LaunchAgents/{agent_label}.plist")
+            
+            if os.path.exists(agent_plist):
+                subprocess.run(['launchctl', 'unload', agent_plist],
+                             capture_output=True, text=True, timeout=10)
+                return True, "Launch agent disabled successfully."
+            else:
+                return False, "Launch agent not found."
+        
+        return False, f"Unsupported platform: {system}"
+    
+    except Exception as e:
+        logger.error(f"Error disabling scheduled task: {e}")
+        return False, f"Error: {str(e)}"
+
+def enable_scheduled_task():
+    """
+    Enable a previously disabled Tailscale Serve scheduled task.
+    
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    system = platform.system()
+    
+    try:
+        if system == "Windows":
+            task_name = "NextcloudTailscaleServe"
+            creation_flags = get_subprocess_creation_flags()
+            
+            # Enable the task
+            result = subprocess.run(
+                ['schtasks', '/Change', '/TN', task_name, '/ENABLE'],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                creationflags=creation_flags
+            )
+            
+            if result.returncode == 0:
+                logger.info(f"Scheduled task '{task_name}' enabled successfully")
+                return True, "Scheduled task enabled successfully."
+            else:
+                logger.error(f"Failed to enable scheduled task: {result.stderr}")
+                return False, f"Failed to enable task: {result.stderr}"
+        
+        elif system == "Linux":
+            service_name = "nextcloud-tailscale-serve.service"
+            result = subprocess.run(
+                ['sudo', 'systemctl', 'enable', service_name],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode == 0:
+                return True, "Service enabled successfully."
+            else:
+                return False, f"Failed to enable service: {result.stderr}"
+        
+        elif system == "Darwin":
+            agent_label = "com.nextcloud.tailscale-serve"
+            agent_plist = os.path.expanduser(f"~/Library/LaunchAgents/{agent_label}.plist")
+            
+            if os.path.exists(agent_plist):
+                result = subprocess.run(['launchctl', 'load', agent_plist],
+                                      capture_output=True, text=True, timeout=10)
+                if result.returncode == 0:
+                    return True, "Launch agent enabled successfully."
+                else:
+                    return False, f"Failed to enable: {result.stderr}"
+            else:
+                return False, "Launch agent not found."
+        
+        return False, f"Unsupported platform: {system}"
+    
+    except Exception as e:
+        logger.error(f"Error enabling scheduled task: {e}")
+        return False, f"Error: {str(e)}"
+
 # ----------- EXTRACTION USING PYTHON TARFILE MODULE -----------
 def extract_config_php_only(archive_path, extract_to):
     """
@@ -12782,6 +13032,7 @@ php /tmp/update_config.php"
         logger.info("TAILSCALE CONFIG: Retrieving Tailscale network information")
         ts_ip, ts_hostname, error_message = self._get_tailscale_info()
         logger.info(f"TAILSCALE CONFIG: Retrieved - IP: {ts_ip}, Hostname: {ts_hostname}, Error: {error_message}")
+        detected_port = get_nextcloud_port()
         
         # Display Tailscale info
         logger.info("TAILSCALE CONFIG: Creating Tailscale info display")
@@ -12826,6 +13077,56 @@ php /tmp/update_config.php"
                 wraplength=480,
                 justify=tk.LEFT
             ).pack(pady=10, padx=15, anchor="w")
+        
+        # Display clickable Nextcloud URLs
+        if detected_port and (ts_ip or ts_hostname or True):  # Always show local URL if port detected
+            tk.Label(
+                info_frame,
+                text="",
+                bg=self.theme_colors['info_bg']
+            ).pack(pady=5)
+            
+            tk.Label(
+                info_frame,
+                text="🌐 Access Nextcloud via:",
+                font=("Arial", 11, "bold"),
+                bg=self.theme_colors['info_bg'],
+                fg=self.theme_colors['info_fg']
+            ).pack(pady=(5, 5), padx=15, anchor="w")
+            
+            # Local URL
+            local_url = f"http://localhost:{detected_port}"
+            self._create_clickable_url_config(info_frame, f"Local: {local_url}", local_url)
+            
+            # Tailscale IP URL
+            if ts_ip:
+                task_status = check_scheduled_task_status()
+                if task_status['exists']:
+                    ts_ip_url = f"https://{ts_ip}"
+                    self._create_clickable_url_config(info_frame, f"Tailscale IP: {ts_ip_url}", ts_ip_url)
+                else:
+                    tk.Label(
+                        info_frame,
+                        text=f"Tailscale IP: https://{ts_ip} (enable auto-serve below to use)",
+                        font=("Arial", 9),
+                        bg=self.theme_colors['info_bg'],
+                        fg=self.theme_colors['hint_fg']
+                    ).pack(pady=2, padx=25, anchor="w")
+            
+            # Tailscale Hostname URL
+            if ts_hostname:
+                task_status = check_scheduled_task_status()
+                if task_status['exists']:
+                    ts_hostname_url = f"https://{ts_hostname}"
+                    self._create_clickable_url_config(info_frame, f"Tailscale Hostname: {ts_hostname_url}", ts_hostname_url)
+                else:
+                    tk.Label(
+                        info_frame,
+                        text=f"Tailscale Hostname: https://{ts_hostname} (enable auto-serve below to use)",
+                        font=("Arial", 9),
+                        bg=self.theme_colors['info_bg'],
+                        fg=self.theme_colors['hint_fg']
+                    ).pack(pady=2, padx=25, anchor="w")
         
         if ts_ip or ts_hostname:
             tk.Label(
@@ -12894,7 +13195,7 @@ php /tmp/update_config.php"
         logger.info("TAILSCALE CONFIG: Creating auto-serve configuration section")
         tk.Label(
             content,
-            text="Automatic Tailscale Serve (Optional)",
+            text="Automatic Tailscale Serve",
             font=("Arial", 13, "bold"),
             bg=self.theme_colors['bg'],
             fg=self.theme_colors['fg'],
@@ -12915,6 +13216,89 @@ php /tmp/update_config.php"
             justify=tk.LEFT
         ).pack(pady=(0, 5), fill="x", padx=40)
         
+        # Check scheduled task status
+        task_status = check_scheduled_task_status()
+        
+        # Display scheduled task status if it exists
+        if task_status['exists']:
+            status_frame = tk.Frame(content, bg=self.theme_colors['info_bg'], relief="solid", borderwidth=1)
+            status_frame.pack(pady=10, fill="x", padx=40)
+            
+            tk.Label(
+                status_frame,
+                text="📅 Scheduled Task Status",
+                font=("Arial", 11, "bold"),
+                bg=self.theme_colors['info_bg'],
+                fg=self.theme_colors['info_fg']
+            ).pack(pady=(10, 5), padx=10, anchor="w")
+            
+            status_color = self.theme_colors['warning_fg'] if task_status['enabled'] else self.theme_colors['error_fg']
+            status_text = "✓ Enabled" if task_status['enabled'] else "✗ Disabled"
+            
+            tk.Label(
+                status_frame,
+                text=f"Status: {status_text}",
+                font=("Arial", 10),
+                bg=self.theme_colors['info_bg'],
+                fg=status_color
+            ).pack(pady=2, padx=20, anchor="w")
+            
+            if task_status['port']:
+                tk.Label(
+                    status_frame,
+                    text=f"Configured Port: {task_status['port']}",
+                    font=("Arial", 10),
+                    bg=self.theme_colors['info_bg'],
+                    fg=self.theme_colors['info_fg']
+                ).pack(pady=2, padx=20, anchor="w")
+            
+            if task_status['next_run'] and task_status['next_run'] != 'N/A':
+                tk.Label(
+                    status_frame,
+                    text=f"Next Run: {task_status['next_run']}",
+                    font=("Arial", 9),
+                    bg=self.theme_colors['info_bg'],
+                    fg=self.theme_colors['info_fg']
+                ).pack(pady=2, padx=20, anchor="w")
+            
+            # Management buttons frame
+            mgmt_frame = tk.Frame(status_frame, bg=self.theme_colors['info_bg'])
+            mgmt_frame.pack(pady=10, padx=20, fill="x")
+            
+            if task_status['enabled']:
+                tk.Button(
+                    mgmt_frame,
+                    text="⏸ Disable Auto-Start",
+                    font=("Arial", 9),
+                    bg=self.theme_colors['button_bg'],
+                    fg=self.theme_colors['button_fg'],
+                    command=lambda: self._disable_scheduled_task(content, canvas)
+                ).pack(side="left", padx=(0, 5))
+            else:
+                tk.Button(
+                    mgmt_frame,
+                    text="▶️ Enable Auto-Start",
+                    font=("Arial", 9),
+                    bg="#45bf55",
+                    fg="white",
+                    command=lambda: self._enable_scheduled_task(content, canvas)
+                ).pack(side="left", padx=(0, 5))
+            
+            tk.Button(
+                mgmt_frame,
+                text="🗑️ Remove Task",
+                font=("Arial", 9),
+                bg="#e74c3c",
+                fg="white",
+                command=lambda: self._remove_scheduled_task(content, canvas)
+            ).pack(side="left", padx=(0, 5))
+            
+            tk.Label(
+                status_frame,
+                text="",
+                bg=self.theme_colors['info_bg']
+            ).pack(pady=5)
+        
         tk.Label(
             content,
             text="Enable automatic 'tailscale serve' at system startup to make Nextcloud accessible via HTTPS on your Tailscale network.",
@@ -12925,11 +13309,11 @@ php /tmp/update_config.php"
             justify=tk.LEFT
         ).pack(pady=(0, 10), fill="x", padx=40)
         
-        # Auto-serve checkbox (checked by default)
-        auto_serve_var = tk.BooleanVar(value=True)
+        # Auto-serve checkbox (checked by default if task doesn't exist, otherwise reflect current state)
+        auto_serve_var = tk.BooleanVar(value=(not task_status['exists']) or task_status['enabled'])
         auto_serve_check = tk.Checkbutton(
             content,
-            text="Enable automatic Tailscale serve at startup",
+            text="Enable automatic Tailscale serve at startup" + (" (create new task)" if not task_status['exists'] else " (update configuration)"),
             variable=auto_serve_var,
             font=("Arial", 11),
             bg=self.theme_colors['bg'],
@@ -12954,7 +13338,9 @@ php /tmp/update_config.php"
             fg=self.theme_colors['fg']
         ).pack(side="left", padx=(0, 10))
         
-        port_override_var = tk.StringVar(value=str(detected_port) if detected_port else "")
+        # Use the detected port or the port from existing task
+        default_port = task_status.get('port') or detected_port
+        port_override_var = tk.StringVar(value=str(default_port) if default_port else "")
         tk.Entry(
             port_override_frame,
             textvariable=port_override_var,
@@ -13696,8 +14082,9 @@ Would you like to open the detailed guide?
         return ts_ip, ts_hostname, None
     
     def _display_tailscale_info(self, parent):
-        """Display current Tailscale network information"""
+        """Display current Tailscale network information with clickable URLs"""
         ts_ip, ts_hostname, error_message = self._get_tailscale_info()
+        detected_port = get_nextcloud_port()
         
         if ts_ip or ts_hostname or error_message:
             info_frame = tk.Frame(parent, bg=self.theme_colors['info_bg'], relief="solid", borderwidth=1)
@@ -13731,6 +14118,75 @@ Would you like to open the detailed guide?
                     wraplength=520
                 ).pack(pady=2, padx=20, anchor="w")
             
+            # Display clickable Nextcloud URLs
+            if detected_port and (ts_ip or ts_hostname):
+                tk.Label(
+                    info_frame,
+                    text="",
+                    bg=self.theme_colors['info_bg']
+                ).pack(pady=5)
+                
+                tk.Label(
+                    info_frame,
+                    text="🌐 Access Nextcloud via:",
+                    font=("Arial", 10, "bold"),
+                    bg=self.theme_colors['info_bg'],
+                    fg=self.theme_colors['info_fg']
+                ).pack(pady=(5, 5), padx=20, anchor="w")
+                
+                # Local URL
+                local_url = f"http://localhost:{detected_port}"
+                self._create_clickable_url(info_frame, f"Local: {local_url}", local_url)
+                
+                # Tailscale IP URL
+                if ts_ip:
+                    # Check if serve is configured
+                    task_status = check_scheduled_task_status()
+                    if task_status['exists']:
+                        ts_ip_url = f"https://{ts_ip}"
+                        self._create_clickable_url(info_frame, f"Tailscale IP: {ts_ip_url}", ts_ip_url)
+                    else:
+                        tk.Label(
+                            info_frame,
+                            text=f"Tailscale IP: https://{ts_ip} (configure auto-serve below)",
+                            font=("Arial", 9),
+                            bg=self.theme_colors['info_bg'],
+                            fg=self.theme_colors['hint_fg']
+                        ).pack(pady=2, padx=30, anchor="w")
+                
+                # Tailscale Hostname URL
+                if ts_hostname:
+                    task_status = check_scheduled_task_status()
+                    if task_status['exists']:
+                        ts_hostname_url = f"https://{ts_hostname}"
+                        self._create_clickable_url(info_frame, f"Tailscale Hostname: {ts_hostname_url}", ts_hostname_url)
+                    else:
+                        tk.Label(
+                            info_frame,
+                            text=f"Tailscale Hostname: https://{ts_hostname} (configure auto-serve below)",
+                            font=("Arial", 9),
+                            bg=self.theme_colors['info_bg'],
+                            fg=self.theme_colors['hint_fg']
+                        ).pack(pady=2, padx=30, anchor="w")
+            elif detected_port:
+                # Only local Nextcloud URL available
+                tk.Label(
+                    info_frame,
+                    text="",
+                    bg=self.theme_colors['info_bg']
+                ).pack(pady=5)
+                
+                tk.Label(
+                    info_frame,
+                    text="🌐 Access Nextcloud via:",
+                    font=("Arial", 10, "bold"),
+                    bg=self.theme_colors['info_bg'],
+                    fg=self.theme_colors['info_fg']
+                ).pack(pady=(5, 5), padx=20, anchor="w")
+                
+                local_url = f"http://localhost:{detected_port}"
+                self._create_clickable_url(info_frame, f"Local: {local_url}", local_url)
+            
             if error_message:
                 tk.Label(
                     info_frame,
@@ -13747,6 +14203,97 @@ Would you like to open the detailed guide?
                 text="",
                 bg=self.theme_colors['info_bg']
             ).pack(pady=5)
+    
+    def _create_clickable_url(self, parent, display_text, url):
+        """Create a clickable URL label that opens in browser"""
+        url_frame = tk.Frame(parent, bg=self.theme_colors['info_bg'])
+        url_frame.pack(pady=2, padx=30, anchor="w")
+        
+        # Create clickable label
+        url_label = tk.Label(
+            url_frame,
+            text=display_text,
+            font=("Arial", 9, "underline"),
+            bg=self.theme_colors['info_bg'],
+            fg="#3daee9",  # Blue color for link
+            cursor="hand2"
+        )
+        url_label.pack(side="left")
+        
+        # Bind click event
+        def open_url(event):
+            try:
+                webbrowser.open(url)
+                # Show feedback
+                messagebox.showinfo(
+                    "Opening URL",
+                    f"Opening {url} in your default browser...",
+                    parent=self
+                )
+            except Exception as e:
+                messagebox.showerror(
+                    "Error",
+                    f"Failed to open URL: {e}\n\nPlease manually navigate to:\n{url}",
+                    parent=self
+                )
+        
+        url_label.bind("<Button-1>", open_url)
+        
+        # Add hover effect
+        def on_enter(event):
+            url_label.config(fg="#2980b9")
+        
+        def on_leave(event):
+            url_label.config(fg="#3daee9")
+        
+        url_label.bind("<Enter>", on_enter)
+        url_label.bind("<Leave>", on_leave)
+    
+    def _create_clickable_url_config(self, parent, display_text, url):
+        """Create a clickable URL label for config page that opens in browser"""
+        url_frame = tk.Frame(parent, bg=self.theme_colors['info_bg'])
+        url_frame.pack(pady=2, padx=25, anchor="w")
+        
+        # Create clickable label
+        url_label = tk.Label(
+            url_frame,
+            text=display_text,
+            font=("Arial", 10, "underline"),
+            bg=self.theme_colors['info_bg'],
+            fg="#3daee9",  # Blue color for link
+            cursor="hand2"
+        )
+        url_label.pack(side="left")
+        
+        # Bind click event
+        def open_url(event):
+            try:
+                webbrowser.open(url)
+                # Show feedback
+                messagebox.showinfo(
+                    "Opening URL",
+                    f"Opening {url} in your default browser...",
+                    parent=self
+                )
+            except Exception as e:
+                messagebox.showerror(
+                    "Error",
+                    f"Failed to open URL: {e}\n\nPlease manually navigate to:\n{url}",
+                    parent=self
+                )
+        
+        url_label.bind("<Button-1>", open_url)
+        
+        # Add hover effect
+        def on_enter(event):
+            url_label.config(fg="#2980b9")
+        
+        def on_leave(event):
+            url_label.config(fg="#3daee9")
+        
+        url_label.bind("<Enter>", on_enter)
+        url_label.bind("<Leave>", on_leave)
+    
     
     def _apply_tailscale_config(self, ts_ip, ts_hostname, custom_domain, enable_auto_serve=False, port_override=""):
         """Apply Tailscale configuration to Nextcloud"""
@@ -13823,6 +14370,53 @@ Would you like to open the detailed guide?
         
         except Exception as e:
             messagebox.showerror("Error", f"Failed to apply configuration: {e}")
+    
+    def _disable_scheduled_task(self, content_frame, canvas):
+        """Disable the scheduled task"""
+        result = messagebox.askyesno(
+            "Disable Auto-Start",
+            "Are you sure you want to disable automatic Tailscale serve at startup?\n\n"
+            "You can re-enable it later from this page.",
+            parent=self
+        )
+        
+        if result:
+            success, message = disable_scheduled_task()
+            if success:
+                messagebox.showinfo("Success", message, parent=self)
+                # Refresh the page to show updated status
+                self._show_tailscale_config()
+            else:
+                messagebox.showerror("Error", message, parent=self)
+    
+    def _enable_scheduled_task(self, content_frame, canvas):
+        """Enable the scheduled task"""
+        success, message = enable_scheduled_task()
+        if success:
+            messagebox.showinfo("Success", message, parent=self)
+            # Refresh the page to show updated status
+            self._show_tailscale_config()
+        else:
+            messagebox.showerror("Error", message, parent=self)
+    
+    def _remove_scheduled_task(self, content_frame, canvas):
+        """Remove the scheduled task completely"""
+        result = messagebox.askyesno(
+            "Remove Task",
+            "Are you sure you want to completely remove the scheduled task?\n\n"
+            "This will delete the task and it will need to be recreated to re-enable auto-start.",
+            parent=self
+        )
+        
+        if result:
+            # Use the existing setup function with enable=False to remove
+            success, message = setup_tailscale_serve_startup(0, enable=False)  # Port doesn't matter for removal
+            if success:
+                messagebox.showinfo("Success", "Scheduled task removed successfully.", parent=self)
+                # Refresh the page to show updated status
+                self._show_tailscale_config()
+            else:
+                messagebox.showerror("Error", f"Failed to remove task: {message}", parent=self)
     
     def _validate_domain_format(self, domain):
         """
