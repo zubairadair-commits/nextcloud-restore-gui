@@ -3134,6 +3134,66 @@ def enable_scheduled_task():
         logger.error(f"Error enabling scheduled task: {e}")
         return False, f"Error: {str(e)}"
 
+def run_tailscale_serve_now(port):
+    """
+    Run tailscale serve immediately (not just schedule it).
+    This starts Tailscale Serve right away without requiring a reboot.
+    
+    Args:
+        port: The port number to serve (e.g., 8080)
+    
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    system = platform.system()
+    
+    try:
+        tailscale_path = find_tailscale_exe() if system == "Windows" else "tailscale"
+        if system == "Windows" and not tailscale_path:
+            return False, "Tailscale executable not found"
+        
+        logger.info(f"Running tailscale serve immediately on port {port}")
+        
+        # Build the command to run tailscale serve
+        if system == "Windows":
+            cmd = [tailscale_path, "serve", "--bg", "--https=443", f"http://localhost:{port}"]
+            creation_flags = get_subprocess_creation_flags()
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                creationflags=creation_flags
+            )
+        else:
+            cmd = ["tailscale", "serve", "--bg", "--https=443", f"http://localhost:{port}"]
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+        
+        if result.returncode == 0:
+            logger.info(f"Tailscale serve started successfully on port {port}")
+            return True, f"Tailscale Serve is now running on port {port}"
+        else:
+            error_msg = result.stderr.strip() if result.stderr else result.stdout.strip()
+            logger.error(f"Failed to start tailscale serve: {error_msg}")
+            
+            # Check for common errors
+            if "already" in error_msg.lower() or "conflict" in error_msg.lower():
+                return True, f"Tailscale Serve is already running (port {port} may already be configured)"
+            else:
+                return False, f"Failed to start Tailscale Serve: {error_msg}"
+    
+    except subprocess.TimeoutExpired:
+        logger.error("Tailscale serve command timed out")
+        return False, "Command timed out. Tailscale may be starting in the background."
+    except Exception as e:
+        logger.error(f"Error running tailscale serve: {e}")
+        return False, f"Error: {str(e)}"
+
 def check_tailscale_serve_health(ts_ip=None, ts_hostname=None, port=None):
     """
     Perform a comprehensive health check of Tailscale Serve configuration.
@@ -13137,7 +13197,7 @@ php /tmp/update_config.php"
     
     @log_page_render("TAILSCALE CONFIG")
     def _show_tailscale_config(self):
-        """Show Tailscale configuration wizard"""
+        """Show simplified Tailscale configuration wizard with Enable Remote Access button"""
         logger.info("TAILSCALE CONFIG: Setting current_page to 'tailscale_config'")
         self.current_page = 'tailscale_config'
         logger.info("TAILSCALE CONFIG: Clearing existing widgets")
@@ -13158,33 +13218,32 @@ php /tmp/update_config.php"
         loading_label.pack(expand=True)
         self.update_idletasks()
         
+        # Collect system status
+        logger.info("TAILSCALE CONFIG: Gathering system status")
+        ts_ip, ts_hostname, error_message = self._get_tailscale_info()
+        detected_port = get_nextcloud_port()
+        task_status = check_scheduled_task_status()
+        
         # Remove loading indicator and create content frame with responsive layout
         logger.info("TAILSCALE CONFIG: Creating responsive content frame")
         loading_label.destroy()
         
         # Create scrollable content frame for responsive layout
-        # Use Canvas with scrollbar for proper vertical scrolling
         canvas = tk.Canvas(self.body_frame, bg=self.theme_colors['bg'], highlightthickness=0)
         scrollbar = tk.Scrollbar(self.body_frame, orient="vertical", command=canvas.yview)
         content = tk.Frame(canvas, bg=self.theme_colors['bg'])
         
         # Configure canvas scrolling
         canvas.configure(yscrollcommand=scrollbar.set)
-        
-        # Pack scrollbar and canvas with responsive layout
         scrollbar.pack(side="right", fill="y")
         canvas.pack(side="left", fill="both", expand=True)
-        
-        # Create window in canvas for content
         canvas_window = canvas.create_window((0, 0), window=content, anchor="nw")
         
         # Update scroll region and canvas width when frame size changes
         def configure_canvas(event=None):
             canvas.configure(scrollregion=canvas.bbox("all"))
-            # Make content frame width match canvas width for centering
             canvas_width = canvas.winfo_width()
-            if canvas_width > 1:  # Only update if canvas has been rendered
-                # Center content with max width of 600px
+            if canvas_width > 1:
                 content_width = min(600, canvas_width - 20)
                 x_offset = (canvas_width - content_width) // 2
                 canvas.itemconfig(canvas_window, width=content_width)
@@ -13193,30 +13252,25 @@ php /tmp/update_config.php"
         content.bind("<Configure>", configure_canvas)
         canvas.bind("<Configure>", configure_canvas)
         
-        # Add mouse wheel scrolling support for the main canvas
+        # Add mouse wheel scrolling support
         def on_mouse_wheel(event):
-            """Handle mouse wheel scrolling for the canvas"""
-            # Windows and MacOS
             if event.delta:
                 canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-            # Linux
             elif event.num == 5:
                 canvas.yview_scroll(1, "units")
             elif event.num == 4:
                 canvas.yview_scroll(-1, "units")
         
-        # Bind mouse wheel events to canvas and content (not bind_all to avoid conflicts)
-        canvas.bind("<MouseWheel>", on_mouse_wheel)  # Windows and MacOS
-        canvas.bind("<Button-4>", on_mouse_wheel)    # Linux scroll up
-        canvas.bind("<Button-5>", on_mouse_wheel)    # Linux scroll down
-        content.bind("<MouseWheel>", on_mouse_wheel)  # Also bind to content frame
+        canvas.bind("<MouseWheel>", on_mouse_wheel)
+        canvas.bind("<Button-4>", on_mouse_wheel)
+        canvas.bind("<Button-5>", on_mouse_wheel)
+        content.bind("<MouseWheel>", on_mouse_wheel)
         content.bind("<Button-4>", on_mouse_wheel)
         content.bind("<Button-5>", on_mouse_wheel)
         
-        logger.info("TAILSCALE CONFIG: Content frame configured with responsive layout and mouse wheel scrolling")
+        logger.info("TAILSCALE CONFIG: Content frame configured")
         
         # Title
-        logger.info("TAILSCALE CONFIG: Creating title and back button")
         tk.Label(
             content,
             text="⚙️ Configure Remote Access",
@@ -13233,167 +13287,423 @@ php /tmp/update_config.php"
             command=self.show_tailscale_wizard,
             bg=self.theme_colors['button_bg'],
             fg=self.theme_colors['button_fg']
-        ).pack(pady=(0, 20), fill="x", padx=40)
+        ).pack(pady=(0, 10), fill="x", padx=40)
         
-        # Get Tailscale info
-        logger.info("TAILSCALE CONFIG: Retrieving Tailscale network information")
-        ts_ip, ts_hostname, error_message = self._get_tailscale_info()
-        logger.info(f"TAILSCALE CONFIG: Retrieved - IP: {ts_ip}, Hostname: {ts_hostname}, Error: {error_message}")
-        detected_port = get_nextcloud_port()
-        
-        # Display Tailscale info
-        logger.info("TAILSCALE CONFIG: Creating Tailscale info display")
-        info_frame = tk.Frame(content, bg=self.theme_colors['info_bg'], relief="solid", borderwidth=1)
-        info_frame.pack(pady=10, fill="x", padx=40)
+        # Status Section - Show what's configured
+        status_frame = tk.Frame(content, bg=self.theme_colors['info_bg'], relief="solid", borderwidth=1)
+        status_frame.pack(pady=10, fill="x", padx=40)
         
         tk.Label(
-            info_frame,
-            text="📡 Your Tailscale Network Information",
-            font=("Arial", 12, "bold"),
+            status_frame,
+            text="📊 System Status",
+            font=("Arial", 13, "bold"),
             bg=self.theme_colors['info_bg'],
             fg=self.theme_colors['info_fg']
-        ).pack(pady=(15, 5), padx=15, anchor="w")
+        ).pack(pady=(15, 10), padx=15, anchor="w")
         
+        # Status indicators
+        status_items = []
+        
+        # 1. Tailscale Running Status
+        ts_running = self._check_tailscale_running()
+        status_color = "#45bf55" if ts_running else self.theme_colors['error_fg']
+        status_icon = "✓" if ts_running else "✗"
+        status_text = "Running" if ts_running else "Not Running"
+        
+        status_label_frame = tk.Frame(status_frame, bg=self.theme_colors['info_bg'])
+        status_label_frame.pack(pady=2, padx=20, anchor="w", fill="x")
+        
+        tk.Label(
+            status_label_frame,
+            text=f"{status_icon} Tailscale: ",
+            font=("Arial", 11, "bold"),
+            bg=self.theme_colors['info_bg'],
+            fg=status_color
+        ).pack(side="left")
+        
+        tk.Label(
+            status_label_frame,
+            text=status_text,
+            font=("Arial", 11),
+            bg=self.theme_colors['info_bg'],
+            fg=status_color
+        ).pack(side="left")
+        
+        # 2. Nextcloud Port Detected
+        port_detected = detected_port is not None
+        status_color = "#45bf55" if port_detected else self.theme_colors['error_fg']
+        status_icon = "✓" if port_detected else "✗"
+        port_text = f"Port {detected_port}" if port_detected else "Not Detected"
+        
+        status_label_frame = tk.Frame(status_frame, bg=self.theme_colors['info_bg'])
+        status_label_frame.pack(pady=2, padx=20, anchor="w", fill="x")
+        
+        tk.Label(
+            status_label_frame,
+            text=f"{status_icon} Nextcloud Port: ",
+            font=("Arial", 11, "bold"),
+            bg=self.theme_colors['info_bg'],
+            fg=status_color
+        ).pack(side="left")
+        
+        tk.Label(
+            status_label_frame,
+            text=port_text,
+            font=("Arial", 11),
+            bg=self.theme_colors['info_bg'],
+            fg=status_color
+        ).pack(side="left")
+        
+        # 3. Scheduled Task Status
+        task_configured = task_status['exists'] and task_status['enabled']
+        status_color = "#45bf55" if task_configured else self.theme_colors['error_fg']
+        status_icon = "✓" if task_configured else "✗"
+        task_text = "Enabled" if task_configured else ("Disabled" if task_status['exists'] else "Not Configured")
+        
+        status_label_frame = tk.Frame(status_frame, bg=self.theme_colors['info_bg'])
+        status_label_frame.pack(pady=2, padx=20, anchor="w", fill="x")
+        
+        tk.Label(
+            status_label_frame,
+            text=f"{status_icon} Scheduled Task: ",
+            font=("Arial", 11, "bold"),
+            bg=self.theme_colors['info_bg'],
+            fg=status_color
+        ).pack(side="left")
+        
+        tk.Label(
+            status_label_frame,
+            text=task_text,
+            font=("Arial", 11),
+            bg=self.theme_colors['info_bg'],
+            fg=status_color
+        ).pack(side="left")
+        
+        # 4. Tailscale IP Status
         if ts_ip:
+            status_label_frame = tk.Frame(status_frame, bg=self.theme_colors['info_bg'])
+            status_label_frame.pack(pady=2, padx=20, anchor="w", fill="x")
+            
             tk.Label(
-                info_frame,
-                text=f"Tailscale IP: {ts_ip}",
+                status_label_frame,
+                text="✓ Tailscale IP: ",
                 font=("Arial", 11, "bold"),
                 bg=self.theme_colors['info_bg'],
-                fg=self.theme_colors['info_fg'],
-                wraplength=480
-            ).pack(pady=5, padx=15, anchor="w")
-        
-        if ts_hostname:
+                fg="#45bf55"
+            ).pack(side="left")
+            
             tk.Label(
-                info_frame,
-                text=f"MagicDNS Name: {ts_hostname}",
-                font=("Arial", 11, "bold"),
-                bg=self.theme_colors['info_bg'],
-                fg=self.theme_colors['info_fg'],
-                wraplength=480
-            ).pack(pady=5, padx=15, anchor="w")
-        
-        if error_message:
-            tk.Label(
-                info_frame,
-                text=f"⚠️ {error_message}",
+                status_label_frame,
+                text=ts_ip,
                 font=("Arial", 11),
                 bg=self.theme_colors['info_bg'],
-                fg=self.theme_colors['error_fg'],
-                wraplength=480,
-                justify=tk.LEFT
-            ).pack(pady=10, padx=15, anchor="w")
+                fg=self.theme_colors['info_fg']
+            ).pack(side="left")
         
-        # Display clickable Nextcloud URLs
-        if detected_port and (ts_ip or ts_hostname or True):  # Always show local URL if port detected
+        # 5. MagicDNS Status
+        if ts_hostname:
+            status_label_frame = tk.Frame(status_frame, bg=self.theme_colors['info_bg'])
+            status_label_frame.pack(pady=2, padx=20, anchor="w", fill="x")
+            
             tk.Label(
-                info_frame,
+                status_label_frame,
+                text="✓ MagicDNS: ",
+                font=("Arial", 11, "bold"),
+                bg=self.theme_colors['info_bg'],
+                fg="#45bf55"
+            ).pack(side="left")
+            
+            tk.Label(
+                status_label_frame,
+                text=ts_hostname,
+                font=("Arial", 11),
+                bg=self.theme_colors['info_bg'],
+                fg=self.theme_colors['info_fg']
+            ).pack(side="left")
+        
+        tk.Label(
+            status_frame,
+            text="",
+            bg=self.theme_colors['info_bg']
+        ).pack(pady=5)
+        
+        # Main Action Button - Enable Remote Access
+        logger.info("TAILSCALE CONFIG: Creating Enable Remote Access button")
+        
+        # Determine what action to take
+        all_configured = ts_running and port_detected and task_configured
+        
+        if all_configured:
+            button_text = "✓ Remote Access Configured"
+            button_bg = "#2ecc71"
+            button_state = "disabled"
+        elif not ts_running:
+            button_text = "⚠️ Start Tailscale First"
+            button_bg = self.theme_colors['error_fg']
+            button_state = "disabled"
+        elif not port_detected:
+            button_text = "⚠️ Start Nextcloud First"
+            button_bg = self.theme_colors['error_fg']
+            button_state = "disabled"
+        else:
+            button_text = "🚀 Enable Remote Access"
+            button_bg = "#3daee9"
+            button_state = "normal"
+        
+        main_button = tk.Button(
+            content,
+            text=button_text,
+            font=("Arial", 14, "bold"),
+            bg=button_bg,
+            fg="white",
+            width=35,
+            height=2,
+            state=button_state,
+            command=lambda: self._enable_remote_access_auto(content, canvas, ts_ip, ts_hostname, detected_port)
+        )
+        main_button.pack(pady=20, fill="x", padx=40)
+        
+        # Show brief explanation
+        if all_configured:
+            info_text = "✓ Remote access is fully configured and enabled!"
+        elif not ts_running:
+            info_text = "⚠️ Please start Tailscale from the Remote Access Setup page."
+        elif not port_detected:
+            info_text = "⚠️ Please ensure your Nextcloud container is running."
+        else:
+            info_text = "Click the button above to automatically:\n• Create scheduled task for Tailscale Serve\n• Start Tailscale Serve immediately\n• Configure Nextcloud trusted domains"
+        
+        tk.Label(
+            content,
+            text=info_text,
+            font=("Arial", 10),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['hint_fg'],
+            wraplength=520,
+            justify=tk.CENTER
+        ).pack(pady=(0, 20), fill="x", padx=40)
+        
+        # Access URLs Section (show if port is detected)
+        if detected_port:
+            urls_frame = tk.Frame(content, bg=self.theme_colors['info_bg'], relief="solid", borderwidth=1)
+            urls_frame.pack(pady=10, fill="x", padx=40)
+            
+            tk.Label(
+                urls_frame,
+                text="🌐 Access Your Nextcloud",
+                font=("Arial", 12, "bold"),
+                bg=self.theme_colors['info_bg'],
+                fg=self.theme_colors['info_fg']
+            ).pack(pady=(15, 10), padx=15, anchor="w")
+            
+            # Local URL (always available if port detected)
+            local_url = f"http://localhost:{detected_port}"
+            self._create_clickable_url_with_status(urls_frame, "Local Access:", local_url, True, "Available on this computer")
+            
+            # Tailscale IP URL (available if serve is configured)
+            if ts_ip:
+                ts_ip_url = f"https://{ts_ip}"
+                is_ready = task_configured
+                tooltip = "Available from any device on your Tailscale network" if is_ready else "Enable Remote Access to activate"
+                self._create_clickable_url_with_status(urls_frame, "Tailscale IP:", ts_ip_url, is_ready, tooltip)
+            
+            # MagicDNS URL (available if serve is configured)
+            if ts_hostname:
+                ts_hostname_url = f"https://{ts_hostname}"
+                is_ready = task_configured
+                tooltip = "Available from any device on your Tailscale network" if is_ready else "Enable Remote Access to activate"
+                self._create_clickable_url_with_status(urls_frame, "MagicDNS:", ts_hostname_url, is_ready, tooltip)
+            
+            tk.Label(
+                urls_frame,
                 text="",
                 bg=self.theme_colors['info_bg']
             ).pack(pady=5)
-            
-            tk.Label(
-                info_frame,
-                text="🌐 Access Nextcloud via:",
-                font=("Arial", 11, "bold"),
-                bg=self.theme_colors['info_bg'],
-                fg=self.theme_colors['info_fg']
-            ).pack(pady=(5, 5), padx=15, anchor="w")
-            
-            # Local URL
-            local_url = f"http://localhost:{detected_port}"
-            self._create_clickable_url_config(info_frame, f"Local: {local_url}", local_url)
-            
-            # Tailscale IP URL
-            if ts_ip:
-                ts_ip_url = f"https://{ts_ip}"
-                self._create_clickable_url_config(info_frame, f"Tailscale IP: {ts_ip_url}", ts_ip_url)
-            
-            # Tailscale Hostname URL
-            if ts_hostname:
-                ts_hostname_url = f"https://{ts_hostname}"
-                self._create_clickable_url_config(info_frame, f"Tailscale Hostname: {ts_hostname_url}", ts_hostname_url)
         
-        if ts_ip or ts_hostname:
-            tk.Label(
-                info_frame,
-                text="Use these addresses to access Nextcloud from any device on your Tailscale network.",
+        # Troubleshooting Section (Collapsible)
+        logger.info("TAILSCALE CONFIG: Creating troubleshooting section")
+        self._create_troubleshooting_section(content, canvas, ts_ip, ts_hostname, detected_port, task_status)
+        
+        logger.info("TAILSCALE CONFIG: All widgets created successfully")
+    
+    def _create_clickable_url_with_status(self, parent, label_text, url, is_ready, tooltip):
+        """Create a clickable URL with status indicator and tooltip"""
+        url_frame = tk.Frame(parent, bg=self.theme_colors['info_bg'])
+        url_frame.pack(pady=5, padx=20, fill="x")
+        
+        # Label
+        tk.Label(
+            url_frame,
+            text=label_text,
+            font=("Arial", 10, "bold"),
+            bg=self.theme_colors['info_bg'],
+            fg=self.theme_colors['info_fg']
+        ).pack(side="left", padx=(0, 10))
+        
+        # URL label with click handler
+        if is_ready:
+            url_label = tk.Label(
+                url_frame,
+                text=url,
+                font=("Arial", 10, "underline"),
+                bg=self.theme_colors['info_bg'],
+                fg="#3daee9",
+                cursor="hand2"
+            )
+            url_label.pack(side="left")
+            url_label.bind("<Button-1>", lambda e: webbrowser.open(url))
+        else:
+            url_label = tk.Label(
+                url_frame,
+                text=url,
                 font=("Arial", 10),
                 bg=self.theme_colors['info_bg'],
-                fg=self.theme_colors['info_fg'],
-                wraplength=480,
-                justify=tk.LEFT
-            ).pack(pady=(5, 15), padx=15, anchor="w")
+                fg=self.theme_colors['hint_fg']
+            )
+            url_label.pack(side="left")
         
-        # Health Check / Diagnostics section
-        logger.info("TAILSCALE CONFIG: Creating health check section")
+        # Tooltip
+        from tkinter import ttk
+        tooltip_label = tk.Label(
+            url_frame,
+            text=f"  ℹ️ {tooltip}",
+            font=("Arial", 9),
+            bg=self.theme_colors['info_bg'],
+            fg=self.theme_colors['hint_fg']
+        )
+        tooltip_label.pack(side="left", padx=(10, 0))
+    
+    def _create_troubleshooting_section(self, parent, canvas, ts_ip, ts_hostname, detected_port, task_status):
+        """Create collapsible troubleshooting section with advanced options"""
+        # Create frame for troubleshooting section
+        troubleshoot_container = tk.Frame(parent, bg=self.theme_colors['bg'])
+        troubleshoot_container.pack(pady=20, fill="x", padx=40)
+        
+        # Toggle button for troubleshooting
+        show_troubleshoot = tk.BooleanVar(value=False)
+        
+        def toggle_troubleshoot():
+            if show_troubleshoot.get():
+                troubleshoot_frame.pack(pady=10, fill="x")
+                toggle_btn.config(text="▼ Hide Troubleshooting")
+            else:
+                troubleshoot_frame.pack_forget()
+                toggle_btn.config(text="▶ Show Troubleshooting & Advanced Options")
+        
+        toggle_btn = tk.Button(
+            troubleshoot_container,
+            text="▶ Show Troubleshooting & Advanced Options",
+            font=("Arial", 11, "bold"),
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg'],
+            command=lambda: [show_troubleshoot.set(not show_troubleshoot.get()), toggle_troubleshoot()]
+        )
+        toggle_btn.pack(fill="x")
+        
+        # Troubleshooting content frame (hidden by default)
+        troubleshoot_frame = tk.Frame(troubleshoot_container, bg=self.theme_colors['bg'])
+        
+        # Add health check button
         tk.Label(
-            content,
+            troubleshoot_frame,
             text="Connection Health Check",
-            font=("Arial", 13, "bold"),
+            font=("Arial", 12, "bold"),
             bg=self.theme_colors['bg'],
-            fg=self.theme_colors['fg'],
-            wraplength=520
-        ).pack(pady=(20, 5), fill="x", padx=40)
+            fg=self.theme_colors['fg']
+        ).pack(pady=(10, 5), fill="x")
         
         tk.Label(
-            content,
+            troubleshoot_frame,
             text="Test your Tailscale Serve configuration and verify accessibility:",
             font=("Arial", 10),
             bg=self.theme_colors['bg'],
             fg=self.theme_colors['hint_fg'],
             wraplength=520,
             justify=tk.LEFT
-        ).pack(pady=(0, 10), fill="x", padx=40)
+        ).pack(pady=(0, 10), fill="x")
         
-        # Health check button
         health_check_btn = tk.Button(
-            content,
+            troubleshoot_frame,
             text="🔍 Run Health Check",
-            font=("Arial", 12, "bold"),
+            font=("Arial", 11),
             bg="#3daee9",
             fg="white",
-            width=30,
-            height=2,
-            command=lambda: self._run_health_check(content, canvas, ts_ip, ts_hostname, detected_port)
+            command=lambda: self._run_health_check(troubleshoot_frame, canvas, ts_ip, ts_hostname, detected_port)
         )
-        health_check_btn.pack(pady=10, fill="x", padx=40)
+        health_check_btn.pack(pady=10, fill="x")
         
-        # Placeholder for health check results (will be populated when check runs)
-        health_results_frame = tk.Frame(content, bg=self.theme_colors['bg'])
-        health_results_frame.pack(pady=10, fill="x", padx=40)
-        # Store reference for later updates
+        # Placeholder for health check results
+        health_results_frame = tk.Frame(troubleshoot_frame, bg=self.theme_colors['bg'])
+        health_results_frame.pack(pady=10, fill="x")
         self._health_results_frame = health_results_frame
         
-        # Custom domains section
+        # Manual task management section
+        if task_status['exists']:
+            tk.Label(
+                troubleshoot_frame,
+                text="Manual Task Management",
+                font=("Arial", 12, "bold"),
+                bg=self.theme_colors['bg'],
+                fg=self.theme_colors['fg']
+            ).pack(pady=(20, 5), fill="x")
+            
+            mgmt_frame = tk.Frame(troubleshoot_frame, bg=self.theme_colors['bg'])
+            mgmt_frame.pack(pady=10, fill="x")
+            
+            if task_status['enabled']:
+                tk.Button(
+                    mgmt_frame,
+                    text="⏸ Disable Auto-Start",
+                    font=("Arial", 10),
+                    bg=self.theme_colors['button_bg'],
+                    fg=self.theme_colors['button_fg'],
+                    command=lambda: self._disable_scheduled_task(parent, canvas)
+                ).pack(side="left", padx=(0, 5))
+            else:
+                tk.Button(
+                    mgmt_frame,
+                    text="▶️ Enable Auto-Start",
+                    font=("Arial", 10),
+                    bg="#45bf55",
+                    fg="white",
+                    command=lambda: self._enable_scheduled_task(parent, canvas)
+                ).pack(side="left", padx=(0, 5))
+            
+            tk.Button(
+                mgmt_frame,
+                text="🗑️ Remove Task",
+                font=("Arial", 10),
+                bg="#e74c3c",
+                fg="white",
+                command=lambda: self._remove_scheduled_task(parent, canvas)
+            ).pack(side="left", padx=(0, 5))
+        
+        # Custom domain section
         tk.Label(
-            content,
-            text="Custom Domains (Optional)",
-            font=("Arial", 13, "bold"),
+            troubleshoot_frame,
+            text="Add Custom Domain (Optional)",
+            font=("Arial", 12, "bold"),
             bg=self.theme_colors['bg'],
-            fg=self.theme_colors['fg'],
-            wraplength=520
-        ).pack(pady=(20, 5), fill="x", padx=40)
+            fg=self.theme_colors['fg']
+        ).pack(pady=(20, 5), fill="x")
         
         tk.Label(
-            content,
-            text="Add any custom domains you want to use to access Nextcloud:",
+            troubleshoot_frame,
+            text="Add custom domains to Nextcloud's trusted domains:",
             font=("Arial", 10),
             bg=self.theme_colors['bg'],
             fg=self.theme_colors['hint_fg'],
             wraplength=520,
             justify=tk.LEFT
-        ).pack(pady=(0, 10), fill="x", padx=40)
+        ).pack(pady=(0, 10), fill="x")
         
-        # Custom domain entry
-        domain_frame = tk.Frame(content, bg=self.theme_colors['bg'])
-        domain_frame.pack(pady=5, fill="x", padx=40)
+        domain_frame = tk.Frame(troubleshoot_frame, bg=self.theme_colors['bg'])
+        domain_frame.pack(pady=5, fill="x")
         
         tk.Label(
             domain_frame,
             text="Domain:",
-            font=("Arial", 11),
+            font=("Arial", 10),
             bg=self.theme_colors['bg'],
             fg=self.theme_colors['fg']
         ).pack(side="left", padx=(0, 10))
@@ -13402,257 +13712,209 @@ php /tmp/update_config.php"
         tk.Entry(
             domain_frame,
             textvariable=custom_domain_var,
-            font=("Arial", 11),
+            font=("Arial", 10),
             bg=self.theme_colors['entry_bg'],
             fg=self.theme_colors['entry_fg'],
             insertbackground=self.theme_colors['entry_fg']
-        ).pack(side="left", fill="x", expand=True, padx=(0, 5))
+        ).pack(side="left", fill="x", expand=True)
         
-        tk.Label(
-            content,
-            text="Example: mycloud.example.com",
-            font=("Arial", 9),
-            bg=self.theme_colors['bg'],
-            fg=self.theme_colors['hint_fg'],
-            wraplength=520,
-            justify=tk.LEFT
-        ).pack(pady=(0, 15), fill="x", padx=40)
-        
-        # Auto-serve configuration section
-        logger.info("TAILSCALE CONFIG: Creating auto-serve configuration section")
-        tk.Label(
-            content,
-            text="Automatic Tailscale Serve",
-            font=("Arial", 13, "bold"),
-            bg=self.theme_colors['bg'],
-            fg=self.theme_colors['fg'],
-            wraplength=520
-        ).pack(pady=(20, 5), fill="x", padx=40)
-        
-        # Detect Nextcloud port
-        detected_port = get_nextcloud_port()
-        port_info_text = f"Detected Nextcloud port: {detected_port}" if detected_port else "No Nextcloud port detected"
-        
-        tk.Label(
-            content,
-            text=port_info_text,
+        tk.Button(
+            domain_frame,
+            text="Add Domain",
             font=("Arial", 10),
-            bg=self.theme_colors['bg'],
-            fg=self.theme_colors['hint_fg'],
-            wraplength=520,
-            justify=tk.LEFT
-        ).pack(pady=(0, 5), fill="x", padx=40)
+            bg="#3daee9",
+            fg="white",
+            command=lambda: self._add_custom_domain_only(custom_domain_var.get(), parent, canvas)
+        ).pack(side="left", padx=(10, 0))
         
-        # Check scheduled task status
-        task_status = check_scheduled_task_status()
-        
-        # Display scheduled task status if it exists
-        if task_status['exists']:
-            status_frame = tk.Frame(content, bg=self.theme_colors['info_bg'], relief="solid", borderwidth=1)
-            status_frame.pack(pady=10, fill="x", padx=40)
-            
-            tk.Label(
-                status_frame,
-                text="📅 Scheduled Task Status",
-                font=("Arial", 11, "bold"),
-                bg=self.theme_colors['info_bg'],
-                fg=self.theme_colors['info_fg']
-            ).pack(pady=(10, 5), padx=10, anchor="w")
-            
-            status_color = self.theme_colors['warning_fg'] if task_status['enabled'] else self.theme_colors['error_fg']
-            status_text = "✓ Enabled" if task_status['enabled'] else "✗ Disabled"
-            
-            tk.Label(
-                status_frame,
-                text=f"Status: {status_text}",
-                font=("Arial", 10),
-                bg=self.theme_colors['info_bg'],
-                fg=status_color
-            ).pack(pady=2, padx=20, anchor="w")
-            
-            if task_status['port']:
-                tk.Label(
-                    status_frame,
-                    text=f"Configured Port: {task_status['port']}",
-                    font=("Arial", 10),
-                    bg=self.theme_colors['info_bg'],
-                    fg=self.theme_colors['info_fg']
-                ).pack(pady=2, padx=20, anchor="w")
-            
-            if task_status['next_run'] and task_status['next_run'] != 'N/A':
-                tk.Label(
-                    status_frame,
-                    text=f"Next Run: {task_status['next_run']}",
-                    font=("Arial", 9),
-                    bg=self.theme_colors['info_bg'],
-                    fg=self.theme_colors['info_fg']
-                ).pack(pady=2, padx=20, anchor="w")
-            
-            # Management buttons frame
-            mgmt_frame = tk.Frame(status_frame, bg=self.theme_colors['info_bg'])
-            mgmt_frame.pack(pady=10, padx=20, fill="x")
-            
-            if task_status['enabled']:
-                tk.Button(
-                    mgmt_frame,
-                    text="⏸ Disable Auto-Start",
-                    font=("Arial", 9),
-                    bg=self.theme_colors['button_bg'],
-                    fg=self.theme_colors['button_fg'],
-                    command=lambda: self._disable_scheduled_task(content, canvas)
-                ).pack(side="left", padx=(0, 5))
-            else:
-                tk.Button(
-                    mgmt_frame,
-                    text="▶️ Enable Auto-Start",
-                    font=("Arial", 9),
-                    bg="#45bf55",
-                    fg="white",
-                    command=lambda: self._enable_scheduled_task(content, canvas)
-                ).pack(side="left", padx=(0, 5))
-            
-            tk.Button(
-                mgmt_frame,
-                text="🗑️ Remove Task",
-                font=("Arial", 9),
-                bg="#e74c3c",
-                fg="white",
-                command=lambda: self._remove_scheduled_task(content, canvas)
-            ).pack(side="left", padx=(0, 5))
-            
-            tk.Label(
-                status_frame,
-                text="",
-                bg=self.theme_colors['info_bg']
-            ).pack(pady=5)
-        
+        # Show current trusted domains
         tk.Label(
-            content,
-            text="Enable automatic 'tailscale serve' at system startup to make Nextcloud accessible via HTTPS on your Tailscale network.",
-            font=("Arial", 10),
-            bg=self.theme_colors['bg'],
-            fg=self.theme_colors['hint_fg'],
-            wraplength=520,
-            justify=tk.LEFT
-        ).pack(pady=(0, 10), fill="x", padx=40)
-        
-        # Auto-serve checkbox (checked by default if task doesn't exist, otherwise reflect current state)
-        auto_serve_var = tk.BooleanVar(value=(not task_status['exists']) or task_status['enabled'])
-        auto_serve_check = tk.Checkbutton(
-            content,
-            text="Enable automatic Tailscale serve at startup" + (" (create new task)" if not task_status['exists'] else " (update configuration)"),
-            variable=auto_serve_var,
-            font=("Arial", 11),
-            bg=self.theme_colors['bg'],
-            fg=self.theme_colors['fg'],
-            selectcolor=self.theme_colors['entry_bg'],
-            activebackground=self.theme_colors['bg'],
-            activeforeground=self.theme_colors['fg'],
-            wraplength=520,
-            justify=tk.LEFT
-        )
-        auto_serve_check.pack(pady=5, fill="x", padx=40, anchor="w")
-        
-        # Port override entry (in case auto-detection fails)
-        port_override_frame = tk.Frame(content, bg=self.theme_colors['bg'])
-        port_override_frame.pack(pady=5, fill="x", padx=40)
-        
-        tk.Label(
-            port_override_frame,
-            text="Port (override):",
-            font=("Arial", 10),
+            troubleshoot_frame,
+            text="Current Trusted Domains",
+            font=("Arial", 12, "bold"),
             bg=self.theme_colors['bg'],
             fg=self.theme_colors['fg']
-        ).pack(side="left", padx=(0, 10))
+        ).pack(pady=(20, 5), fill="x")
         
-        # Use the detected port or the port from existing task
-        default_port = task_status.get('port') or detected_port
-        port_override_var = tk.StringVar(value=str(default_port) if default_port else "")
-        tk.Entry(
-            port_override_frame,
-            textvariable=port_override_var,
+        self._display_current_trusted_domains(troubleshoot_frame)
+    
+    def _enable_remote_access_auto(self, parent, canvas, ts_ip, ts_hostname, port):
+        """Automatically enable remote access with one click"""
+        logger.info("REMOTE ACCESS AUTO: Starting automatic setup")
+        
+        # Show progress dialog
+        progress_window = tk.Toplevel(self)
+        progress_window.title("Enabling Remote Access")
+        progress_window.geometry("500x300")
+        progress_window.transient(self)
+        progress_window.grab_set()
+        
+        # Center the window
+        progress_window.update_idletasks()
+        x = (progress_window.winfo_screenwidth() // 2) - (500 // 2)
+        y = (progress_window.winfo_screenheight() // 2) - (300 // 2)
+        progress_window.geometry(f"500x300+{x}+{y}")
+        
+        progress_frame = tk.Frame(progress_window, bg=self.theme_colors['bg'])
+        progress_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        tk.Label(
+            progress_frame,
+            text="Enabling Remote Access...",
+            font=("Arial", 14, "bold"),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg']
+        ).pack(pady=(10, 20))
+        
+        status_text = tk.Text(
+            progress_frame,
+            height=10,
             font=("Arial", 10),
             bg=self.theme_colors['entry_bg'],
             fg=self.theme_colors['entry_fg'],
-            insertbackground=self.theme_colors['entry_fg'],
-            width=10
-        ).pack(side="left", padx=(0, 5))
+            wrap=tk.WORD
+        )
+        status_text.pack(fill="both", expand=True, pady=10)
         
-        tk.Label(
-            port_override_frame,
-            text="(leave empty to use detected port)",
-            font=("Arial", 9),
-            bg=self.theme_colors['bg'],
-            fg=self.theme_colors['hint_fg']
-        ).pack(side="left", padx=(10, 0))
+        def add_status(message, success=True):
+            icon = "✓" if success else "✗"
+            color = "green" if success else "red"
+            status_text.insert(tk.END, f"{icon} {message}\n")
+            status_text.see(tk.END)
+            progress_window.update()
         
-        # Action buttons
+        all_success = True
+        
+        try:
+            # Step 1: Create/Update Scheduled Task
+            add_status("Creating scheduled task for Tailscale Serve...")
+            task_success, task_message = setup_tailscale_serve_startup(port, enable=True)
+            
+            if task_success:
+                add_status(f"Scheduled task configured: {task_message}")
+            else:
+                add_status(f"Failed to configure scheduled task: {task_message}", False)
+                all_success = False
+            
+            # Step 2: Run Tailscale Serve immediately
+            add_status("Starting Tailscale Serve immediately...")
+            serve_success, serve_message = run_tailscale_serve_now(port)
+            
+            if serve_success:
+                add_status(f"Tailscale Serve started: {serve_message}")
+            else:
+                add_status(f"Warning: {serve_message}", False)
+                # Don't fail completely if serve is already running
+                if "already" in serve_message.lower():
+                    add_status("Continuing with configuration...")
+                else:
+                    all_success = False
+            
+            # Step 3: Configure Nextcloud trusted domains
+            add_status("Configuring Nextcloud trusted domains...")
+            
+            container_names = get_nextcloud_container_name()
+            if not container_names:
+                add_status("No running Nextcloud container found", False)
+                all_success = False
+            else:
+                domains_to_add = []
+                if ts_ip:
+                    domains_to_add.append(ts_ip)
+                if ts_hostname:
+                    domains_to_add.append(ts_hostname)
+                
+                if domains_to_add:
+                    domain_success = self._update_trusted_domains(container_names, domains_to_add)
+                    if domain_success:
+                        add_status(f"Added {len(domains_to_add)} domain(s) to Nextcloud")
+                        for domain in domains_to_add:
+                            add_status(f"  • {domain}")
+                    else:
+                        add_status("Failed to update Nextcloud trusted domains", False)
+                        all_success = False
+                else:
+                    add_status("No Tailscale domains found to add", False)
+                    all_success = False
+            
+            # Final message
+            if all_success:
+                add_status("\n✓ Remote Access Enabled Successfully!")
+                add_status("You can now access Nextcloud from any device on your Tailscale network.")
+            else:
+                add_status("\n⚠️ Setup completed with some warnings.")
+                add_status("Check the messages above for details.")
+            
+        except Exception as e:
+            logger.error(f"Error during automatic setup: {e}")
+            add_status(f"Error: {str(e)}", False)
+            all_success = False
+        
+        # Add close button
         tk.Button(
-            content,
-            text="✓ Apply Configuration to Nextcloud",
-            font=("Arial", 13, "bold"),
-            bg="#45bf55",
-            fg="white",
-            width=35,
-            height=2,
-            command=lambda: self._apply_tailscale_config(
-                ts_ip, ts_hostname, custom_domain_var.get(),
-                auto_serve_var.get(), port_override_var.get()
+            progress_frame,
+            text="Close",
+            font=("Arial", 11),
+            bg=self.theme_colors['button_bg'],
+            fg=self.theme_colors['button_fg'],
+            command=lambda: [progress_window.destroy(), self._show_tailscale_config()]
+        ).pack(pady=10)
+    
+    def _add_custom_domain_only(self, domain, parent, canvas):
+        """Add a custom domain to Nextcloud trusted domains"""
+        if not domain or not domain.strip():
+            messagebox.showwarning(
+                "No Domain",
+                "Please enter a domain to add.",
+                parent=self
             )
-        ).pack(pady=20, fill="x", padx=40)
+            return
         
-        # Startup automation button (for Linux systems)
-        if platform.system() == "Linux":
-            tk.Button(
-                content,
-                text="⚡ Setup Startup Automation",
-                font=("Arial", 11),
-                bg="#3daee9",
-                fg="white",
-                width=35,
-                height=1,
-                command=self._show_startup_automation_guide
-            ).pack(pady=(0, 20), fill="x", padx=40)
+        domain = domain.strip()
         
-        # Info about what will be configured
-        info_box = tk.Frame(content, bg=self.theme_colors['warning_bg'], relief="solid", borderwidth=1)
-        info_box.pack(pady=10, fill="x", padx=40)
+        # Validate domain format
+        is_valid, error_msg = self._validate_domain_format(domain)
+        if not is_valid:
+            messagebox.showerror(
+                "Invalid Domain",
+                error_msg,
+                parent=self
+            )
+            return
         
-        tk.Label(
-            info_box,
-            text="ℹ️ What will be configured:",
-            font=("Arial", 11, "bold"),
-            bg=self.theme_colors['warning_bg'],
-            fg=self.theme_colors['warning_fg']
-        ).pack(pady=(10, 5), padx=10, anchor="w")
+        # Get Nextcloud container
+        container_names = get_nextcloud_container_name()
+        if not container_names:
+            messagebox.showerror(
+                "Error",
+                "No running Nextcloud container found.",
+                parent=self
+            )
+            return
         
-        config_items = []
-        if ts_ip:
-            config_items.append(f"• Tailscale IP: {ts_ip}")
-        if ts_hostname:
-            config_items.append(f"• MagicDNS name: {ts_hostname}")
-        if custom_domain_var.get():
-            config_items.append(f"• Custom domain: {custom_domain_var.get()}")
-        
-        if not config_items:
-            config_items = ["• No domains will be added (check your Tailscale setup)"]
-        
-        config_text = "These addresses will be added to Nextcloud's trusted_domains:\n" + "\n".join(config_items)
-        
-        tk.Label(
-            info_box,
-            text=config_text,
-            font=("Arial", 10),
-            bg=self.theme_colors['warning_bg'],
-            fg=self.theme_colors['warning_fg'],
-            justify=tk.LEFT
-        ).pack(pady=(0, 10), padx=10, anchor="w")
-        
-        # Display current trusted domains section
-        logger.info("TAILSCALE CONFIG: Displaying current trusted domains")
-        self._display_current_trusted_domains(content)
-        
-        logger.info("TAILSCALE CONFIG: All widgets created successfully")
+        # Add domain
+        try:
+            success = self._update_trusted_domains(container_names, [domain])
+            if success:
+                messagebox.showinfo(
+                    "Success",
+                    f"Domain '{domain}' added successfully!",
+                    parent=self
+                )
+                # Refresh the page
+                self._show_tailscale_config()
+            else:
+                messagebox.showerror(
+                    "Error",
+                    "Failed to add domain to Nextcloud configuration.",
+                    parent=self
+                )
+        except Exception as e:
+            messagebox.showerror(
+                "Error",
+                f"Failed to add domain: {e}",
+                parent=self
+            )
     
     def _run_health_check(self, parent, canvas, ts_ip, ts_hostname, port):
         """Run health check and display results"""
