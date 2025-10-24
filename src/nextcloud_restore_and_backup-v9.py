@@ -13106,33 +13106,13 @@ php /tmp/update_config.php"
             
             # Tailscale IP URL
             if ts_ip:
-                task_status = check_scheduled_task_status()
-                if task_status['exists']:
-                    ts_ip_url = f"https://{ts_ip}"
-                    self._create_clickable_url_config(info_frame, f"Tailscale IP: {ts_ip_url}", ts_ip_url)
-                else:
-                    tk.Label(
-                        info_frame,
-                        text=f"Tailscale IP: https://{ts_ip} (enable auto-serve below to use)",
-                        font=("Arial", 9),
-                        bg=self.theme_colors['info_bg'],
-                        fg=self.theme_colors['hint_fg']
-                    ).pack(pady=2, padx=25, anchor="w")
+                ts_ip_url = f"https://{ts_ip}"
+                self._create_clickable_url_config(info_frame, f"Tailscale IP: {ts_ip_url}", ts_ip_url)
             
             # Tailscale Hostname URL
             if ts_hostname:
-                task_status = check_scheduled_task_status()
-                if task_status['exists']:
-                    ts_hostname_url = f"https://{ts_hostname}"
-                    self._create_clickable_url_config(info_frame, f"Tailscale Hostname: {ts_hostname_url}", ts_hostname_url)
-                else:
-                    tk.Label(
-                        info_frame,
-                        text=f"Tailscale Hostname: https://{ts_hostname} (enable auto-serve below to use)",
-                        font=("Arial", 9),
-                        bg=self.theme_colors['info_bg'],
-                        fg=self.theme_colors['hint_fg']
-                    ).pack(pady=2, padx=25, anchor="w")
+                ts_hostname_url = f"https://{ts_hostname}"
+                self._create_clickable_url_config(info_frame, f"Tailscale Hostname: {ts_hostname_url}", ts_hostname_url)
         
         if ts_ip or ts_hostname:
             tk.Label(
@@ -14154,34 +14134,13 @@ Would you like to open the detailed guide?
                 
                 # Tailscale IP URL
                 if ts_ip:
-                    # Check if serve is configured
-                    task_status = check_scheduled_task_status()
-                    if task_status['exists']:
-                        ts_ip_url = f"https://{ts_ip}"
-                        self._create_clickable_url(info_frame, f"Tailscale IP: {ts_ip_url}", ts_ip_url)
-                    else:
-                        tk.Label(
-                            info_frame,
-                            text=f"Tailscale IP: https://{ts_ip} (configure auto-serve below)",
-                            font=("Arial", 9),
-                            bg=self.theme_colors['info_bg'],
-                            fg=self.theme_colors['hint_fg']
-                        ).pack(pady=2, padx=30, anchor="w")
+                    ts_ip_url = f"https://{ts_ip}"
+                    self._create_clickable_url(info_frame, f"Tailscale IP: {ts_ip_url}", ts_ip_url)
                 
                 # Tailscale Hostname URL
                 if ts_hostname:
-                    task_status = check_scheduled_task_status()
-                    if task_status['exists']:
-                        ts_hostname_url = f"https://{ts_hostname}"
-                        self._create_clickable_url(info_frame, f"Tailscale Hostname: {ts_hostname_url}", ts_hostname_url)
-                    else:
-                        tk.Label(
-                            info_frame,
-                            text=f"Tailscale Hostname: https://{ts_hostname} (configure auto-serve below)",
-                            font=("Arial", 9),
-                            bg=self.theme_colors['info_bg'],
-                            fg=self.theme_colors['hint_fg']
-                        ).pack(pady=2, padx=30, anchor="w")
+                    ts_hostname_url = f"https://{ts_hostname}"
+                    self._create_clickable_url(info_frame, f"Tailscale Hostname: {ts_hostname_url}", ts_hostname_url)
             elif detected_port:
                 # Only local Nextcloud URL available
                 tk.Label(
