@@ -15,12 +15,12 @@ The code has been updated to **always** display Tailscale IP and MagicDNS Hostna
 
 ### Files Modified
 1. **src/nextcloud_restore_and_backup-v9.py**
-   - Updated `_show_tailscale_config()` method (Configuration page)
-   - Updated `_display_tailscale_info()` method (Wizard info page)
+   - Updated `_show_tailscale_config()` method (Configuration page) - lines ~13100-13110
+   - Updated `_display_tailscale_info()` method (Wizard info page) - lines ~14120-14130
 
 ### Specific Changes
 
-#### Before
+#### Before (Old Implementation)
 ```python
 if ts_ip:
     task_status = check_scheduled_task_status()
@@ -37,7 +37,7 @@ if ts_ip:
         ).pack(pady=2, padx=25, anchor="w")
 ```
 
-#### After
+#### After (New Implementation)
 ```python
 if ts_ip:
     ts_ip_url = f"https://{ts_ip}"
@@ -47,7 +47,11 @@ if ts_ip:
 The same simplification was applied to both:
 - Tailscale IP URL display
 - MagicDNS Hostname URL display
-- Both the configuration page and wizard info page
+- Both the configuration page (`_show_tailscale_config`) and wizard info page (`_display_tailscale_info`)
+
+**Lines Changed:**
+- Configuration page: lines 13101-13109 (previously 13101-13129)
+- Info display page: lines 14121-14129 (previously 14121-14156)
 
 ## User Experience Improvements
 
