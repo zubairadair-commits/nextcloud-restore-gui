@@ -5903,27 +5903,6 @@ If the problem persists, please report this issue on GitHub.
         # update the UI accordingly
         if self.detected_dbtype:
             self.update_database_credential_ui(self.detected_dbtype)
-        
-        # Section 4: Nextcloud admin credentials - full width with padding
-        tk.Label(parent, text="Step 4: Nextcloud Admin Credentials", font=("Arial", 14, "bold")).pack(pady=(30, 5), fill="x", padx=40)
-        tk.Label(parent, text="These credentials are for accessing your Nextcloud admin panel", font=("Arial", 10), fg="gray").pack(pady=(0, 5), fill="x", padx=40)
-        
-        admin_frame = tk.Frame(parent)
-        admin_frame.pack(pady=10, fill="x", padx=40)
-        
-        # Configure column weights for responsive layout
-        admin_frame.grid_columnconfigure(0, weight=0)  # Label column - fixed width
-        admin_frame.grid_columnconfigure(1, weight=1, minsize=400)  # Entry column - expandable with minimum width
-        
-        tk.Label(admin_frame, text="Admin Username:", font=("Arial", 11)).grid(row=0, column=0, sticky="e", padx=5, pady=5)
-        self.admin_user_entry = tk.Entry(admin_frame, font=("Arial", 11))
-        self.admin_user_entry.insert(0, self.wizard_data.get('admin_user', 'admin'))
-        self.admin_user_entry.grid(row=0, column=1, sticky="ew", padx=5, pady=5)
-        
-        tk.Label(admin_frame, text="Admin Password:", font=("Arial", 11)).grid(row=1, column=0, sticky="e", padx=5, pady=5)
-        self.admin_password_entry = tk.Entry(admin_frame, show="*", font=("Arial", 11))
-        self.admin_password_entry.insert(0, self.wizard_data.get('admin_password', 'admin'))
-        self.admin_password_entry.grid(row=1, column=1, sticky="ew", padx=5, pady=5)
     
     def create_wizard_page3(self, parent):
         """Page 3: Container Configuration"""
@@ -6275,10 +6254,6 @@ If the problem persists, please report this issue on GitHub.
                 self.wizard_data['db_user'] = self.db_user_entry.get()
             if hasattr(self, 'db_password_entry'):
                 self.wizard_data['db_password'] = self.db_password_entry.get()
-            if hasattr(self, 'admin_user_entry'):
-                self.wizard_data['admin_user'] = self.admin_user_entry.get()
-            if hasattr(self, 'admin_password_entry'):
-                self.wizard_data['admin_password'] = self.admin_password_entry.get()
         elif self.wizard_page == 3:
             if hasattr(self, 'container_name_entry'):
                 self.wizard_data['container_name'] = self.container_name_entry.get()
@@ -6704,8 +6679,6 @@ If the problem persists, please report this issue on GitHub.
         db_name = self.wizard_data.get('db_name', '').strip()
         db_user = self.wizard_data.get('db_user', '').strip()
         db_password = self.wizard_data.get('db_password', '')
-        admin_user = self.wizard_data.get('admin_user', '').strip()
-        admin_password = self.wizard_data.get('admin_password', '')
         container_name = self.wizard_data.get('container_name', '').strip()
         container_port = self.wizard_data.get('container_port', '').strip()
         use_existing = self.wizard_data.get('use_existing', False)
@@ -6737,14 +6710,6 @@ If the problem persists, please report this issue on GitHub.
                 self.error_label.config(text="Error: Database password is required.")
                 return
         
-        # Validate admin credentials
-        if not admin_user:
-            self.error_label.config(text="Error: Admin username is required.")
-            return
-        if not admin_password:
-            self.error_label.config(text="Error: Admin password is required.")
-            return
-        
         # Validate container configuration
         if not container_name:
             self.error_label.config(text="Error: Container name is required.")
@@ -6759,8 +6724,6 @@ If the problem persists, please report this issue on GitHub.
         self.restore_db_name = db_name
         self.restore_db_user = db_user
         self.restore_db_password = db_password
-        self.restore_admin_user = admin_user
-        self.restore_admin_password = admin_password
         self.restore_container_name = container_name
         self.restore_container_port = int(container_port)
         self.restore_use_existing = use_existing
@@ -7548,26 +7511,21 @@ If the problem persists, please report this issue on GitHub.
         # For SQLite, do NOT attempt to link to database container
         # For MySQL/PostgreSQL, try to link to database container for proper Docker networking
         
-        # Prepare admin credentials environment variables if available
-        admin_env = ""
-        if hasattr(self, 'restore_admin_user') and self.restore_admin_user:
-            # Use shlex.quote to safely escape credentials and prevent command injection
-            safe_user = shlex.quote(self.restore_admin_user)
-            safe_password = shlex.quote(self.restore_admin_password)
-            admin_env = f'-e NEXTCLOUD_ADMIN_USER={safe_user} -e NEXTCLOUD_ADMIN_PASSWORD={safe_password} '
+        # Note: During restore, we do NOT set admin credentials via environment variables
+        # as the admin user will be restored from the backup database
         
         if dbtype == 'sqlite':
             # SQLite - no database container, start without linking
             logger.info("SQLite detected - starting Nextcloud container without database linking")
             result = subprocess.run(
-                f'docker run -d --name {new_container_name} {admin_env}--network bridge -p {port}:80 {NEXTCLOUD_IMAGE}',
+                f'docker run -d --name {new_container_name} --network bridge -p {port}:80 {NEXTCLOUD_IMAGE}',
                 shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
             )
         else:
             # MySQL/PostgreSQL - try to link to database container
             # First attempt with link and explicit bridge network
             result = subprocess.run(
-                f'docker run -d --name {new_container_name} {admin_env}--network bridge --link {POSTGRES_CONTAINER_NAME}:db -p {port}:80 {NEXTCLOUD_IMAGE}',
+                f'docker run -d --name {new_container_name} --network bridge --link {POSTGRES_CONTAINER_NAME}:db -p {port}:80 {NEXTCLOUD_IMAGE}',
                 shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
             )
             
@@ -7575,7 +7533,7 @@ If the problem persists, please report this issue on GitHub.
             if result.returncode != 0 and "Could not find" in result.stderr:
                 print(f"Warning: Could not link to database container, starting without link: {result.stderr}")
                 result = subprocess.run(
-                    f'docker run -d --name {new_container_name} {admin_env}--network bridge -p {port}:80 {NEXTCLOUD_IMAGE}',
+                    f'docker run -d --name {new_container_name} --network bridge -p {port}:80 {NEXTCLOUD_IMAGE}',
                     shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
                 )
         
@@ -9483,17 +9441,22 @@ php /tmp/update_config.php"
         )
         container_info.pack(pady=10)
         
-        # Admin credentials info (if available)
+        # Admin credentials info - always show message about using previous credentials
         if admin_username:
-            admin_info = tk.Label(
-                completion_frame,
-                text=f"Log in with your previous admin credentials.\nYour admin username is: {admin_username}",
-                font=("Arial", 12, "bold"),
-                bg=self.theme_colors['bg'],
-                fg="#3daee9"
-            )
-            admin_info.pack(pady=15)
+            admin_info_text = f"Log in with your previous admin credentials.\nYour admin username is: {admin_username}"
             logger.info(f"Displaying admin username to user: {admin_username}")
+        else:
+            admin_info_text = "Log in with your previous admin credentials."
+            logger.info("Admin username could not be extracted - showing generic message")
+        
+        admin_info = tk.Label(
+            completion_frame,
+            text=admin_info_text,
+            font=("Arial", 12, "bold"),
+            bg=self.theme_colors['bg'],
+            fg="#3daee9"
+        )
+        admin_info.pack(pady=15)
         
         # Button frame
         button_frame = tk.Frame(completion_frame, bg=self.theme_colors['bg'])
