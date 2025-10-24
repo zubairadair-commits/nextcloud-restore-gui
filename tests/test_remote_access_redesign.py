@@ -19,16 +19,9 @@ class TestRemoteAccessRedesign(unittest.TestCase):
     
     def test_run_tailscale_serve_now_function_exists(self):
         """Test that the new run_tailscale_serve_now function exists"""
-        # Import after mocking tkinter
-        import importlib.util
-        spec = importlib.util.spec_from_file_location(
-            'app', 
-            os.path.join(os.path.dirname(__file__), '..', 'src', 'nextcloud_restore_and_backup-v9.py')
-        )
-        module = importlib.util.module_from_spec(spec)
-        
-        # Check if the function would be defined (we can't execute fully due to tkinter)
-        with open(spec.origin, 'r') as f:
+        # Read the source file directly
+        source_path = os.path.join(os.path.dirname(__file__), '..', 'src', 'nextcloud_restore_and_backup-v9.py')
+        with open(source_path, 'r') as f:
             content = f.read()
             
         self.assertIn('def run_tailscale_serve_now(port):', content, 
