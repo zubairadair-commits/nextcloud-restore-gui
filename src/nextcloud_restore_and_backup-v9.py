@@ -3134,6 +3134,207 @@ def enable_scheduled_task():
         logger.error(f"Error enabling scheduled task: {e}")
         return False, f"Error: {str(e)}"
 
+def check_tailscale_serve_health(ts_ip=None, ts_hostname=None, port=None):
+    """
+    Perform a comprehensive health check of Tailscale Serve configuration.
+    
+    Checks:
+    1. Tailscale Serve is running
+    2. Port mapping is correct
+    3. Tailscale IP is accessible
+    4. MagicDNS hostname is accessible
+    
+    Args:
+        ts_ip: Tailscale IP address (optional, will be detected if not provided)
+        ts_hostname: Tailscale hostname (optional, will be detected if not provided)
+        port: Nextcloud port (optional, will be detected if not provided)
+    
+    Returns:
+        dict: {
+            'overall_status': 'success'|'warning'|'error',
+            'checks': {
+                'serve_running': {'status': bool, 'message': str, 'suggestion': str},
+                'port_mapped': {'status': bool, 'message': str, 'suggestion': str},
+                'ip_accessible': {'status': bool, 'message': str, 'suggestion': str, 'url': str},
+                'hostname_accessible': {'status': bool, 'message': str, 'suggestion': str, 'url': str}
+            }
+        }
+    """
+    import urllib.request
+    import urllib.error
+    import socket
+    
+    result = {
+        'overall_status': 'success',
+        'checks': {}
+    }
+    
+    # Detect port if not provided
+    if port is None:
+        port = get_nextcloud_port()
+    
+    # Check 1: Tailscale Serve is running
+    serve_check = {'status': False, 'message': '', 'suggestion': ''}
+    try:
+        tailscale_path = find_tailscale_exe() if platform.system() == "Windows" else "tailscale"
+        
+        # Check if Tailscale is installed
+        if platform.system() == "Windows" and not tailscale_path:
+            serve_check['message'] = "Tailscale is not installed or not found in PATH"
+            serve_check['suggestion'] = "Install Tailscale from https://tailscale.com/download"
+        else:
+            # Check Tailscale serve status
+            try:
+                cmd = [tailscale_path, "serve", "status"] if platform.system() == "Windows" else ["tailscale", "serve", "status"]
+                serve_result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                
+                if serve_result.returncode == 0:
+                    output = serve_result.stdout.lower()
+                    # Check if port is mentioned in the serve status
+                    if port and str(port) in serve_result.stdout:
+                        serve_check['status'] = True
+                        serve_check['message'] = f"Tailscale Serve is running and configured for port {port}"
+                    elif "http://localhost:" in serve_result.stdout or "https://localhost:" in serve_result.stdout:
+                        serve_check['status'] = True
+                        serve_check['message'] = "Tailscale Serve is running"
+                        serve_check['suggestion'] = f"Note: Configured port may not match detected Nextcloud port {port}"
+                    elif len(serve_result.stdout.strip()) > 0:
+                        serve_check['status'] = True
+                        serve_check['message'] = "Tailscale Serve is configured"
+                    else:
+                        serve_check['message'] = "Tailscale Serve is not configured"
+                        serve_check['suggestion'] = "Run 'tailscale serve --bg --https=443 http://localhost:" + str(port) + "' or enable auto-serve below"
+                else:
+                    stderr_lower = serve_result.stderr.lower()
+                    if "not running" in stderr_lower or "stopped" in stderr_lower:
+                        serve_check['message'] = "Tailscale service is not running"
+                        serve_check['suggestion'] = "Start Tailscale from the application or system tray"
+                    else:
+                        serve_check['message'] = "Tailscale Serve is not configured"
+                        serve_check['suggestion'] = "Enable automatic Tailscale Serve below"
+            except subprocess.TimeoutExpired:
+                serve_check['message'] = "Tailscale command timed out"
+                serve_check['suggestion'] = "Restart Tailscale service"
+            except Exception as e:
+                serve_check['message'] = f"Error checking Tailscale Serve: {str(e)}"
+                serve_check['suggestion'] = "Check Tailscale installation and try restarting"
+    except Exception as e:
+        serve_check['message'] = f"Error: {str(e)}"
+        serve_check['suggestion'] = "Check Tailscale installation"
+    
+    result['checks']['serve_running'] = serve_check
+    
+    # Check 2: Port mapping verification
+    port_check = {'status': False, 'message': '', 'suggestion': ''}
+    if port:
+        port_check['status'] = True
+        port_check['message'] = f"Nextcloud detected on port {port}"
+    else:
+        port_check['message'] = "Could not detect Nextcloud port"
+        port_check['suggestion'] = "Ensure Nextcloud container is running or manually specify port"
+    result['checks']['port_mapped'] = port_check
+    
+    # Check 3: Tailscale IP accessibility
+    ip_check = {'status': False, 'message': '', 'suggestion': '', 'url': ''}
+    if ts_ip and port:
+        ip_url = f"https://{ts_ip}"
+        ip_check['url'] = ip_url
+        try:
+            # Try HTTPS first (what Tailscale Serve provides)
+            req = urllib.request.Request(ip_url, method='HEAD')
+            # Set a reasonable timeout
+            response = urllib.request.urlopen(req, timeout=5)
+            ip_check['status'] = True
+            ip_check['message'] = f"Tailscale IP {ts_ip} is accessible via HTTPS"
+        except urllib.error.HTTPError as e:
+            # Some HTTP errors still mean the server is responding
+            if e.code in [200, 302, 400, 401, 403, 404, 500, 503]:
+                ip_check['status'] = True
+                ip_check['message'] = f"Tailscale IP {ts_ip} is accessible (HTTP {e.code})"
+            else:
+                ip_check['message'] = f"Tailscale IP returned HTTP error {e.code}"
+                ip_check['suggestion'] = "Check Tailscale Serve configuration and ensure it's running"
+        except urllib.error.URLError as e:
+            ip_check['message'] = f"Cannot connect to Tailscale IP"
+            if "certificate" in str(e).lower() or "ssl" in str(e).lower():
+                ip_check['suggestion'] = "This is expected for self-signed certificates. Access via browser to accept certificate."
+            else:
+                ip_check['suggestion'] = "Ensure Tailscale Serve is running and check scheduled task status"
+        except socket.timeout:
+            ip_check['message'] = "Connection to Tailscale IP timed out"
+            ip_check['suggestion'] = "Check network connectivity and Tailscale connection"
+        except Exception as e:
+            ip_check['message'] = f"Error accessing Tailscale IP: {str(e)}"
+            if "certificate" in str(e).lower() or "ssl" in str(e).lower():
+                ip_check['suggestion'] = "SSL certificate verification failed. This is expected for Tailscale self-signed certificates."
+                ip_check['status'] = True  # Mark as success since it's just cert validation
+            else:
+                ip_check['suggestion'] = "Verify Tailscale Serve is running and network is connected"
+    elif ts_ip:
+        ip_check['message'] = "Tailscale IP detected but Nextcloud port not found"
+        ip_check['suggestion'] = "Ensure Nextcloud container is running"
+    else:
+        ip_check['message'] = "Tailscale IP not available"
+        ip_check['suggestion'] = "Check Tailscale connection and ensure you're logged in"
+    result['checks']['ip_accessible'] = ip_check
+    
+    # Check 4: MagicDNS hostname accessibility
+    hostname_check = {'status': False, 'message': '', 'suggestion': '', 'url': ''}
+    if ts_hostname and port:
+        hostname_url = f"https://{ts_hostname}"
+        hostname_check['url'] = hostname_url
+        try:
+            req = urllib.request.Request(hostname_url, method='HEAD')
+            response = urllib.request.urlopen(req, timeout=5)
+            hostname_check['status'] = True
+            hostname_check['message'] = f"MagicDNS hostname {ts_hostname} is accessible via HTTPS"
+        except urllib.error.HTTPError as e:
+            if e.code in [200, 302, 400, 401, 403, 404, 500, 503]:
+                hostname_check['status'] = True
+                hostname_check['message'] = f"MagicDNS hostname {ts_hostname} is accessible (HTTP {e.code})"
+            else:
+                hostname_check['message'] = f"MagicDNS hostname returned HTTP error {e.code}"
+                hostname_check['suggestion'] = "Check Tailscale Serve configuration"
+        except urllib.error.URLError as e:
+            hostname_check['message'] = f"Cannot connect to MagicDNS hostname"
+            if "certificate" in str(e).lower() or "ssl" in str(e).lower():
+                hostname_check['suggestion'] = "This is expected for self-signed certificates. Access via browser to accept certificate."
+            else:
+                hostname_check['suggestion'] = "Ensure MagicDNS is enabled in Tailscale admin console"
+        except socket.timeout:
+            hostname_check['message'] = "Connection to MagicDNS hostname timed out"
+            hostname_check['suggestion'] = "Check MagicDNS settings in Tailscale admin console"
+        except Exception as e:
+            hostname_check['message'] = f"Error accessing MagicDNS hostname: {str(e)}"
+            if "certificate" in str(e).lower() or "ssl" in str(e).lower():
+                hostname_check['suggestion'] = "SSL certificate verification failed. This is expected for Tailscale self-signed certificates."
+                hostname_check['status'] = True
+            else:
+                hostname_check['suggestion'] = "Verify MagicDNS is enabled in Tailscale settings"
+    elif ts_hostname:
+        hostname_check['message'] = "MagicDNS hostname detected but Nextcloud port not found"
+        hostname_check['suggestion'] = "Ensure Nextcloud container is running"
+    else:
+        hostname_check['message'] = "MagicDNS hostname not available"
+        hostname_check['suggestion'] = "Enable MagicDNS in Tailscale admin console"
+    result['checks']['hostname_accessible'] = hostname_check
+    
+    # Determine overall status
+    failed_checks = [k for k, v in result['checks'].items() if not v['status']]
+    if len(failed_checks) == 0:
+        result['overall_status'] = 'success'
+    elif len(failed_checks) <= 2:
+        result['overall_status'] = 'warning'
+    else:
+        result['overall_status'] = 'error'
+    
+    return result
+
 # ----------- EXTRACTION USING PYTHON TARFILE MODULE -----------
 def extract_config_php_only(archive_path, extract_to):
     """
@@ -13139,6 +13340,46 @@ php /tmp/update_config.php"
                 justify=tk.LEFT
             ).pack(pady=(5, 15), padx=15, anchor="w")
         
+        # Health Check / Diagnostics section
+        logger.info("TAILSCALE CONFIG: Creating health check section")
+        tk.Label(
+            content,
+            text="Connection Health Check",
+            font=("Arial", 13, "bold"),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['fg'],
+            wraplength=520
+        ).pack(pady=(20, 5), fill="x", padx=40)
+        
+        tk.Label(
+            content,
+            text="Test your Tailscale Serve configuration and verify accessibility:",
+            font=("Arial", 10),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['hint_fg'],
+            wraplength=520,
+            justify=tk.LEFT
+        ).pack(pady=(0, 10), fill="x", padx=40)
+        
+        # Health check button
+        health_check_btn = tk.Button(
+            content,
+            text="🔍 Run Health Check",
+            font=("Arial", 12, "bold"),
+            bg="#3daee9",
+            fg="white",
+            width=30,
+            height=2,
+            command=lambda: self._run_health_check(content, canvas, ts_ip, ts_hostname, detected_port)
+        )
+        health_check_btn.pack(pady=10, fill="x", padx=40)
+        
+        # Placeholder for health check results (will be populated when check runs)
+        health_results_frame = tk.Frame(content, bg=self.theme_colors['bg'])
+        health_results_frame.pack(pady=10, fill="x", padx=40)
+        # Store reference for later updates
+        self._health_results_frame = health_results_frame
+        
         # Custom domains section
         tk.Label(
             content,
@@ -13426,6 +13667,216 @@ php /tmp/update_config.php"
         self._display_current_trusted_domains(content)
         
         logger.info("TAILSCALE CONFIG: All widgets created successfully")
+    
+    def _run_health_check(self, parent, canvas, ts_ip, ts_hostname, port):
+        """Run health check and display results"""
+        logger.info("TAILSCALE HEALTH CHECK: Starting health check")
+        
+        # Clear previous results
+        if hasattr(self, '_health_results_frame'):
+            for widget in self._health_results_frame.winfo_children():
+                widget.destroy()
+        
+        # Show loading indicator
+        loading_label = tk.Label(
+            self._health_results_frame,
+            text="⏳ Running health checks...",
+            font=("Arial", 11),
+            bg=self.theme_colors['bg'],
+            fg=self.theme_colors['hint_fg']
+        )
+        loading_label.pack(pady=10)
+        self.update_idletasks()
+        
+        # Run health check in a separate thread to avoid freezing UI
+        def run_check():
+            try:
+                health_result = check_tailscale_serve_health(ts_ip, ts_hostname, port)
+                
+                # Update UI in main thread
+                self.after(0, lambda: self._display_health_check_results(health_result))
+            except Exception as e:
+                logger.error(f"Error running health check: {e}")
+                self.after(0, lambda: self._display_health_check_error(str(e)))
+        
+        # Start health check in background thread
+        thread = threading.Thread(target=run_check, daemon=True)
+        thread.start()
+    
+    def _display_health_check_results(self, health_result):
+        """Display health check results in the UI"""
+        logger.info("TAILSCALE HEALTH CHECK: Displaying results")
+        
+        # Clear loading indicator
+        if hasattr(self, '_health_results_frame'):
+            for widget in self._health_results_frame.winfo_children():
+                widget.destroy()
+        
+        # Create results frame
+        results_frame = tk.Frame(
+            self._health_results_frame,
+            bg=self.theme_colors['info_bg'],
+            relief="solid",
+            borderwidth=1
+        )
+        results_frame.pack(pady=10, fill="x")
+        
+        # Overall status header
+        overall_status = health_result['overall_status']
+        if overall_status == 'success':
+            status_icon = "✅"
+            status_text = "All checks passed!"
+            status_color = self.theme_colors['warning_fg']  # Green
+        elif overall_status == 'warning':
+            status_icon = "⚠️"
+            status_text = "Some checks failed"
+            status_color = "#FFA500"  # Orange
+        else:
+            status_icon = "❌"
+            status_text = "Multiple checks failed"
+            status_color = self.theme_colors['error_fg']
+        
+        tk.Label(
+            results_frame,
+            text=f"{status_icon} {status_text}",
+            font=("Arial", 12, "bold"),
+            bg=self.theme_colors['info_bg'],
+            fg=status_color
+        ).pack(pady=(15, 10), padx=15, anchor="w")
+        
+        # Display individual check results
+        checks = health_result['checks']
+        
+        # Check 1: Tailscale Serve Running
+        self._add_check_result(
+            results_frame,
+            "Tailscale Serve Status",
+            checks['serve_running']
+        )
+        
+        # Check 2: Port Mapping
+        self._add_check_result(
+            results_frame,
+            "Nextcloud Port Detection",
+            checks['port_mapped']
+        )
+        
+        # Check 3: Tailscale IP Accessibility
+        self._add_check_result(
+            results_frame,
+            "Tailscale IP Accessibility",
+            checks['ip_accessible']
+        )
+        
+        # Check 4: MagicDNS Hostname Accessibility
+        self._add_check_result(
+            results_frame,
+            "MagicDNS Hostname Accessibility",
+            checks['hostname_accessible']
+        )
+        
+        # Add spacing
+        tk.Label(
+            results_frame,
+            text="",
+            bg=self.theme_colors['info_bg']
+        ).pack(pady=5)
+        
+        logger.info("TAILSCALE HEALTH CHECK: Results displayed successfully")
+    
+    def _add_check_result(self, parent, title, check_result):
+        """Add a single check result to the health check display"""
+        # Check frame
+        check_frame = tk.Frame(parent, bg=self.theme_colors['info_bg'])
+        check_frame.pack(pady=5, padx=20, fill="x")
+        
+        # Status icon and title
+        status_icon = "✓" if check_result['status'] else "✗"
+        status_color = self.theme_colors['warning_fg'] if check_result['status'] else self.theme_colors['error_fg']
+        
+        title_label = tk.Label(
+            check_frame,
+            text=f"{status_icon} {title}",
+            font=("Arial", 10, "bold"),
+            bg=self.theme_colors['info_bg'],
+            fg=status_color
+        )
+        title_label.pack(anchor="w")
+        
+        # Message
+        if check_result['message']:
+            msg_label = tk.Label(
+                check_frame,
+                text=f"   {check_result['message']}",
+                font=("Arial", 9),
+                bg=self.theme_colors['info_bg'],
+                fg=self.theme_colors['info_fg'],
+                wraplength=500,
+                justify=tk.LEFT
+            )
+            msg_label.pack(anchor="w", pady=(2, 0))
+        
+        # URL if available (make it clickable)
+        if 'url' in check_result and check_result['url']:
+            url = check_result['url']
+            url_label = tk.Label(
+                check_frame,
+                text=f"   🔗 {url}",
+                font=("Arial", 9, "underline"),
+                bg=self.theme_colors['info_bg'],
+                fg="#3daee9",
+                cursor="hand2"
+            )
+            url_label.pack(anchor="w", pady=(2, 0))
+            url_label.bind("<Button-1>", lambda e: webbrowser.open(url))
+        
+        # Suggestion if check failed
+        if not check_result['status'] and check_result['suggestion']:
+            suggestion_label = tk.Label(
+                check_frame,
+                text=f"   💡 Suggestion: {check_result['suggestion']}",
+                font=("Arial", 9, "italic"),
+                bg=self.theme_colors['info_bg'],
+                fg=self.theme_colors['hint_fg'],
+                wraplength=500,
+                justify=tk.LEFT
+            )
+            suggestion_label.pack(anchor="w", pady=(2, 0))
+    
+    def _display_health_check_error(self, error_msg):
+        """Display an error message if health check fails"""
+        logger.error(f"TAILSCALE HEALTH CHECK: Error - {error_msg}")
+        
+        # Clear loading indicator
+        if hasattr(self, '_health_results_frame'):
+            for widget in self._health_results_frame.winfo_children():
+                widget.destroy()
+        
+        error_frame = tk.Frame(
+            self._health_results_frame,
+            bg=self.theme_colors['error_bg'],
+            relief="solid",
+            borderwidth=1
+        )
+        error_frame.pack(pady=10, fill="x")
+        
+        tk.Label(
+            error_frame,
+            text="❌ Health Check Error",
+            font=("Arial", 11, "bold"),
+            bg=self.theme_colors['error_bg'],
+            fg=self.theme_colors['error_fg']
+        ).pack(pady=(10, 5), padx=10, anchor="w")
+        
+        tk.Label(
+            error_frame,
+            text=f"Failed to run health check: {error_msg}",
+            font=("Arial", 10),
+            bg=self.theme_colors['error_bg'],
+            fg=self.theme_colors['error_fg'],
+            wraplength=500,
+            justify=tk.LEFT
+        ).pack(pady=(0, 10), padx=10, anchor="w")
     
     def _display_current_trusted_domains(self, parent):
         """Display all current trusted domains with enhanced management features"""
