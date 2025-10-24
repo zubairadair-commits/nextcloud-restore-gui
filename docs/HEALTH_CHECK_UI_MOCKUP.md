@@ -142,23 +142,23 @@
 
 ### Success State
 - ✅ Icon: Green
-- ✓ Check marks: Green (#45bf55)
-- Background: Info background color
+- ✓ Check marks: Green (theme_colors['warning_fg'])
+- Background: Info background color (theme_colors['info_bg'])
 
 ### Warning State
 - ⚠️ Icon: Orange
 - Message: Orange (#FFA500)
-- Background: Info background color
+- Background: Info background color (theme_colors['info_bg'])
 
 ### Error State
 - ❌ Icon: Red
-- ✗ X marks: Red (error_fg theme color)
-- Message: Red
-- Background: Info background color
+- ✗ X marks: Red (theme_colors['error_fg'])
+- Message: Red (theme_colors['error_fg'])
+- Background: Info background color (theme_colors['info_bg'])
 
 ### Interactive Elements
 - 🔗 Links: Blue (#3daee9), underlined, clickable
-- 💡 Suggestions: Hint foreground color, italic
+- 💡 Suggestions: Hint foreground color (theme_colors['hint_fg']), italic
 
 ---
 

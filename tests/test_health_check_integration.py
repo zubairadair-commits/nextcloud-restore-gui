@@ -11,6 +11,29 @@ import re
 # Add the parent directory to the path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+def extract_function(content, function_name):
+    """Helper function to extract a function body from source code"""
+    func_start = content.find(f"def {function_name}")
+    if func_start == -1:
+        return None
+    
+    # Find the next function definition at the same indentation level
+    lines = content[func_start:].split('\n')
+    func_lines = [lines[0]]  # Start with the def line
+    
+    # Determine indentation level of the function
+    func_indent = len(lines[0]) - len(lines[0].lstrip())
+    
+    # Collect lines until we hit another function at same or lower indentation
+    for line in lines[1:]:
+        if line.strip() and not line.startswith(' ' * (func_indent + 1)):
+            # Check if it's a new function definition at same level
+            if line.strip().startswith('def '):
+                break
+        func_lines.append(line)
+    
+    return '\n'.join(func_lines)
+
 def test_health_check_error_messages():
     """Test that all error scenarios have appropriate messages and suggestions"""
     print("=" * 70)
@@ -22,15 +45,12 @@ def test_health_check_error_messages():
     with open(main_file, 'r') as f:
         content = f.read()
     
-    # Find the check_tailscale_serve_health function
-    func_start = content.find("def check_tailscale_serve_health")
-    func_end = content.find("def ", func_start + 100)  # Find next function
+    # Extract the health check function
+    health_func = extract_function(content, "check_tailscale_serve_health")
     
-    if func_start == -1:
+    if health_func is None:
         print("✗ Health check function not found")
         return False
-    
-    health_func = content[func_start:func_end]
     
     all_passed = True
     
@@ -167,7 +187,7 @@ def test_ui_thread_safety():
             all_passed = False
         
         # Check for self.after() to update UI in main thread
-        if "self.after(0," in content or "self.after(1," in content:
+        if "self.after(" in content:
             print("✓ Updates UI in main thread using self.after()")
         else:
             print("⚠️ Warning: May not be updating UI in main thread")
@@ -198,10 +218,10 @@ def test_url_accessibility_checks():
     
     all_passed = True
     
-    # Find the health check function
-    func_start = content.find("def check_tailscale_serve_health")
-    func_end = content.find("def ", func_start + 100)
-    health_func = content[func_start:func_end] if func_start != -1 else ""
+    # Extract the health check function
+    health_func = extract_function(content, "check_tailscale_serve_health")
+    if health_func is None:
+        health_func = ""
     
     # Check for urllib usage
     if "urllib.request" in health_func:
