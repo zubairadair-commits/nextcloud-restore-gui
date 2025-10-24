@@ -4,9 +4,13 @@
 
 Two issues were identified in the Remote Access Setup page:
 
-1. **Scrolling Issue**: Make the Remote Access Setup page (Tailscale wizard/configuration page) scrollable, so that all content can be accessed by mouse wheel regardless of window size. Use a scrollable frame/container and ensure default or native scrollbar style.
+1. **Scrolling Issue**: Make the Remote Access Setup page (Tailscale wizard/configuration page) 
+   scrollable, so that all content can be accessed by mouse wheel regardless of window size. 
+   Use a scrollable frame/container and ensure default or native scrollbar style.
 
-2. **Flashing Command Prompts**: In the Remote Access section, suppress flashing command prompt (cmd) windows when running background commands (e.g., status checks, starting Tailscale Serve, creating scheduled tasks). Ensure all subprocess calls are made with hidden windows on Windows.
+2. **Flashing Command Prompts**: In the Remote Access section, suppress flashing command prompt 
+   (cmd) windows when running background commands (e.g., status checks, starting Tailscale Serve, 
+   creating scheduled tasks). Ensure all subprocess calls are made with hidden windows on Windows.
 
 ## Solution Implementation
 
