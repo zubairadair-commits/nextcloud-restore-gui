@@ -7017,11 +7017,14 @@ If the problem persists, please report this issue on GitHub.
                 except Exception as e:
                     logger.debug(f"Error switching to determinate mode: {e}")
             
-            # Switch to indeterminate mode on main thread
-            try:
-                self.after(0, switch_to_indeterminate)
-            except Exception as e:
-                logger.debug(f"Error scheduling indeterminate mode: {e}")
+            # Note: Progress bar is already in indeterminate mode (set at workflow level)
+            # No need to switch modes here - the entire copying phase uses indeterminate mode
+            
+            # Switch to indeterminate mode on main thread (DISABLED - handled at workflow level)
+            # try:
+            #     self.after(0, switch_to_indeterminate)
+            # except Exception as e:
+            #     logger.debug(f"Error scheduling indeterminate mode: {e}")
             
             # Now use docker cp to copy the entire folder at once from staging to container
             # Run this in a separate thread to keep UI responsive
@@ -7064,11 +7067,11 @@ If the problem persists, please report this issue on GitHub.
                 except:
                     pass
             
-            # Switch back to determinate mode on main thread
-            try:
-                self.after(0, switch_to_determinate)
-            except Exception as e:
-                logger.debug(f"Error scheduling determinate mode: {e}")
+            # Switch back to determinate mode on main thread (DISABLED - handled at workflow level)
+            # try:
+            #     self.after(0, switch_to_determinate)
+            # except Exception as e:
+            #     logger.debug(f"Error scheduling determinate mode: {e}")
             
             # Check if docker cp succeeded
             if not docker_cp_result['success']:
@@ -7330,18 +7333,18 @@ If the problem persists, please report this issue on GitHub.
                 """
                 try:
                     # Calculate progress percentage
-                    # Extraction phase: 0-20% of overall restore progress
+                    # Extraction phase: 0-60% of overall restore progress
                     if total_files is not None and total_files > 0:
                         # File count-based progress (accurate when total is known)
                         file_percent = (files_extracted / total_files) * 100
-                        # Map extraction progress to 0-20% range
-                        progress_val = int((file_percent / 100) * 20)
+                        # Map extraction progress to 0-60% range
+                        progress_val = int((file_percent / 100) * 60)
                         status_msg = f"Extracting: {files_extracted}/{total_files} files"
                     elif total_bytes > 0 and bytes_processed > 0:
                         # Byte-based progress (estimated from compressed bytes read)
                         byte_percent = (bytes_processed / total_bytes) * 100
-                        # Map extraction progress to 0-20% range
-                        progress_val = min(int((byte_percent / 100) * 20), 19)  # Cap at 19% until complete
+                        # Map extraction progress to 0-60% range
+                        progress_val = min(int((byte_percent / 100) * 60), 59)  # Cap at 59% until complete
                         status_msg = f"Extracting: {files_extracted} files (~{int(byte_percent)}% by size)"
                     else:
                         # Unknown progress, show activity
@@ -7475,7 +7478,7 @@ If the problem persists, please report this issue on GitHub.
             shutil.rmtree(extract_temp, ignore_errors=True)
             return None
 
-        self.set_restore_progress(20, "Extraction complete!")
+        self.set_restore_progress(60, "Extraction complete!")
         safe_widget_update(
             self.process_label,
             lambda: self.process_label.config(text="Extraction complete."),
@@ -7816,7 +7819,7 @@ If the problem persists, please report this issue on GitHub.
             db_files = []
             data_dir = os.path.join(extract_dir, "data")
             
-            self.set_restore_progress(82, "Checking for SQLite database...")
+            self.set_restore_progress(10, "Checking for SQLite database...")
             
             if os.path.exists(data_dir):
                 for file in os.listdir(data_dir):
@@ -7841,7 +7844,7 @@ If the problem persists, please report this issue on GitHub.
             db_size = os.path.getsize(db_path) if os.path.exists(db_path) else 0
             db_size_str = self._format_bytes(db_size)
             
-            self.set_restore_progress(85, f"Verifying SQLite database: {db_file} ({db_size_str})")
+            self.set_restore_progress(30, f"Verifying SQLite database: {db_file} ({db_size_str})")
             safe_widget_update(
                 self.process_label,
                 lambda: self.process_label.config(text=f"Verifying SQLite database: {db_file} ({db_size_str})"),
@@ -7855,12 +7858,12 @@ If the problem persists, please report this issue on GitHub.
             
             # The .db file should already be copied with the data folder
             # Just verify it exists
-            self.set_restore_progress(87, f"Validating SQLite database in container...")
+            self.set_restore_progress(45, f"Validating SQLite database in container...")
             check_cmd = f'docker exec {nextcloud_container} test -f {nextcloud_path}/data/{db_file}'
             result = subprocess.run(check_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             
             if result.returncode == 0:
-                self.set_restore_progress(90, f"✓ SQLite database restored successfully")
+                self.set_restore_progress(60, f"✓ SQLite database restored successfully")
                 logger.info(f"SQLite database file {db_file} successfully restored")
                 return True
             else:
@@ -7898,7 +7901,7 @@ If the problem persists, please report this issue on GitHub.
             sql_size = os.path.getsize(sql_path)
             sql_size_str = self._format_bytes(sql_size)
             
-            self.set_restore_progress(82, f"Restoring MySQL database ({sql_size_str})...")
+            self.set_restore_progress(10, f"Restoring MySQL database ({sql_size_str})...")
             safe_widget_update(
                 self.process_label,
                 lambda: self.process_label.config(text=f"Restoring MySQL database ({sql_size_str})..."),
@@ -7933,12 +7936,12 @@ If the problem persists, please report this issue on GitHub.
             restore_thread = threading.Thread(target=do_restore, daemon=True)
             restore_thread.start()
             
-            # Update progress while restoring (82-89% range)
-            progress = 82
+            # Update progress while restoring (10-55% range in new cycle)
+            progress = 10
             last_update = time.time()
             while not restore_done[0]:
                 current_time = time.time()
-                if current_time - last_update >= 1.0 and progress < 89:
+                if current_time - last_update >= 1.0 and progress < 55:
                     progress += 1
                     self.set_restore_progress(progress, f"Restoring MySQL database ({sql_size_str})...")
                     last_update = current_time
@@ -7957,7 +7960,7 @@ If the problem persists, please report this issue on GitHub.
                 return False
             
             # Validate that database tables were imported
-            self.set_restore_progress(90, "Validating MySQL database restore...")
+            self.set_restore_progress(60, "Validating MySQL database restore...")
             safe_widget_update(
                 self.process_label,
                 lambda: self.process_label.config(text="Validating MySQL database restore..."),
@@ -8002,7 +8005,7 @@ If the problem persists, please report this issue on GitHub.
             sql_size = os.path.getsize(sql_path)
             sql_size_str = self._format_bytes(sql_size)
             
-            self.set_restore_progress(82, f"Restoring PostgreSQL database ({sql_size_str})...")
+            self.set_restore_progress(10, f"Restoring PostgreSQL database ({sql_size_str})...")
             safe_widget_update(
                 self.process_label,
                 lambda: self.process_label.config(text=f"Restoring PostgreSQL database ({sql_size_str})..."),
@@ -8037,12 +8040,12 @@ If the problem persists, please report this issue on GitHub.
             restore_thread = threading.Thread(target=do_restore, daemon=True)
             restore_thread.start()
             
-            # Update progress while restoring (82-89% range)
-            progress = 82
+            # Update progress while restoring (10-55% range in new cycle)
+            progress = 10
             last_update = time.time()
             while not restore_done[0]:
                 current_time = time.time()
-                if current_time - last_update >= 1.0 and progress < 89:
+                if current_time - last_update >= 1.0 and progress < 55:
                     progress += 1
                     self.set_restore_progress(progress, f"Restoring PostgreSQL database ({sql_size_str})...")
                     last_update = current_time
@@ -8061,7 +8064,7 @@ If the problem persists, please report this issue on GitHub.
                 return False
             
             # Validate that database tables were imported
-            self.set_restore_progress(90, "Validating PostgreSQL database restore...")
+            self.set_restore_progress(60, "Validating PostgreSQL database restore...")
             safe_widget_update(
                 self.process_label,
                 lambda: self.process_label.config(text="Validating PostgreSQL database restore..."),
@@ -8652,7 +8655,7 @@ php /tmp/update_config.php"
                 logger.debug(f"Database User: {self.restore_db_user}")
             logger.info("=" * 60)
             
-            # Extraction happens in auto_extract_backup and will set progress to 0-20%
+            # Extraction happens in auto_extract_backup and will set progress to 0-60%
             logger.info("Step 1/7: Extracting backup...")
             extract_dir = self.auto_extract_backup(backup_path, password)
             if not extract_dir:
@@ -8662,8 +8665,8 @@ php /tmp/update_config.php"
             if self.verbose_logging:
                 logger.debug(f"Extraction directory: {extract_dir}")
 
-            # Auto-detect database type from config.php (20% - brief transition)
-            self.set_restore_progress(20, "Detecting database type ...")
+            # Auto-detect database type from config.php (60% - brief transition)
+            self.set_restore_progress(60, "Detecting database type ...")
             safe_widget_update(
                 self.process_label,
                 lambda: self.process_label.config(text="Reading config.php to detect database type ..."),
@@ -8717,12 +8720,12 @@ php /tmp/update_config.php"
                 self.detected_dbtype = dbtype
                 time.sleep(3)  # Give user more time to see the warning
 
-            # Docker configuration (20% - brief setup before copying)
-            self.set_restore_progress(20, self.restore_steps[1])
+            # Docker configuration (60-70% - brief setup before copying)
+            self.set_restore_progress(60, self.restore_steps[1])
             logger.info("Step 3/7: Generating Docker Compose configuration...")
             
             # Generate Docker Compose YAML automatically
-            self.set_restore_progress(20, "Generating Docker Compose configuration...")
+            self.set_restore_progress(65, "Generating Docker Compose configuration...")
             safe_widget_update(
                 self.process_label,
                 lambda: self.process_label.config(text="Creating docker-compose.yml with detected settings..."),
@@ -8854,8 +8857,8 @@ php /tmp/update_config.php"
                 print(f"⚠️ {warning_msg}")
                 time.sleep(2)
             
-            # Update to step 2 with detailed messaging (25-30% range for container setup)
-            self.set_restore_progress(20, self.restore_steps[2])
+            # Update to step 2 with detailed messaging (70-100% range for container setup)
+            self.set_restore_progress(70, self.restore_steps[2])
             logger.info("Step 4/7: Setting up Docker containers...")
             
             # For SQLite, we don't need a separate database container
@@ -8921,8 +8924,49 @@ php /tmp/update_config.php"
                 "process label update in restore thread"
             )
 
-            # Copying files to container (20-80% range for file copying)
-            self.set_restore_progress(20, self.restore_steps[3])
+            # All setup complete - progress bar reaches 100%
+            self.set_restore_progress(100, "Setup complete, ready to copy files...")
+            safe_widget_update(
+                self.process_label,
+                lambda: self.process_label.config(text="✓ All setup complete, ready to copy files..."),
+                "process label update in restore thread"
+            )
+            time.sleep(0.5)  # Brief pause to show completion
+
+            # Switch progress bar to indeterminate mode for file copying
+            def switch_to_indeterminate():
+                """Switch progress bar to indeterminate (animated) mode"""
+                try:
+                    if hasattr(self, 'progressbar') and self.progressbar:
+                        safe_widget_update(
+                            self.progressbar,
+                            lambda: self.progressbar.config(mode='indeterminate'),
+                            "progress bar switch to indeterminate"
+                        )
+                        # Start the animation
+                        safe_widget_update(
+                            self.progressbar,
+                            lambda: self.progressbar.start(10),  # 10ms interval for smooth animation
+                            "progress bar start animation"
+                        )
+                        logger.info("Progress bar switched to indeterminate mode for file copying")
+                except Exception as e:
+                    logger.debug(f"Error switching to indeterminate mode: {e}")
+            
+            # Switch to indeterminate mode on main thread
+            try:
+                self.after(0, switch_to_indeterminate)
+                time.sleep(0.1)  # Brief pause to ensure mode switch completes
+            except Exception as e:
+                logger.debug(f"Error scheduling indeterminate mode: {e}")
+
+            # Copying files to container (indeterminate mode - no percentage)
+            # Update status message without percentage
+            safe_widget_update(
+                self.status_label,
+                lambda: self.status_label.config(text=self.restore_steps[3]),
+                "status label update in restore thread"
+            )
             nextcloud_path = "/var/www/html"
             # Copy config/data/apps/custom_apps into container
             # Note: We need to remove existing folders first, then copy the backup folders
@@ -8969,27 +9013,28 @@ php /tmp/update_config.php"
             copy_method = "robocopy (fast multi-threaded)" if is_windows else "docker cp"
             logger.info(f"Using copy method: {copy_method}")
             
-            # Copy each folder with live progress updates
+            # Copy each folder - progress bar is in indeterminate mode
             files_copied_so_far = 0
             copy_start_time_all = time.time()
             
             for idx, folder in enumerate(folders_to_copy):
                 local_path = os.path.join(extract_dir, folder)
                 if os.path.isdir(local_path):
-                    # Calculate base progress for this folder (20-80% range, 60% total / 4 folders = 15% per folder)
-                    folder_start_progress = 20 + int((idx / len(folders_to_copy)) * 60)
-                    folder_end_progress = 20 + int(((idx + 1) / len(folders_to_copy)) * 60)
-                    
                     folder_size = folder_sizes.get(folder, 0)
                     file_count = folder_file_counts.get(folder, 0)
                     
-                    # Update status message to indicate copy method
+                    # Update status message to indicate copy method (no percentage in indeterminate mode)
                     if is_windows:
                         status_msg = f"Copying {folder} folder ({file_count} files) using robocopy..."
                     else:
                         status_msg = f"Copying {folder} folder ({file_count} files)..."
                     
-                    self.set_restore_progress(folder_start_progress, status_msg)
+                    # Update status label only (no progress bar update in indeterminate mode)
+                    safe_widget_update(
+                        self.status_label,
+                        lambda msg=status_msg: self.status_label.config(text=msg),
+                        "status label update in restore thread"
+                    )
                     safe_widget_update(
                         self.process_label,
                         lambda msg=status_msg: self.process_label.config(text=msg),
@@ -9001,11 +9046,12 @@ php /tmp/update_config.php"
                     except tk.TclError:
                         logger.debug("TclError during update_idletasks - window may have been closed")
                     
-                    # Define progress callback for this folder
+                    # Define progress callback for this folder (updates status only, not progress bar)
                     def copy_progress_callback(files_copied, total_files, current_file, percent, elapsed):
                         """
                         Callback function to update UI with copying progress.
                         Uses Tkinter's after() method for thread-safe UI updates.
+                        In indeterminate mode, only updates status text, not progress bar.
                         """
                         try:
                             # Calculate overall progress
@@ -9032,8 +9078,9 @@ php /tmp/update_config.php"
                             # Use after() for thread-safe UI updates
                             def update_ui():
                                 try:
-                                    # Update progress bar and status
-                                    self.set_restore_progress(percent, status_msg)
+                                    # Update status label only (progress bar is in indeterminate mode)
+                                    if hasattr(self, "status_label") and self.status_label:
+                                        self.status_label.config(text=status_msg)
                                     
                                     # Update process label with current file
                                     if hasattr(self, "process_label") and self.process_label:
@@ -9056,7 +9103,11 @@ php /tmp/update_config.php"
                             logger.debug(f"Error in copy progress callback: {ex}")
                     
                     try:
-                        # Copy folder with file-by-file progress
+                        # Copy folder (progress bar is in indeterminate mode, so progress values are ignored)
+                        # Keep progress_start/progress_end for compatibility with copy function signature
+                        folder_start_progress = 0
+                        folder_end_progress = 100
+                        
                         success = self.copy_folder_to_container_with_progress(
                             local_path=local_path,
                             container_name=nextcloud_container,
@@ -9073,8 +9124,12 @@ php /tmp/update_config.php"
                         # Update counters
                         files_copied_so_far += file_count
                         
-                        # Show completion for this folder
-                        self.set_restore_progress(folder_end_progress, f"✓ Copied {folder} folder ({file_count} files)")
+                        # Show completion for this folder (status label only, not progress bar)
+                        safe_widget_update(
+                            self.status_label,
+                            lambda f=folder, fc=file_count: self.status_label.config(text=f"✓ Copied {f} folder ({fc} files)"),
+                            "status label update in restore thread"
+                        )
                         safe_widget_update(
                             self.process_label,
                             lambda f=folder, fc=file_count: self.process_label.config(text=f"✓ Copied {f} folder ({fc} files)"),
@@ -9098,8 +9153,36 @@ php /tmp/update_config.php"
             total_elapsed = time.time() - copy_start_time_all
             logger.info(f"Completed copying {files_copied_so_far} files in {self._format_time(total_elapsed)}")
 
-            # Database restore - branch based on detected database type (80-90% range)
-            self.set_restore_progress(80, self.restore_steps[4])
+            # Switch progress bar back to determinate mode after file copying
+            def switch_to_determinate():
+                """Switch progress bar back to determinate mode"""
+                try:
+                    if hasattr(self, 'progressbar') and self.progressbar:
+                        # Stop the animation
+                        safe_widget_update(
+                            self.progressbar,
+                            lambda: self.progressbar.stop(),
+                            "progress bar stop animation"
+                        )
+                        # Switch back to determinate mode
+                        safe_widget_update(
+                            self.progressbar,
+                            lambda: self.progressbar.config(mode='determinate'),
+                            "progress bar switch to determinate"
+                        )
+                        logger.info("Progress bar switched back to determinate mode")
+                except Exception as e:
+                    logger.debug(f"Error switching to determinate mode: {e}")
+            
+            # Switch back to determinate mode on main thread
+            try:
+                self.after(0, switch_to_determinate)
+                time.sleep(0.1)  # Brief pause to ensure mode switch completes
+            except Exception as e:
+                logger.debug(f"Error scheduling determinate mode: {e}")
+
+            # Database restore - branch based on detected database type (0-20% range in new progress cycle)
+            self.set_restore_progress(0, self.restore_steps[4])
             logger.info("Step 5/7: Restoring database...")
             
             db_restore_success = False
@@ -9143,8 +9226,8 @@ php /tmp/update_config.php"
                 )
                 print(warning_msg)
             
-            # Update config.php with database credentials (90-92% range)
-            self.set_restore_progress(90, "Updating Nextcloud configuration ...")
+            # Update config.php with database credentials (60-70% range in new cycle)
+            self.set_restore_progress(60, "Updating Nextcloud configuration ...")
             safe_widget_update(
                 self.process_label,
                 lambda: self.process_label.config(text="Updating config.php with database credentials ..."),
@@ -9173,8 +9256,8 @@ php /tmp/update_config.php"
                 )
                 print(f"Warning: config.php update failed: {config_err}")
 
-            # Validate that required files exist (92-94% range)
-            self.set_restore_progress(92, "Validating restored files ...")
+            # Validate that required files exist (70-80% range in new cycle)
+            self.set_restore_progress(70, "Validating restored files ...")
             safe_widget_update(
                 self.process_label,
                 lambda: self.process_label.config(text="Validating config and data folders ..."),
@@ -9231,8 +9314,8 @@ php /tmp/update_config.php"
                 )
                 print(f"Warning: file validation error: {val_err}")
             
-            # Setting permissions (94-96% range)
-            self.set_restore_progress(94, self.restore_steps[5])
+            # Setting permissions (80-90% range in new cycle)
+            self.set_restore_progress(80, self.restore_steps[5])
             safe_widget_update(
                 self.process_label,
                 lambda: self.process_label.config(text="Setting file permissions for web server..."),
@@ -9283,8 +9366,8 @@ php /tmp/update_config.php"
                 )
                 print(f"Warning: permission error but continuing restore: {perm_err}")
 
-            # Restart Nextcloud container to apply all changes (96-99% range)
-            self.set_restore_progress(96, "Restarting Nextcloud container ...")
+            # Restart Nextcloud container to apply all changes (90-99% range in new cycle)
+            self.set_restore_progress(90, "Restarting Nextcloud container ...")
             safe_widget_update(
                 self.process_label,
                 lambda: self.process_label.config(text="Restarting Nextcloud to apply changes..."),
